@@ -1,0 +1,16 @@
+# Rust
+/target/
+**/target/
+Cargo.lock
+**/*.rs.bk
+
+# NPM
+**/node_modules/
+**/build/
+
+# Other
+*.override.yml
+.env
+*.db
+data.sql
+/data/

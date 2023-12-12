@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "UPDATE PackageVersion SET yanked = TRUE WHERE package = $1 AND version = $2",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 2
+    },
+    "nullable": []
+  },
+  "hash": "86e2463f9dbb383fc7d4c0cd73c616f7f284c12aab61dbe169ebd99a59c5e71a"
+}

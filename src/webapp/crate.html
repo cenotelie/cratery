@@ -1,0 +1,54 @@
+<!DOCTYPE html>
+<html lang="en" class="dark">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="description" content="">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <link rel="icon" type="image/png" href="/webapp/favicon.png">
+  <title>
+    Cratery
+  </title>
+  <script src="https://cdn.tailwindcss.com"></script>
+</head>
+
+<header style="position: sticky; top: 0;">
+  <nav class="bg-white border-gray-200 px-4 lg:px-6 py-2.5 dark:bg-gray-800">
+      <div class="flex flex-wrap justify-between items-center mx-auto max-w-screen-xl">
+          <a href="/webapp/index.html" class="flex items-center">
+              <img src="./logo.png" class="mr-3 h-6 sm:h-9" alt="Cénotélie Logo" />
+              <span class="self-center text-xl font-semibold whitespace-nowrap dark:text-white">Cratery</span>
+          </a>
+          <div class="flex items-center lg:order-2">
+            <a id="link-admin" href="/webapp/admin.html" style="cursor: pointer;" class="text-gray-800 dark:text-white hover:bg-gray-50 focus:ring-4 focus:ring-gray-300 font-medium rounded-lg text-sm px-4 lg:px-5 py-2 lg:py-2.5 mr-2 dark:hover:bg-gray-700 focus:outline-none dark:focus:ring-gray-800">Admin</a>
+            <a id="link-account" href="/webapp/account.html" style="cursor: pointer;" class="text-gray-800 dark:text-white hover:bg-gray-50 focus:ring-4 focus:ring-gray-300 font-medium rounded-lg text-sm px-4 lg:px-5 py-2 lg:py-2.5 mr-2 dark:hover:bg-gray-700 focus:outline-none dark:focus:ring-gray-800">My Account</a>
+            <a onclick="doLogout()" style="cursor: pointer;" class="text-gray-800 dark:text-white hover:bg-gray-50 focus:ring-4 focus:ring-gray-300 font-medium rounded-lg text-sm px-4 lg:px-5 py-2 lg:py-2.5 mr-2 dark:hover:bg-gray-700 focus:outline-none dark:focus:ring-gray-800">Logout</a>
+          </div>
+      </div>
+  </nav>
+</header>
+<body onload="doPageLoad()" class="bg-white dark:bg-gray-800">
+  <section class="bg-gray-50 dark:bg-gray-900 py-4">
+    
+  </section>
+</body>
+<footer class="p-4 bg-white md:p-8 lg:p-10 dark:bg-gray-800">
+  <div class="mx-auto max-w-screen-xl text-center">
+      <span class="text-sm text-gray-500 sm:text-center dark:text-gray-400">© 2023 <a href="https://cenotelie.fr/" target="_blank" class="hover:underline">Cénotélie</a>. All Rights Reserved.</span>
+  </div>
+</footer>
+
+<link href="/webapp/index.css" rel="stylesheet" />
+<script src="/webapp/api.js"></script>
+<script src="/webapp/index.js"></script>
+<script>
+  function doPageLoad() {
+    onPageLoad().then((_user) => {
+      const params = getQueryParameters(window.location.search);
+      apiGetCrate(params.crate).then((crate) => {
+        console.log(crate);
+      });
+    });
+  }
+</script>
+</html>

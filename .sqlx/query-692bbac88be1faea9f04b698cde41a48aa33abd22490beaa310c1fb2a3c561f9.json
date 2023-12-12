@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "UPDATE RegistryUserToken SET lastUsed = $2 WHERE id = $1",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 2
+    },
+    "nullable": []
+  },
+  "hash": "692bbac88be1faea9f04b698cde41a48aa33abd22490beaa310c1fb2a3c561f9"
+}

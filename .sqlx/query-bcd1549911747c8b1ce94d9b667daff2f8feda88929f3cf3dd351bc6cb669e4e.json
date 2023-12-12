@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "DELETE FROM PackageOwner WHERE package = $1 AND owner = $2",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 2
+    },
+    "nullable": []
+  },
+  "hash": "bcd1549911747c8b1ce94d9b667daff2f8feda88929f3cf3dd351bc6cb669e4e"
+}

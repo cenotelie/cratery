@@ -1,0 +1,16 @@
+.dirty {
+    color: #900C3F;
+}
+
+.wasSaved {
+    animation: 1s wasSaved 1;
+}
+
+@keyframes wasSaved {
+    from {
+        background-color: #DAF7A6;
+    }
+    to {
+        background-color: transparent;
+    }
+}

@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "DELETE FROM RegistryUserToken WHERE user = $1 AND id = $2",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 2
+    },
+    "nullable": []
+  },
+  "hash": "9bca9d6b1879f9377c117aca6ef1115cb6b21ffbd22ebde69760abc5e218c353"
+}

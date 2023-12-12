@@ -1,0 +1,20 @@
+{
+  "db_name": "SQLite",
+  "query": "INSERT INTO RegistryUser (isActive, login, name, roles) VALUES (TRUE, $1, $1, $2) RETURNING id",
+  "describe": {
+    "columns": [
+      {
+        "name": "id",
+        "ordinal": 0,
+        "type_info": "Int64"
+      }
+    ],
+    "parameters": {
+      "Right": 2
+    },
+    "nullable": [
+      false
+    ]
+  },
+  "hash": "a0c81724d4d2b9086f4c47e111a93528cf0d8cbd63000934e28ababb5be11dba"
+}

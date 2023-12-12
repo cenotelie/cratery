@@ -1,0 +1,26 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT package, version FROM PackageVersion WHERE hasDocs = FALSE ORDER BY id",
+  "describe": {
+    "columns": [
+      {
+        "name": "package",
+        "ordinal": 0,
+        "type_info": "Text"
+      },
+      {
+        "name": "version",
+        "ordinal": 1,
+        "type_info": "Text"
+      }
+    ],
+    "parameters": {
+      "Right": 0
+    },
+    "nullable": [
+      false,
+      false
+    ]
+  },
+  "hash": "68fbf4e0ff70b154fb9963ebe1c4a37bf1acae6ceac28a218652b8247f6013fa"
+}

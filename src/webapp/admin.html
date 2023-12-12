@@ -1,0 +1,136 @@
+<!DOCTYPE html>
+<html lang="en" class="dark">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="description" content="">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <link rel="icon" type="image/png" href="/webapp/favicon.png">
+  <title>
+    Cratery
+  </title>
+  <script src="https://cdn.tailwindcss.com"></script>
+</head>
+
+<header style="position: sticky; top: 0;">
+  <nav class="bg-white border-gray-200 px-4 lg:px-6 py-2.5 dark:bg-gray-800">
+      <div class="flex flex-wrap justify-between items-center mx-auto max-w-screen-xl">
+          <a href="/webapp/index.html" class="flex items-center">
+              <img src="./logo.png" class="mr-3 h-6 sm:h-9" alt="Cénotélie Logo" />
+              <span class="self-center text-xl font-semibold whitespace-nowrap dark:text-white">Cratery</span>
+          </a>
+          <div class="flex items-center lg:order-2">
+            <a id="link-admin" href="/webapp/admin.html" style="cursor: pointer;" class="text-gray-800 dark:text-white hover:bg-gray-50 focus:ring-4 focus:ring-gray-300 font-medium rounded-lg text-sm px-4 lg:px-5 py-2 lg:py-2.5 mr-2 dark:hover:bg-gray-700 focus:outline-none dark:focus:ring-gray-800">Admin</a>
+            <a id="link-account" href="/webapp/account.html" style="cursor: pointer;" class="text-gray-800 dark:text-white hover:bg-gray-50 focus:ring-4 focus:ring-gray-300 font-medium rounded-lg text-sm px-4 lg:px-5 py-2 lg:py-2.5 mr-2 dark:hover:bg-gray-700 focus:outline-none dark:focus:ring-gray-800">My Account</a>
+            <a onclick="doLogout()" style="cursor: pointer;" class="text-gray-800 dark:text-white hover:bg-gray-50 focus:ring-4 focus:ring-gray-300 font-medium rounded-lg text-sm px-4 lg:px-5 py-2 lg:py-2.5 mr-2 dark:hover:bg-gray-700 focus:outline-none dark:focus:ring-gray-800">Logout</a>
+          </div>
+      </div>
+  </nav>
+</header>
+<body onload="doPageLoad()" class="bg-white dark:bg-gray-800">
+  <section class="bg-white dark:bg-gray-900">
+    <div class="py-8 lg:py-16 px-4 mx-auto max-w-screen-xxl">
+      <h2 class="mb-4 text-4xl tracking-tight font-extrabold text-center text-gray-900 dark:text-white">Users</h2>
+      <div class="relative overflow-x-auto space-y-8">
+        <table class="w-full text-sm text-left rtl:text-right text-gray-500 dark:text-gray-400">
+            <thead class="text-xs text-gray-700 uppercase bg-gray-50 dark:bg-gray-700 dark:text-gray-400">
+              <tr>
+                <th scope="col" class="px-6 py-3">
+                    Login
+                </th>
+                <th scope="col" class="px-6 py-3">
+                    Name
+                </th>
+                <th scope="col" class="px-6 py-3">
+                    Roles
+                </th>
+                <th scope="col" class="px-6 py-3">
+                    Is active
+                </th>
+              </tr>
+            </thead>
+            <tbody id="users">
+            </tbody>
+        </table>
+      </div>
+    </div>
+  </section>
+</body>
+<footer class="p-4 bg-white md:p-8 lg:p-10 dark:bg-gray-800">
+  <div class="mx-auto max-w-screen-xl text-center">
+      <span class="text-sm text-gray-500 sm:text-center dark:text-gray-400">© 2023 <a href="https://cenotelie.fr/" target="_blank" class="hover:underline">Cénotélie</a>. All Rights Reserved.</span>
+  </div>
+</footer>
+
+<link href="/webapp/index.css" rel="stylesheet" />
+<script src="/webapp/api.js"></script>
+<script src="/webapp/index.js"></script>
+<script>
+    function doPageLoad() {
+      onPageLoad().then((_user) => {
+        apiGetUsers().then(users => {
+          const usersEl = document.getElementById("users");
+          for (const user of users) {
+            usersEl.appendChild(renderUser(user));
+          }
+        })
+      });
+    }
+
+    function renderUser(user) {
+      const inputNameEl = document.createElement("input");
+      inputNameEl.setAttribute("type", "text");
+      inputNameEl.className = "block p-3 w-full text-sm text-gray-900 bg-gray-50 rounded-lg border border-gray-300 shadow-sm focus:ring-primary-500 focus:border-primary-500 dark:bg-gray-700 dark:border-gray-600 dark:placeholder-gray-400 dark:text-white dark:focus:ring-primary-500 dark:focus:border-primary-500 dark:shadow-sm-light";
+      inputNameEl.value = user.name;
+      const inputRolesEl = document.createElement("input");
+      inputRolesEl.setAttribute("type", "text");
+      inputRolesEl.className = "block p-3 w-full text-sm text-gray-900 bg-gray-50 rounded-lg border border-gray-300 shadow-sm focus:ring-primary-500 focus:border-primary-500 dark:bg-gray-700 dark:border-gray-600 dark:placeholder-gray-400 dark:text-white dark:focus:ring-primary-500 dark:focus:border-primary-500 dark:shadow-sm-light";
+      inputRolesEl.value = user.roles;
+
+      setupOnChange(inputNameEl, (name) => apiUpdateUser({...user, name}));
+      setupOnChange(inputRolesEl, (roles) => apiUpdateUser({...user, roles}));
+
+      const switchEl = document.createElement("label");
+      switchEl.className = "relative inline-flex items-center cursor-pointer";
+      const switchInputEl = document.createElement("input");
+      switchInputEl.setAttribute("type", "checkbox");
+      switchInputEl.className = "sr-only peer";
+      switchInputEl.checked = user.isActive;
+      switchInputEl.addEventListener("click", (e) => {
+        e.preventDefault();
+        const isActive = !switchInputEl.checked; // just changed
+        (isActive ? apiDeactivateUser(user.login) : apiReactivateUser(user.login)).then(value => {
+          switchInputEl.checked = !isActive;
+        }).catch(() => {
+          switchInputEl.checked = isActive;
+        });
+        return false;
+      });
+      const switchToggleEl = document.createElement("div");
+      switchToggleEl.className = "w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-300 dark:peer-focus:ring-blue-800 rounded-full peer dark:bg-gray-700 peer-checked:after:translate-x-full rtl:peer-checked:after:-translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:start-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all dark:border-gray-600 peer-checked:bg-blue-600";
+      switchEl.appendChild(switchInputEl);
+      switchEl.appendChild(switchToggleEl);
+
+      const row = document.createElement("tr");
+      const cell1 = document.createElement("th");
+      cell1.setAttribute("scope", "row");
+      cell1.className = "px-6 py-4 font-medium text-gray-900 whitespace-nowrap dark:text-white";
+      cell1.appendChild(document.createTextNode(user.login));
+      const cell2 = document.createElement("td");
+      cell2.className = "px-6 py-4";
+      cell2.appendChild(inputNameEl);
+      const cell3 = document.createElement("td");
+      cell3.className = "px-6 py-4";
+      cell3.appendChild(inputRolesEl);
+      const cell4 = document.createElement("td");
+      cell4.className = "px-6 py-4";
+      cell4.appendChild(switchEl);
+
+      row.appendChild(cell1);
+      row.appendChild(cell2);
+      row.appendChild(cell3);
+      row.appendChild(cell4);
+      return row;
+    }
+</script>
+</html>

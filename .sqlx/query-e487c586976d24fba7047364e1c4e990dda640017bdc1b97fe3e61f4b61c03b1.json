@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "INSERT INTO PackageVersion (package, version, description, upload, uploadedBy, yanked, hasDocs) VALUES ($1, $2, $3, $4, $5, false, false)",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 5
+    },
+    "nullable": []
+  },
+  "hash": "e487c586976d24fba7047364e1c4e990dda640017bdc1b97fe3e61f4b61c03b1"
+}

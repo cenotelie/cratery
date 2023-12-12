@@ -1,0 +1,31 @@
+<!DOCTYPE html>
+<html lang="en" class="dark">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="description" content="">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <link rel="icon" type="image/png" href="/webapp/favicon.png">
+  <title>
+    Cratery
+  </title>
+</head>
+
+<body onload="onLoad()">
+</body>
+
+<script src="/webapp/api.js"></script>
+<script>
+  function onLoad() {
+    const params = getQueryParameters(window.location.search);
+    if (params.code !== undefined) {
+      apiOAuthLoginWithCode(params.code)
+        .then((user) => {
+          window.localStorage.setItem("cratery-user", JSON.stringify(user));
+          window.location.search = "";
+          window.location.pathname = "/webapp/index.html";
+        });
+    }
+  }
+</script>
+</html>

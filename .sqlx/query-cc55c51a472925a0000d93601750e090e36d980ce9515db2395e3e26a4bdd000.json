@@ -1,0 +1,20 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT upload FROM PackageVersion WHERE package = $1 AND version = $2 LIMIT 1",
+  "describe": {
+    "columns": [
+      {
+        "name": "upload",
+        "ordinal": 0,
+        "type_info": "Datetime"
+      }
+    ],
+    "parameters": {
+      "Right": 2
+    },
+    "nullable": [
+      false
+    ]
+  },
+  "hash": "cc55c51a472925a0000d93601750e090e36d980ce9515db2395e3e26a4bdd000"
+}

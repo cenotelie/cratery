@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "INSERT INTO PackageOwner (package, owner) VALUES ($1, $2)",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 2
+    },
+    "nullable": []
+  },
+  "hash": "e1b3bacf59e3d57ca8b1058db07d6c5e9ddfbb6b83d5c72a16c60e93ad737d4b"
+}

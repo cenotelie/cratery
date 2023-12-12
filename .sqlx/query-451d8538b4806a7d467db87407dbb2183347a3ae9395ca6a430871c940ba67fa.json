@@ -1,0 +1,20 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT roles FROM RegistryUser WHERE id = $1",
+  "describe": {
+    "columns": [
+      {
+        "name": "roles",
+        "ordinal": 0,
+        "type_info": "Text"
+      }
+    ],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": [
+      false
+    ]
+  },
+  "hash": "451d8538b4806a7d467db87407dbb2183347a3ae9395ca6a430871c940ba67fa"
+}

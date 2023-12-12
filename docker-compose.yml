@@ -1,0 +1,34 @@
+version: '3'
+services:
+  server:
+    image: rg.fr-par.scw.cloud/cenotelie/cratery:latest
+    restart: unless-stopped
+    expose:
+      - "80"
+    ports:
+      - "80:80"
+    environment:
+      RUST_BACKTRACE: 1
+      LOG_LEVEL: INFO
+      REGISTRY_COOKIE_SECRET: this is a secret
+      REGISTRY_LICENSE_ID:
+      REGISTRY_LICENSE_WEB_DOMAIN: localhost
+      REGISTRY_DATA_DIR: /data
+      REGISTRY_PUBLIC_URI: http://?domain
+      # REGISTRY_GIT_REMOTE:
+      # REGISTRY_GIT_REMOTE_SSH_KEY_FILENAME:
+      REGISTRY_GIT_USER_NAME:
+      REGISTRY_GIT_USER_EMAIL:
+      REGISTRY_S3_URI:
+      REGISTRY_S3_REGION:
+      REGISTRY_S3_SERVICE:
+      REGISTRY_S3_ACCESS_KEY:
+      REGISTRY_S3_SECRET_KEY:
+      REGISTRY_S3_BUCKET:
+      REGISTRY_OAUTH_LOGIN_URI:
+      REGISTRY_OAUTH_TOKEN_URI:
+      REGISTRY_OAUTH_CALLBACK_URI:
+      REGISTRY_OAUTH_USERINFO_URI:
+      REGISTRY_OAUTH_CLIENT_ID:
+      REGISTRY_OAUTH_CLIENT_SECRET:
+      REGISTRY_OAUTH_CLIENT_SCOPE:

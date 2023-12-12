@@ -1,0 +1,26 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT RegistryUserToken.id, token\n            FROM RegistryUser INNER JOIN RegistryUserToken ON RegistryUser.id = RegistryUserToken.user\n            WHERE isActive = TRUE AND login = $1",
+  "describe": {
+    "columns": [
+      {
+        "name": "id",
+        "ordinal": 0,
+        "type_info": "Int64"
+      },
+      {
+        "name": "token",
+        "ordinal": 1,
+        "type_info": "Text"
+      }
+    ],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": [
+      false,
+      false
+    ]
+  },
+  "hash": "00b04dcd06ca94b654bf4103fb6cda28dd6511a5683ad1c07a8d35c7038d7b72"
+}
