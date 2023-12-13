@@ -1,6 +1,6 @@
 {
   "db_name": "SQLite",
-  "query": "SELECT id, isActive AS is_active, login, name, roles FROM RegistryUser WHERE id = $1",
+  "query": "SELECT RegistryUser.id, isActive AS is_active, email, login, name, roles FROM RegistryUser INNER JOIN PackageOwner ON PackageOwner.owner = RegistryUser.id WHERE package = $1",
   "describe": {
     "columns": [
       {
@@ -14,18 +14,23 @@
         "type_info": "Bool"
       },
       {
-        "name": "login",
+        "name": "email",
         "ordinal": 2,
         "type_info": "Text"
       },
       {
-        "name": "name",
+        "name": "login",
         "ordinal": 3,
         "type_info": "Text"
       },
       {
-        "name": "roles",
+        "name": "name",
         "ordinal": 4,
+        "type_info": "Text"
+      },
+      {
+        "name": "roles",
+        "ordinal": 5,
         "type_info": "Text"
       }
     ],
@@ -37,8 +42,9 @@
       false,
       false,
       false,
+      false,
       false
     ]
   },
-  "hash": "82eba3834f90d46f2a25d26e44dfc6fb1fb1e88d15851017930b4726d22f07de"
+  "hash": "6127cc8bb9878167c2fbbc72c9bad56cdab0d8a64d73ed0ae84f06ea91b773e9"
 }

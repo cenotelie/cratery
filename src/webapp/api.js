@@ -71,7 +71,7 @@ function apiGetUsers() {
 }
 
 function apiUpdateUser(user) {
-  return fetch(`/api/v1/users/${btoa(user.login)}`, {
+  return fetch(`/api/v1/users/${btoa(user.email)}`, {
     method: "PATCH",
     body: JSON.stringify(user),
     headers: [["content-type", "application/json"]],
@@ -84,8 +84,8 @@ function apiUpdateUser(user) {
   });
 }
 
-function apiDeactivateUser(login) {
-  return fetch(`/api/v1/users/${btoa(login)}/deactivate`, {
+function apiDeactivateUser(email) {
+  return fetch(`/api/v1/users/${btoa(email)}/deactivate`, {
     method: "POST",
   }).then((response) => {
     if (response.status !== 200) {
@@ -96,8 +96,8 @@ function apiDeactivateUser(login) {
   });
 }
 
-function apiReactivateUser(login) {
-  return fetch(`/api/v1/users/${btoa(login)}/reactivate`, {
+function apiReactivateUser(email) {
+  return fetch(`/api/v1/users/${btoa(email)}/reactivate`, {
     method: "POST",
   }).then((response) => {
     if (response.status !== 200) {
@@ -128,8 +128,7 @@ function apiGetCrate(crate) {
       } else {
         return response.json();
       }
-    })
-    .then((response) => response.crates);
+    });
 }
 
 function getQueryParameters(queryString) {

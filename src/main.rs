@@ -236,7 +236,7 @@ async fn api_login_with_oauth_code(
     })
     .await
     .map_err(response_error)?;
-    let cookie = auth_data.create_id_cookie(&registry_user.login);
+    let cookie = auth_data.create_id_cookie(&registry_user.email);
     Ok((
         StatusCode::OK,
         [(SET_COOKIE, HeaderValue::from_str(&cookie.to_string()).unwrap())],
@@ -269,13 +269,13 @@ async fn api_get_users(mut connection: DbConn, auth_data: AuthData) -> ApiResult
 async fn api_update_user(
     mut connection: DbConn,
     auth_data: AuthData,
-    Path(Base64(login)): Path<Base64>,
+    Path(Base64(email)): Path<Base64>,
     target: Json<RegistryUser>,
 ) -> ApiResult<RegistryUser> {
-    if login != target.login {
+    if email != target.email {
         return Err(response_error(specialize(
             error_invalid_request(),
-            String::from("login in path and body are different"),
+            String::from("email in path and body are different"),
         )));
     }
     response(
@@ -289,24 +289,24 @@ async fn api_update_user(
 }
 
 /// Attempts to deactivate a user
-async fn api_deactivate_user(mut connection: DbConn, auth_data: AuthData, Path(Base64(login)): Path<Base64>) -> ApiResult<()> {
+async fn api_deactivate_user(mut connection: DbConn, auth_data: AuthData, Path(Base64(email)): Path<Base64>) -> ApiResult<()> {
     response(
         in_transaction(&mut connection, |transaction| async {
             let app = Application::new(transaction);
             let principal = auth_data.authenticate(|token| authenticate(token, &app)).await?;
-            app.deactivate_user(&principal, &login).await
+            app.deactivate_user(&principal, &email).await
         })
         .await,
     )
 }
 
 /// Attempts to deactivate a user
-async fn api_reactivate_user(mut connection: DbConn, auth_data: AuthData, Path(Base64(login)): Path<Base64>) -> ApiResult<()> {
+async fn api_reactivate_user(mut connection: DbConn, auth_data: AuthData, Path(Base64(email)): Path<Base64>) -> ApiResult<()> {
     response(
         in_transaction(&mut connection, |transaction| async {
             let app = Application::new(transaction);
             let principal = auth_data.authenticate(|token| authenticate(token, &app)).await?;
-            app.reactivate_user(&principal, &login).await
+            app.reactivate_user(&principal, &email).await
         })
         .await,
     )
@@ -357,7 +357,6 @@ async fn api_v1_publish(
 ) -> ApiResult<CrateUploadResult> {
     response(
         in_transaction(&mut connection, |transaction| async move {
-            // authenticate
             let app = Application::new(transaction);
             let principal = auth_data.authenticate(|token| authenticate(token, &app)).await?;
             // deserialize payload
@@ -409,12 +408,13 @@ async fn api_v1_get_package(
 // #[get("/crates/{package}/{version}/download")]
 async fn api_v1_download(
     mut connection: DbConn,
+    auth_data: AuthData,
     State(state): State<Arc<AxumState>>,
     Path(PathInfoCrateVersion { package, version }): Path<PathInfoCrateVersion>,
 ) -> Result<(StatusCode, Vec<u8>), (StatusCode, Json<ApiError>)> {
     match in_transaction(&mut connection, |transaction| async move {
-        // authenticate
         let app = Application::new(transaction);
+        let _principal = auth_data.authenticate(|token| authenticate(token, &app)).await?;
         app.check_package_exists(&package, &version).await?;
         let data = storage::download_crate(&state.configuration, &package, &version).await?;
         Ok::<_, ApiError>(data)
@@ -440,7 +440,6 @@ async fn api_v1_yank(
 ) -> ApiResult<YesNoResult> {
     response(
         in_transaction(&mut connection, |transaction| async move {
-            // authenticate
             let app = Application::new(transaction);
             let principal = auth_data.authenticate(|token| authenticate(token, &app)).await?;
             let r = app.yank(&principal, &package, &version).await?;
@@ -458,7 +457,6 @@ async fn api_v1_unyank(
 ) -> ApiResult<YesNoResult> {
     response(
         in_transaction(&mut connection, |transaction| async move {
-            // authenticate
             let app = Application::new(transaction);
             let principal = auth_data.authenticate(|token| authenticate(token, &app)).await?;
             let r = app.unyank(&principal, &package, &version).await?;
@@ -476,7 +474,6 @@ async fn api_v1_get_owners(
 ) -> ApiResult<OwnersQueryResult> {
     response(
         in_transaction(&mut connection, |transaction| async move {
-            // authenticate
             let app = Application::new(transaction);
             let principal = auth_data.authenticate(|token| authenticate(token, &app)).await?;
             let r = app.get_owners(&principal, &package).await?;
@@ -495,7 +492,6 @@ async fn api_v1_add_owners(
 ) -> ApiResult<YesNoMsgResult> {
     response(
         in_transaction(&mut connection, |transaction| async move {
-            // authenticate
             let app = Application::new(transaction);
             let principal = auth_data.authenticate(|token| authenticate(token, &app)).await?;
             let r = app.add_owners(&principal, &package, &input.users).await?;
@@ -514,7 +510,6 @@ async fn api_v1_remove_owners(
 ) -> ApiResult<YesNoResult> {
     response(
         in_transaction(&mut connection, |transaction| async move {
-            // authenticate
             let app = Application::new(transaction);
             let principal = auth_data.authenticate(|token| authenticate(token, &app)).await?;
             let r = app.remove_owners(&principal, &package, &input.users).await?;
@@ -534,7 +529,6 @@ struct SearchForm {
 async fn api_v1_search(mut connection: DbConn, auth_data: AuthData, form: Query<SearchForm>) -> ApiResult<SearchResults> {
     response(
         in_transaction(&mut connection, |transaction| async move {
-            // authenticate
             let app = Application::new(transaction);
             let _principal = auth_data.authenticate(|token| authenticate(token, &app)).await?;
             app.search(&form.q, form.per_page).await
@@ -565,13 +559,40 @@ async fn index_serve_inner(
 }
 
 async fn index_serve(
+    mut connection: DbConn,
+    auth_data: AuthData,
     State(state): State<Arc<AxumState>>,
     request: Request<Body>,
-) -> Result<(StatusCode, [(HeaderName, HeaderValue); 1], Body), (StatusCode, Json<ApiError>)> {
+) -> Result<(StatusCode, [(HeaderName, HeaderValue); 1], Body), (StatusCode, [(HeaderName, HeaderValue); 1], Json<ApiError>)> {
+    in_transaction(&mut connection, |transaction| async move {
+        let app = Application::new(transaction);
+        let _principal = auth_data.authenticate(|token| authenticate(token, &app)).await?;
+        Ok(())
+    })
+    .await
+    .map_err(|e| {
+        let (status, body) = response_error(e);
+        (
+            status,
+            [(
+                header::WWW_AUTHENTICATE,
+                HeaderValue::from_str(&format!("Basic realm={}", state.configuration.licence_web_domain)).unwrap(),
+            )],
+            body,
+        )
+    })?;
     let index = state.index.lock().await;
-    let (stream, content_type) = index_serve_inner(&index, request.uri().path())
-        .await
-        .map_err(response_error)?;
+    let (stream, content_type) = index_serve_inner(&index, request.uri().path()).await.map_err(|e| {
+        let (status, body) = response_error(e);
+        (
+            status,
+            [(
+                header::WWW_AUTHENTICATE,
+                HeaderValue::from_str(&format!("Basic realm={}", state.configuration.licence_web_domain)).unwrap(),
+            )],
+            body,
+        )
+    })?;
     let body = Body::from_stream(stream);
     Ok((StatusCode::OK, [(header::CONTENT_TYPE, content_type)], body))
 }
@@ -593,6 +614,10 @@ pub struct AxumState {
 }
 
 impl AxumStateWithCookieKey for AxumState {
+    fn get_cookie_name(&self) -> &str {
+        "cratery-user"
+    }
+
     fn get_cookie_key(&self) -> &Key {
         &self.cookie_key
     }

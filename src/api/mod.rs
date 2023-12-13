@@ -1,5 +1,6 @@
 //! Module for the application
 
+pub mod namegen;
 pub mod packages;
 pub mod users;
 
@@ -29,7 +30,7 @@ impl<'c> Application<'c> {
 
     /// Checks the security for an operation and returns the identifier of the target user (login)
     async fn check_is_user(&self, principal: &str) -> Result<i64, ApiError> {
-        let maybe_row = sqlx::query!("SELECT id FROM RegistryUser WHERE isActive = TRUE AND login = $1", principal)
+        let maybe_row = sqlx::query!("SELECT id FROM RegistryUser WHERE isActive = TRUE AND email = $1", principal)
             .fetch_optional(&mut *self.transaction.borrow().await)
             .await?;
         let row = maybe_row.ok_or_else(error_unauthorized)?;

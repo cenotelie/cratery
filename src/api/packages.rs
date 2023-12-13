@@ -259,7 +259,7 @@ impl<'c> Application<'c> {
     /// Gets the list of owners for a package
     pub async fn get_owners(&self, principal: &str, package: &str) -> Result<OwnersQueryResult, ApiError> {
         self.check_is_user(principal).await?;
-        let users = sqlx::query_as!(RegistryUser, "SELECT RegistryUser.id, isActive AS is_active, login, name, roles FROM RegistryUser INNER JOIN PackageOwner ON PackageOwner.owner = RegistryUser.id WHERE package = $1", package)
+        let users = sqlx::query_as!(RegistryUser, "SELECT RegistryUser.id, isActive AS is_active, email, login, name, roles FROM RegistryUser INNER JOIN PackageOwner ON PackageOwner.owner = RegistryUser.id WHERE package = $1", package)
             .fetch_all(&mut *self.transaction.borrow().await).await?;
         Ok(OwnersQueryResult { users })
     }

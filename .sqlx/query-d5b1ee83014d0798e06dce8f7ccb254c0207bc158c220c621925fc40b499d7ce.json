@@ -1,6 +1,6 @@
 {
   "db_name": "SQLite",
-  "query": "SELECT RegistryUser.id, isActive AS is_active, login, name, roles FROM RegistryUser INNER JOIN PackageOwner ON PackageOwner.owner = RegistryUser.id WHERE package = $1",
+  "query": "SELECT id, isActive AS is_active, login, name, roles FROM RegistryUser WHERE email = $1 LIMIT 1",
   "describe": {
     "columns": [
       {
@@ -40,5 +40,5 @@
       false
     ]
   },
-  "hash": "de1a32e6f402dbfe25da0c516035f05a1cb441223984260a786c2188cb3b43dc"
+  "hash": "d5b1ee83014d0798e06dce8f7ccb254c0207bc158c220c621925fc40b499d7ce"
 }

@@ -1,13 +1,17 @@
 //! Module for the application
 
-use argon2::Config;
-use cenotelie_lib_apierror::{error_forbidden, error_not_found, error_unauthorized, specialize, ApiError};
+use cenotelie_lib_apierror::{
+    error_conflict, error_forbidden, error_invalid_request, error_not_found, error_unauthorized, specialize, ApiError,
+};
 use chrono::Local;
-use rand::distributions::{Alphanumeric, Uniform};
+use data_encoding::HEXLOWER;
+use rand::distributions::Alphanumeric;
 use rand::{thread_rng, Rng};
+use ring::digest::{Context, SHA256};
 
 use crate::objects::{Configuration, OAuthToken, RegistryUser, RegistryUserToken, RegistryUserTokenWithSecret};
 
+use super::namegen::generate_name;
 use super::Application;
 
 /// Generates a token
@@ -16,17 +20,22 @@ fn generate_token(length: usize) -> String {
     String::from_utf8(rng.sample_iter(&Alphanumeric).take(length).collect()).unwrap()
 }
 
+/// Computes the SHA256 digest of bytes
+fn sha256(buffer: &[u8]) -> String {
+    let mut context = Context::new(&SHA256);
+    context.update(buffer);
+    let digest = context.finish();
+    HEXLOWER.encode(digest.as_ref())
+}
+
 /// Hashes a token secret
 fn hash_token(input: &str) -> String {
-    let rng = thread_rng();
-    let salt = rng.sample_iter(Uniform::new(u8::MIN, u8::MAX)).take(30).collect::<Vec<_>>();
-    let config = Config::default();
-    argon2::hash_encoded(input.as_bytes(), &salt, &config).unwrap()
+    sha256(input.as_bytes())
 }
 
 /// Checks a token hash
-pub fn check_hash(token: &[u8], hashed: &str) -> Result<(), ApiError> {
-    let matches = argon2::verify_encoded(hashed, token).map_err(|_| error_unauthorized())?;
+pub fn check_hash(token: &str, hashed: &str) -> Result<(), ApiError> {
+    let matches = hashed == sha256(token.as_bytes());
     if matches {
         Ok(())
     } else {
@@ -45,7 +54,7 @@ impl<'c> Application<'c> {
     async fn get_user_profile(&self, uid: i64) -> Result<RegistryUser, ApiError> {
         let maybe_row = sqlx::query_as!(
             RegistryUser,
-            "SELECT id, isActive AS is_active, login, name, roles FROM RegistryUser WHERE id = $1",
+            "SELECT id, isActive AS is_active, email, login, name, roles FROM RegistryUser WHERE id = $1",
             uid
         )
         .fetch_optional(&mut *self.transaction.borrow().await)
@@ -95,7 +104,7 @@ impl<'c> Application<'c> {
 
         // resolve the user
         let row = sqlx::query!(
-            "SELECT id, isActive AS is_active, name, roles FROM RegistryUser WHERE login = $1 LIMIT 1",
+            "SELECT id, isActive AS is_active, login, name, roles FROM RegistryUser WHERE email = $1 LIMIT 1",
             email
         )
         .fetch_optional(&mut *self.transaction.borrow().await)
@@ -108,7 +117,8 @@ impl<'c> Application<'c> {
             return Ok(RegistryUser {
                 id: row.id,
                 is_active: true,
-                login: email.to_string(),
+                email: email.to_string(),
+                login: row.login,
                 name: row.name,
                 roles: row.roles,
             });
@@ -118,10 +128,19 @@ impl<'c> Application<'c> {
             .fetch_one(&mut *self.transaction.borrow().await)
             .await?
             .count;
+        let mut login = email[..email.find('@').unwrap()].to_string();
+        while sqlx::query!("SELECT COUNT(id) AS count FROM RegistryUser WHERE login = $1", login)
+            .fetch_one(&mut *self.transaction.borrow().await)
+            .await?
+            .count
+            != 0
+        {
+            login = generate_name();
+        }
         let roles = if count == 0 { "admin" } else { "" };
         let id = sqlx::query!(
             "INSERT INTO RegistryUser (isActive, login, name, roles) VALUES (TRUE, $1, $1, $2) RETURNING id",
-            email,
+            login,
             roles
         )
         .fetch_one(&mut *self.transaction.borrow().await)
@@ -130,8 +149,9 @@ impl<'c> Application<'c> {
         Ok(RegistryUser {
             id,
             is_active: true,
-            login: email.to_string(),
-            name: email.to_string(),
+            email: email.to_string(),
+            name: login.to_string(),
+            login,
             roles: roles.to_string(),
         })
     }
@@ -142,7 +162,7 @@ impl<'c> Application<'c> {
         self.check_is_admin(uid).await?;
         let rows = sqlx::query_as!(
             RegistryUser,
-            "SELECT id, isActive AS is_active, login, name, roles FROM RegistryUser ORDER BY login",
+            "SELECT id, isActive AS is_active, email, login, name, roles FROM RegistryUser ORDER BY login",
         )
         .fetch_all(&mut *self.transaction.borrow().await)
         .await?;
@@ -158,11 +178,11 @@ impl<'c> Application<'c> {
             self.check_is_admin(uid).await?;
             true
         };
-        let old_roles = sqlx::query!("SELECT roles FROM RegistryUser WHERE id = $1 LIMIT 1", target.id)
+        let row = sqlx::query!("SELECT login, roles FROM RegistryUser WHERE id = $1 LIMIT 1", target.id)
             .fetch_optional(&mut *self.transaction.borrow().await)
             .await?
-            .ok_or_else(error_not_found)?
-            .roles;
+            .ok_or_else(error_not_found)?;
+        let old_roles = row.roles;
         if !is_admin && target.roles != old_roles {
             // not admin and changing roles
             return Err(specialize(error_forbidden(), String::from("only admins can change roles")));
@@ -171,9 +191,27 @@ impl<'c> Application<'c> {
             // admin and removing admin role from self
             return Err(specialize(error_forbidden(), String::from("admins cannot remove themselves")));
         }
+        if target.login.is_empty() {
+            return Err(specialize(error_invalid_request(), String::from("login cannot be empty")));
+        }
+        if row.login != target.login {
+            // check that the new login is available
+            if sqlx::query!("SELECT COUNT(id) AS count FROM RegistryUser WHERE login = $1", target.login)
+                .fetch_one(&mut *self.transaction.borrow().await)
+                .await?
+                .count
+                != 0
+            {
+                return Err(specialize(
+                    error_conflict(),
+                    String::from("the specified login is not available"),
+                ));
+            }
+        }
         sqlx::query!(
-            "UPDATE RegistryUser SET name = $2, roles = $3 WHERE id = $1",
+            "UPDATE RegistryUser SET login = $2, name = $3, roles = $4 WHERE id = $1",
             target.id,
+            target.login,
             target.name,
             target.roles
         )
@@ -201,7 +239,7 @@ impl<'c> Application<'c> {
     pub async fn reactivate_user(&self, principal: &str, target: &str) -> Result<(), ApiError> {
         let uid = self.check_is_user(principal).await?;
         self.check_is_admin(uid).await?;
-        sqlx::query!("UPDATE RegistryUser SET isActive = TRUE WHERE login = $1", target)
+        sqlx::query!("UPDATE RegistryUser SET isActive = TRUE WHERE email = $1", target)
             .execute(&mut *self.transaction.borrow().await)
             .await?;
         Ok(())
@@ -260,17 +298,17 @@ impl<'c> Application<'c> {
     }
 
     /// Checks an authentication request with a token
-    pub async fn check_token(&self, principal: &str, token_secret: &str) -> Result<(), ApiError> {
+    pub async fn check_token(&self, login: &str, token_secret: &str) -> Result<(), ApiError> {
         let rows = sqlx::query!(
             "SELECT RegistryUserToken.id, token
             FROM RegistryUser INNER JOIN RegistryUserToken ON RegistryUser.id = RegistryUserToken.user
             WHERE isActive = TRUE AND login = $1",
-            principal
+            login
         )
         .fetch_all(&mut *self.transaction.borrow().await)
         .await?;
         for row in rows {
-            if check_hash(token_secret.as_bytes(), &row.token).is_ok() {
+            if check_hash(token_secret, &row.token).is_ok() {
                 let now = Local::now().naive_local();
                 sqlx::query!("UPDATE RegistryUserToken SET lastUsed = $2 WHERE id = $1", row.id, now)
                     .execute(&mut *self.transaction.borrow().await)

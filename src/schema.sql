@@ -10,12 +10,14 @@ INSERT INTO SchemaMetadata VALUES ('version', '1.0.0');
 CREATE TABLE RegistryUser (
     id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
     isActive BOOLEAN NOT NULL,
+    email TEXT NOT NULL,
     login TEXT NOT NULL,
     name TEXT NOT NULL,
     roles TEXT NOT NULL
 );
 
-CREATE INDEX IndexRegistryUser ON RegistryUser (login);
+CREATE INDEX IndexRegistryUserByEmail ON RegistryUser (email);
+CREATE INDEX IndexRegistryUserByLogin ON RegistryUser (login);
 
 CREATE TABLE RegistryUserToken (
     id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,

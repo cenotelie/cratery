@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "UPDATE RegistryUser SET isActive = TRUE WHERE email = $1",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": []
+  },
+  "hash": "369946b01e8ab9aa2321fb97111cbd38094900852735241db5705bec1770480f"
+}

@@ -1,6 +1,6 @@
 {
   "db_name": "SQLite",
-  "query": "SELECT id, isActive AS is_active, login, name, roles FROM RegistryUser ORDER BY login",
+  "query": "SELECT id, isActive AS is_active, email, login, name, roles FROM RegistryUser WHERE id = $1",
   "describe": {
     "columns": [
       {
@@ -14,25 +14,31 @@
         "type_info": "Bool"
       },
       {
-        "name": "login",
+        "name": "email",
         "ordinal": 2,
         "type_info": "Text"
       },
       {
-        "name": "name",
+        "name": "login",
         "ordinal": 3,
         "type_info": "Text"
       },
       {
-        "name": "roles",
+        "name": "name",
         "ordinal": 4,
+        "type_info": "Text"
+      },
+      {
+        "name": "roles",
+        "ordinal": 5,
         "type_info": "Text"
       }
     ],
     "parameters": {
-      "Right": 0
+      "Right": 1
     },
     "nullable": [
+      false,
       false,
       false,
       false,
@@ -40,5 +46,5 @@
       false
     ]
   },
-  "hash": "74d987528b620806f08819f23d9ee8ea7032135425e2f764f454f2e69589f297"
+  "hash": "6a6da2284e02171daf9d37319bf7eb9a205cf24b0abc8a2a35f797a5aaa76939"
 }

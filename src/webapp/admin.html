@@ -36,6 +36,9 @@
             <thead class="text-xs text-gray-700 uppercase bg-gray-50 dark:bg-gray-700 dark:text-gray-400">
               <tr>
                 <th scope="col" class="px-6 py-3">
+                    Email
+                </th>
+                <th scope="col" class="px-6 py-3">
                     Login
                 </th>
                 <th scope="col" class="px-6 py-3">
@@ -78,6 +81,10 @@
     }
 
     function renderUser(user) {
+      const inputLoginEl = document.createElement("input");
+      inputLoginEl.setAttribute("type", "text");
+      inputLoginEl.className = "block p-3 w-full text-sm text-gray-900 bg-gray-50 rounded-lg border border-gray-300 shadow-sm focus:ring-primary-500 focus:border-primary-500 dark:bg-gray-700 dark:border-gray-600 dark:placeholder-gray-400 dark:text-white dark:focus:ring-primary-500 dark:focus:border-primary-500 dark:shadow-sm-light";
+      inputLoginEl.value = user.login;
       const inputNameEl = document.createElement("input");
       inputNameEl.setAttribute("type", "text");
       inputNameEl.className = "block p-3 w-full text-sm text-gray-900 bg-gray-50 rounded-lg border border-gray-300 shadow-sm focus:ring-primary-500 focus:border-primary-500 dark:bg-gray-700 dark:border-gray-600 dark:placeholder-gray-400 dark:text-white dark:focus:ring-primary-500 dark:focus:border-primary-500 dark:shadow-sm-light";
@@ -87,6 +94,7 @@
       inputRolesEl.className = "block p-3 w-full text-sm text-gray-900 bg-gray-50 rounded-lg border border-gray-300 shadow-sm focus:ring-primary-500 focus:border-primary-500 dark:bg-gray-700 dark:border-gray-600 dark:placeholder-gray-400 dark:text-white dark:focus:ring-primary-500 dark:focus:border-primary-500 dark:shadow-sm-light";
       inputRolesEl.value = user.roles;
 
+      setupOnChange(inputLoginEl, (login) => apiUpdateUser({...user, login}));
       setupOnChange(inputNameEl, (name) => apiUpdateUser({...user, name}));
       setupOnChange(inputRolesEl, (roles) => apiUpdateUser({...user, roles}));
 
@@ -99,7 +107,7 @@
       switchInputEl.addEventListener("click", (e) => {
         e.preventDefault();
         const isActive = !switchInputEl.checked; // just changed
-        (isActive ? apiDeactivateUser(user.login) : apiReactivateUser(user.login)).then(value => {
+        (isActive ? apiDeactivateUser(user.email) : apiReactivateUser(user.email)).then(value => {
           switchInputEl.checked = !isActive;
         }).catch(() => {
           switchInputEl.checked = isActive;
@@ -115,21 +123,25 @@
       const cell1 = document.createElement("th");
       cell1.setAttribute("scope", "row");
       cell1.className = "px-6 py-4 font-medium text-gray-900 whitespace-nowrap dark:text-white";
-      cell1.appendChild(document.createTextNode(user.login));
+      cell1.appendChild(document.createTextNode(user.email));
       const cell2 = document.createElement("td");
       cell2.className = "px-6 py-4";
-      cell2.appendChild(inputNameEl);
+      cell2.appendChild(inputLoginEl);
       const cell3 = document.createElement("td");
       cell3.className = "px-6 py-4";
-      cell3.appendChild(inputRolesEl);
+      cell3.appendChild(inputNameEl);
       const cell4 = document.createElement("td");
       cell4.className = "px-6 py-4";
-      cell4.appendChild(switchEl);
+      cell4.appendChild(inputRolesEl);
+      const cell5 = document.createElement("td");
+      cell5.className = "px-6 py-4";
+      cell5.appendChild(switchEl);
 
       row.appendChild(cell1);
       row.appendChild(cell2);
       row.appendChild(cell3);
       row.appendChild(cell4);
+      row.appendChild(cell5);
       return row;
     }
 </script>

@@ -1,6 +1,6 @@
 {
   "db_name": "SQLite",
-  "query": "SELECT id FROM RegistryUser WHERE isActive = TRUE AND login = $1",
+  "query": "SELECT id FROM RegistryUser WHERE isActive = TRUE AND email = $1",
   "describe": {
     "columns": [
       {
@@ -16,5 +16,5 @@
       false
     ]
   },
-  "hash": "b5d98c278840fde225aa897ad01c1982b370871edc200253235dc96a918738e6"
+  "hash": "009c06787339f2890715e6b4f2fb9d29fba4504f30b6045f8385bb9baf5797fc"
 }

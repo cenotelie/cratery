@@ -33,10 +33,10 @@ pub fn create_docs_worker(
 
 /// Executes a documentation generation job
 async fn docs_worker_job(configuration: &Configuration, pool: &Pool<Sqlite>, job: DocsGenerationJob) -> Result<(), ApiError> {
-    // // get the content
-    // let content = storage::download_crate(&configuration, &job.crate_name, &job.crate_version).await?;
-    // // extract to a temp folder
-    // extract_content(&job.crate_name, &job.crate_version, &content).await?;
+    // get the content
+    let content = storage::download_crate(&configuration, &job.crate_name, &job.crate_version).await?;
+    // extract to a temp folder
+    extract_content(&job.crate_name, &job.crate_version, &content).await?;
 
     // // set the package as documented
     // let mut connection = pool.acquire().await?;

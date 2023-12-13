@@ -83,6 +83,7 @@ impl Configuration {
             public: IndexPublicConfig {
                 dl: format!("{}/api/v1/crates", uri),
                 api: uri.clone(),
+                auth_required: true,
             },
         };
         Ok(Self {
@@ -163,6 +164,9 @@ pub struct IndexPublicConfig {
     pub dl: String,
     /// The API root URI
     pub api: String,
+    /// Whether authentication is always required
+    #[serde(rename = "auth-required")]
+    pub auth_required: bool,
 }
 
 /// A user for the registry
@@ -173,7 +177,9 @@ pub struct RegistryUser {
     /// Whether this is an active user
     #[serde(rename = "isActive")]
     pub is_active: bool,
-    /// The login
+    /// The email, unique for each user
+    pub email: String,
+    /// The login to be used for token authentication
     pub login: String,
     /// The user's name
     pub name: String,

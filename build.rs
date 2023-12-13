@@ -5,7 +5,7 @@
 use std::process::Command;
 
 fn main() {
-    // let db_url = "sqlite://target/registry.db";
+    // let db_url = "sqlite://data/registry.db";
     // println!("cargo:rustc-env=DATABASE_URL={}", db_url);
     if let Ok(output) = Command::new("git").args(["rev-parse", "HEAD"]).output() {
         let value = String::from_utf8(output.stdout).unwrap();
