@@ -104,10 +104,17 @@
             </div>
             <div class="mb-3 space-y-8">
               <p class="text-base text-gray-900 dark:text-white">
-                Copy this information into your <kbd>credentials</kbd> file in your cargo configuration, for example in <kbd>~/.cargo/credentials</kbd> on linux:
+                To use this this token, it needs to be configured for git in <kbd>~/.git-credential</kbd>
               </p>
-              <label for="modal-token-created-data" class="block mb-2 text-sm font-medium text-gray-900 dark:text-white">Credentials</label>
-              <textarea id="modal-token-created-data" rows="4" class="block p-2.5 w-full text-sm text-gray-900 bg-gray-50 rounded-lg border border-gray-300 focus:ring-blue-500 focus:border-blue-500 dark:bg-gray-700 dark:border-gray-600 dark:placeholder-gray-400 dark:text-white dark:focus:ring-blue-500 dark:focus:border-blue-500" style="font-family: monospace;" disabled></textarea>
+              <textarea id="modal-token-created-git-cred" rows="2" class="block p-2.5 w-full text-sm text-gray-900 bg-gray-50 rounded-lg border border-gray-300 focus:ring-blue-500 focus:border-blue-500 dark:bg-gray-700 dark:border-gray-600 dark:placeholder-gray-400 dark:text-white dark:focus:ring-blue-500 dark:focus:border-blue-500" style="font-family: monospace;" disabled></textarea>
+              <p class="text-base text-gray-900 dark:text-white">
+                It also needs to appear in <kbd>~/.cargo/credentials</kbd>:
+              </p>
+              <textarea id="modal-token-created-cargo-cred" rows="4" class="block p-2.5 w-full text-sm text-gray-900 bg-gray-50 rounded-lg border border-gray-300 focus:ring-blue-500 focus:border-blue-500 dark:bg-gray-700 dark:border-gray-600 dark:placeholder-gray-400 dark:text-white dark:focus:ring-blue-500 dark:focus:border-blue-500" style="font-family: monospace;" disabled></textarea>
+              <p class="text-base text-gray-900 dark:text-white">
+                Finally, the registry must be declared in <kbd>~/.cargo/config.toml</kbd>:
+              </p>
+              <textarea id="modal-token-created-cargo-reg" rows="2" class="block p-2.5 w-full text-sm text-gray-900 bg-gray-50 rounded-lg border border-gray-300 focus:ring-blue-500 focus:border-blue-500 dark:bg-gray-700 dark:border-gray-600 dark:placeholder-gray-400 dark:text-white dark:focus:ring-blue-500 dark:focus:border-blue-500" style="font-family: monospace;" disabled></textarea>
             </div>
             <div class="justify-between items-center pt-0 space-y-4 sm:flex sm:space-y-0">
               <div class="items-center space-y-4 sm:space-x-4 sm:flex sm:space-y-0">
@@ -243,11 +250,16 @@
   
     function openTokenCreatedModal(secret) {
       const user = JSON.parse(window.localStorage.getItem("cratery-user"));
-      const token = btoa(`${user.login}:${secret}`);
+      const domainParts = window.location.hostname.split(".");
+      const regName = domainParts.length >= 2 ? domainParts[domainParts.length - 2] : domainParts[0];
+      const gitCredEl = document.getElementById("modal-token-created-git-cred");
+      gitCredEl.value = `${window.location.protocol}//${user.login}:${secret}@${window.location.hostname}`;
+      const cargoCredEl = document.getElementById("modal-token-created-cargo-cred");
+      cargoCredEl.value = `[registries.${regName}]\ntoken = "Basic ${btoa(`${user.login}:${secret}`)}"`;
+      const cargoRegEl = document.getElementById("modal-token-created-cargo-reg");
+      cargoRegEl.value = `[registries]\n${regName} = { index = "${window.location.protocol}//${window.location.hostname}" }`;
       const modalEl = document.getElementById('modal-token-created');
       modalEl.style.display = "unset";
-      const dataEl = document.getElementById("modal-token-created-data");
-      dataEl.value = `[registries.cenotelie]\ntoken = "Basic ${token}`;
 
       const confirmEl = document.getElementById('modal-token-created-confirm');
       confirmEl.addEventListener('click', function() {
