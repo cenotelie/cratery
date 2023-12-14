@@ -11,6 +11,7 @@ mod objects;
 mod storage;
 mod transaction;
 
+use std::collections::HashMap;
 use std::env;
 use std::error::Error;
 use std::future::IntoFuture;
@@ -118,8 +119,8 @@ struct PathInfoCrateVersion {
 /// Tries to authenticate using a token
 async fn authenticate(token: &Token, app: &Application<'_>) -> Result<String, ApiError> {
     if let Token::Basic { id, secret } = token {
-        app.check_token(id, secret).await?;
-        Ok(id.clone())
+        let principal = app.check_token(id, secret).await?;
+        Ok(principal)
     } else {
         Err(error_unauthorized())
     }
@@ -203,7 +204,7 @@ async fn get_webapp_resource(
 
 /// Redirects to the login page
 async fn webapp_me(State(state): State<Arc<AxumState>>) -> (StatusCode, [(HeaderName, HeaderValue); 1]) {
-    let target = format!("{}/webapp/login.html", state.configuration.uri);
+    let target = format!("{}/webapp/index.html", state.configuration.uri);
     (
         StatusCode::FOUND,
         [(header::LOCATION, HeaderValue::from_str(&target).unwrap())],
@@ -558,43 +559,119 @@ async fn index_serve_inner(
     }
 }
 
-async fn index_serve(
+fn index_serve_map_err(e: ApiError, web_domain: &str) -> (StatusCode, [(HeaderName, HeaderValue); 2], Json<ApiError>) {
+    let (status, body) = response_error(e);
+    (
+        status,
+        [
+            (
+                header::WWW_AUTHENTICATE,
+                HeaderValue::from_str(&format!("Basic realm={web_domain}")).unwrap(),
+            ),
+            (header::CACHE_CONTROL, HeaderValue::from_static("no-cache")),
+        ],
+        body,
+    )
+}
+
+async fn index_serve_check_auth(
     mut connection: DbConn,
-    auth_data: AuthData,
-    State(state): State<Arc<AxumState>>,
-    request: Request<Body>,
-) -> Result<(StatusCode, [(HeaderName, HeaderValue); 1], Body), (StatusCode, [(HeaderName, HeaderValue); 1], Json<ApiError>)> {
+    auth_data: &AuthData,
+    web_domain: &str,
+) -> Result<(), (StatusCode, [(HeaderName, HeaderValue); 2], Json<ApiError>)> {
     in_transaction(&mut connection, |transaction| async move {
         let app = Application::new(transaction);
         let _principal = auth_data.authenticate(|token| authenticate(token, &app)).await?;
         Ok(())
     })
     .await
-    .map_err(|e| {
-        let (status, body) = response_error(e);
-        (
-            status,
-            [(
-                header::WWW_AUTHENTICATE,
-                HeaderValue::from_str(&format!("Basic realm={}", state.configuration.licence_web_domain)).unwrap(),
-            )],
-            body,
-        )
-    })?;
+    .map_err(|e| index_serve_map_err(e, web_domain))?;
+    Ok(())
+}
+
+async fn index_serve(
+    connection: DbConn,
+    auth_data: AuthData,
+    State(state): State<Arc<AxumState>>,
+    request: Request<Body>,
+) -> Result<(StatusCode, [(HeaderName, HeaderValue); 2], Body), (StatusCode, [(HeaderName, HeaderValue); 2], Json<ApiError>)> {
+    index_serve_check_auth(connection, &auth_data, &state.configuration.licence_web_domain).await?;
     let index = state.index.lock().await;
-    let (stream, content_type) = index_serve_inner(&index, request.uri().path()).await.map_err(|e| {
-        let (status, body) = response_error(e);
-        (
-            status,
-            [(
-                header::WWW_AUTHENTICATE,
-                HeaderValue::from_str(&format!("Basic realm={}", state.configuration.licence_web_domain)).unwrap(),
-            )],
-            body,
-        )
-    })?;
+    let (stream, content_type) = index_serve_inner(&index, request.uri().path())
+        .await
+        .map_err(|e| index_serve_map_err(e, &state.configuration.licence_web_domain))?;
     let body = Body::from_stream(stream);
-    Ok((StatusCode::OK, [(header::CONTENT_TYPE, content_type)], body))
+    Ok((
+        StatusCode::OK,
+        [
+            (header::CONTENT_TYPE, content_type),
+            (header::CACHE_CONTROL, HeaderValue::from_static("no-cache")),
+        ],
+        body,
+    ))
+}
+
+async fn index_serve_info_refs(
+    connection: DbConn,
+    auth_data: AuthData,
+    State(state): State<Arc<AxumState>>,
+    Query(query): Query<HashMap<String, String>>,
+) -> Result<(StatusCode, [(HeaderName, HeaderValue); 2], Body), (StatusCode, [(HeaderName, HeaderValue); 2], Json<ApiError>)> {
+    let map_err = |e| index_serve_map_err(e, &state.configuration.licence_web_domain);
+    index_serve_check_auth(connection, &auth_data, &state.configuration.licence_web_domain).await?;
+    let index = state.index.lock().await;
+    if query.get("service").map(std::string::String::as_str) == Some("git-upload-pack") {
+        // smart server response
+        let data = index.get_upload_pack_info_refs().await.map_err(map_err)?;
+        Ok((
+            StatusCode::OK,
+            [
+                (
+                    header::CONTENT_TYPE,
+                    HeaderValue::from_static("application/x-git-upload-pack-advertisement"),
+                ),
+                (header::CACHE_CONTROL, HeaderValue::from_static("no-cache")),
+            ],
+            Body::from(data),
+        ))
+    } else {
+        // dumb server response
+        let (stream, content_type) = index_serve_inner(&index, "/info/refs")
+            .await
+            .map_err(|e| index_serve_map_err(e, &state.configuration.licence_web_domain))?;
+        let body = Body::from_stream(stream);
+        Ok((
+            StatusCode::OK,
+            [
+                (header::CONTENT_TYPE, content_type),
+                (header::CACHE_CONTROL, HeaderValue::from_static("no-cache")),
+            ],
+            body,
+        ))
+    }
+}
+
+async fn index_serve_git_upload_pack(
+    connection: DbConn,
+    auth_data: AuthData,
+    State(state): State<Arc<AxumState>>,
+    body: Bytes,
+) -> Result<(StatusCode, [(HeaderName, HeaderValue); 2], Body), (StatusCode, [(HeaderName, HeaderValue); 2], Json<ApiError>)> {
+    let map_err = |e| index_serve_map_err(e, &state.configuration.licence_web_domain);
+    index_serve_check_auth(connection, &auth_data, &state.configuration.licence_web_domain).await?;
+    let index = state.index.lock().await;
+    let data = index.get_upload_pack_for(&body).await.map_err(map_err)?;
+    Ok((
+        StatusCode::OK,
+        [
+            (
+                header::CONTENT_TYPE,
+                HeaderValue::from_static("application/x-git-upload-pack-result"),
+            ),
+            (header::CACHE_CONTROL, HeaderValue::from_static("no-cache")),
+        ],
+        Body::from(data),
+    ))
 }
 
 /// The state of this application for axum
@@ -703,10 +780,17 @@ async fn main() {
     });
     let app = Router::new()
         .route("/", get(get_root))
+        // special handlings for git
+        .route("/info/refs", get(index_serve_info_refs))
+        .route("/git-upload-pack", post(index_serve_git_upload_pack))
+        // web resources
         .route("/favicon.png", get(get_favicon))
         .route("/webapp/*path", get(get_webapp_resource))
+        // api version
         .route("/version", get(get_version))
+        // special handling for cargo login
         .route("/me", get(webapp_me))
+        // API
         .nest(
             "/api/v1",
             Router::new()
@@ -742,6 +826,7 @@ async fn main() {
                         .route("/:package/owners", delete(api_v1_remove_owners)),
                 ),
         )
+        // fall back to serving the index
         .fallback(index_serve)
         .layer(LogLayer)
         .layer(DefaultBodyLimit::max(body_limit))

@@ -298,9 +298,9 @@ impl<'c> Application<'c> {
     }
 
     /// Checks an authentication request with a token
-    pub async fn check_token(&self, login: &str, token_secret: &str) -> Result<(), ApiError> {
+    pub async fn check_token(&self, login: &str, token_secret: &str) -> Result<String, ApiError> {
         let rows = sqlx::query!(
-            "SELECT RegistryUserToken.id, token
+            "SELECT email, RegistryUserToken.id, token
             FROM RegistryUser INNER JOIN RegistryUserToken ON RegistryUser.id = RegistryUserToken.user
             WHERE isActive = TRUE AND login = $1",
             login
@@ -313,7 +313,7 @@ impl<'c> Application<'c> {
                 sqlx::query!("UPDATE RegistryUserToken SET lastUsed = $2 WHERE id = $1", row.id, now)
                     .execute(&mut *self.transaction.borrow().await)
                     .await?;
-                return Ok(());
+                return Ok(row.email);
             }
         }
         Err(error_unauthorized())

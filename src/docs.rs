@@ -9,10 +9,8 @@ use sqlx::{Pool, Sqlite};
 use tokio::task::JoinHandle;
 
 use crate::{
-    api::Application,
     objects::{Configuration, DocsGenerationJob},
     storage,
-    transaction::in_transaction,
 };
 
 /// Creates a worker for the generation of documentation
@@ -32,9 +30,9 @@ pub fn create_docs_worker(
 }
 
 /// Executes a documentation generation job
-async fn docs_worker_job(configuration: &Configuration, pool: &Pool<Sqlite>, job: DocsGenerationJob) -> Result<(), ApiError> {
+async fn docs_worker_job(configuration: &Configuration, _pool: &Pool<Sqlite>, job: DocsGenerationJob) -> Result<(), ApiError> {
     // get the content
-    let content = storage::download_crate(&configuration, &job.crate_name, &job.crate_version).await?;
+    let content = storage::download_crate(configuration, &job.crate_name, &job.crate_version).await?;
     // extract to a temp folder
     extract_content(&job.crate_name, &job.crate_version, &content).await?;
 
@@ -49,6 +47,6 @@ async fn docs_worker_job(configuration: &Configuration, pool: &Pool<Sqlite>, job
 }
 
 /// Generates and upload the documentation for a crate
-async fn extract_content(name: &str, version: &str, content: &[u8]) -> Result<(), ApiError> {
+async fn extract_content(_name: &str, _version: &str, _content: &[u8]) -> Result<(), ApiError> {
     Ok(())
 }

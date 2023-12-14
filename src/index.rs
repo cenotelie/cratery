@@ -1,6 +1,7 @@
 //! API for index manipulation
 
 use std::path::{Path, PathBuf};
+use std::process::Stdio;
 
 use cenotelie_lib_apierror::{error_backend_failure, error_not_found, specialize, ApiError};
 use tokio::fs::{self, create_dir_all, File, OpenOptions};
@@ -123,6 +124,22 @@ impl Index {
         }
     }
 
+    /// Gets the upload pack advertisement for /info/refs
+    pub async fn get_upload_pack_info_refs(&self) -> Result<Vec<u8>, ApiError> {
+        let location = PathBuf::from(&self.config.location);
+        let mut data = execute_at_location(&location, "git-upload-pack", &["--http-backend-info-refs", ".git"], &[]).await?;
+        let mut response = String::from("001e# service=git-upload-pack\n0000").into_bytes();
+        response.append(&mut data);
+        // response.append(&mut String::from("\n0000").into_bytes());
+        Ok(response)
+    }
+
+    /// Gets the response for a upload pack request
+    pub async fn get_upload_pack_for(&self, input: &[u8]) -> Result<Vec<u8>, ApiError> {
+        let location = PathBuf::from(&self.config.location);
+        execute_at_location(&location, "git-upload-pack", &["--stateless-rpc", ".git"], input).await
+    }
+
     /// Publish a new version for a crate
     pub async fn publish_crate_version(&self, metadata: &CrateMetadataIndex) -> Result<(), ApiError> {
         let file_name = self.file_for_package(&metadata.name);
@@ -191,9 +208,21 @@ impl Index {
 
 /// Execute a git command
 async fn execute_git(location: &Path, args: &[&str]) -> Result<(), ApiError> {
-    let output = Command::new("git").current_dir(location).args(args).output().await?;
+    execute_at_location(location, "git", args, &[]).await.map(|_| ())
+}
+
+/// Execute a git command
+async fn execute_at_location(location: &Path, command: &str, args: &[&str], input: &[u8]) -> Result<Vec<u8>, ApiError> {
+    let mut child = Command::new(command)
+        .current_dir(location)
+        .args(args)
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .spawn()?;
+    child.stdin.as_mut().unwrap().write_all(input).await?;
+    let output = child.wait_with_output().await?;
     if output.status.success() {
-        Ok(())
+        Ok(output.stdout)
     } else {
         Err(specialize(error_backend_failure(), String::from_utf8(output.stdout)?))
     }

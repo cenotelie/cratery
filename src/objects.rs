@@ -75,13 +75,13 @@ impl Configuration {
         let licence_web_domain = std::env::var("REGISTRY_LICENSE_WEB_DOMAIN")?;
         let uri = std::env::var("REGISTRY_PUBLIC_URI")?.replace("?domain", &licence_web_domain);
         let index_config = IndexConfig {
-            location: format!("{}/index", data_dir),
+            location: format!("{data_dir}/index"),
             remote_origin: std::env::var("REGISTRY_GIT_REMOTE").ok(),
             remote_ssh_key_file_name: std::env::var("REGISTRY_GIT_REMOTE_SSH_KEY_FILENAME").ok(),
             user_name: std::env::var("REGISTRY_GIT_USER_NAME")?,
             user_email: std::env::var("REGISTRY_GIT_USER_EMAIL")?,
             public: IndexPublicConfig {
-                dl: format!("{}/api/v1/crates", uri),
+                dl: format!("{uri}/api/v1/crates"),
                 api: uri.clone(),
                 auth_required: true,
             },

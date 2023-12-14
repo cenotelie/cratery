@@ -10,7 +10,7 @@ pub fn generate_name() -> String {
 }
 
 /// List of adjectives
-const ADJECTIVES: &[&'static str] = &[
+const ADJECTIVES: &[&str] = &[
     "adorable",
     "adventurous",
     "aggressive",
@@ -242,7 +242,7 @@ const ADJECTIVES: &[&'static str] = &[
 ];
 
 /// List of nouns
-const NOUNS: &[&'static str] = &[
+const NOUNS: &[&str] = &[
     "aardvark",
     "alligator",
     "alpaca",
