@@ -35,7 +35,7 @@ stages:
       condition: startsWith(variables['Build.SourceBranch'], 'refs/tags/')
       inputs:
         sourceFolder: '$(Build.SourcesDirectory)/target/release'
-        contents: 'cenotelie_*'
+        contents: 'cratery'
         targetFolder: '$(Build.ArtifactStagingDirectory)/bin'
         overWrite: true
     - task: PublishPipelineArtifact@1
@@ -59,7 +59,7 @@ stages:
         path: $(Build.ArtifactStagingDirectory)
     - script: |
         mkdir -p $(Build.SourcesDirectory)/target/release
-        chmod +x $(Build.ArtifactStagingDirectory)/bin/cenotelie_*
+        chmod +x $(Build.ArtifactStagingDirectory)/bin/cratery
         mv $(Build.ArtifactStagingDirectory)/bin/* $(Build.SourcesDirectory)/target/release
         docker login -u $(dockerLogin) -p $(dockerPassword) rg.fr-par.scw.cloud
     - task: ShellScript@2
