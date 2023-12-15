@@ -114,7 +114,7 @@
               <p class="text-base text-gray-900 dark:text-white">
                 Finally, the registry must be declared in <kbd>~/.cargo/config.toml</kbd>:
               </p>
-              <textarea id="modal-token-created-cargo-reg" rows="2" class="block p-2.5 w-full text-sm text-gray-900 bg-gray-50 rounded-lg border border-gray-300 focus:ring-blue-500 focus:border-blue-500 dark:bg-gray-700 dark:border-gray-600 dark:placeholder-gray-400 dark:text-white dark:focus:ring-blue-500 dark:focus:border-blue-500" style="font-family: monospace;" disabled></textarea>
+              <textarea id="modal-token-created-cargo-reg" rows="5" class="block p-2.5 w-full text-sm text-gray-900 bg-gray-50 rounded-lg border border-gray-300 focus:ring-blue-500 focus:border-blue-500 dark:bg-gray-700 dark:border-gray-600 dark:placeholder-gray-400 dark:text-white dark:focus:ring-blue-500 dark:focus:border-blue-500" style="font-family: monospace;" disabled></textarea>
             </div>
             <div class="justify-between items-center pt-0 space-y-4 sm:flex sm:space-y-0">
               <div class="items-center space-y-4 sm:space-x-4 sm:flex sm:space-y-0">
@@ -257,7 +257,7 @@
       const cargoCredEl = document.getElementById("modal-token-created-cargo-cred");
       cargoCredEl.value = `[registries.${regName}]\ntoken = "Basic ${btoa(`${user.login}:${secret}`)}"`;
       const cargoRegEl = document.getElementById("modal-token-created-cargo-reg");
-      cargoRegEl.value = `[registries]\n${regName} = { index = "${window.location.protocol}//${window.location.hostname}" }`;
+      cargoRegEl.value = `[registries]\n${regName} = { index = "${window.location.protocol}//${window.location.hostname}" }\n\n[registry]\nglobal-credential-providers = ["cargo:token"]`;
       const modalEl = document.getElementById('modal-token-created');
       modalEl.style.display = "unset";
 

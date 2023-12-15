@@ -11,6 +11,7 @@ mod objects;
 mod storage;
 mod transaction;
 
+use std::borrow::Cow;
 use std::collections::HashMap;
 use std::env;
 use std::error::Error;
@@ -33,7 +34,7 @@ use cenotelie_lib_apierror::{
 };
 use cenotelie_lib_async_utils::terminate::waiting_sigterm;
 use cenotelie_lib_axum_static_files::embed_dir;
-use cenotelie_lib_axum_utils::auth::{AuthData, AxumStateWithCookieKey, Token};
+use cenotelie_lib_axum_utils::auth::{AuthData, AxumStateForCookies, Token};
 use cenotelie_lib_axum_utils::cookie::Key;
 use cenotelie_lib_axum_utils::embedded::Resources;
 use cenotelie_lib_axum_utils::extractors::Base64;
@@ -690,9 +691,13 @@ pub struct AxumState {
     webapp_resources: Resources,
 }
 
-impl AxumStateWithCookieKey for AxumState {
-    fn get_cookie_name(&self) -> &str {
-        "cratery-user"
+impl AxumStateForCookies for AxumState {
+    fn get_domain(&self) -> Cow<'static, str> {
+        Cow::Owned(self.configuration.licence_web_domain.clone())
+    }
+
+    fn get_id_cookie_name(&self) -> Cow<'static, str> {
+        Cow::Borrowed("cratery-user")
     }
 
     fn get_cookie_key(&self) -> &Key {

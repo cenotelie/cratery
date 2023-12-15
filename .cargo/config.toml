@@ -1,12 +1,2 @@
-[build]
-target-dir = "./target"
-rustflags = ["-Aproc-macro-derive-resolution-fallback"]
-
-[net]
-git-fetch-with-cli = true
-
 [registries]
 cenotelie = { index = "https://cargo.cenotelie.fr" }
-
-[registry]
-default = "cenotelie"
