@@ -245,6 +245,27 @@ impl<'c> Application<'c> {
         Ok(())
     }
 
+    /// Attempts to delete a user
+    pub async fn delete_user(&self, principal: &str, target: &str) -> Result<(), ApiError> {
+        let uid = self.check_is_user(principal).await?;
+        self.check_is_admin(uid).await?;
+        let target_uid = sqlx::query!("SELECT id FROM RegistryUser WHERE email = $1", target)
+            .fetch_optional(&mut *self.transaction.borrow().await)
+            .await?
+            .ok_or_else(error_not_found)?
+            .id;
+        sqlx::query!("DELETE FROM RegistryUserToken WHERE user = $1", target_uid)
+            .execute(&mut *self.transaction.borrow().await)
+            .await?;
+        sqlx::query!("DELETE FROM PackageOwner WHERE owner = $1", target_uid)
+            .execute(&mut *self.transaction.borrow().await)
+            .await?;
+        sqlx::query!("DELETE FROM RegistryUser WHERE id = $1", target_uid)
+            .execute(&mut *self.transaction.borrow().await)
+            .await?;
+        Ok(())
+    }
+
     /// Gets the tokens for a user
     pub async fn get_tokens(&self, principal: &str) -> Result<Vec<RegistryUserToken>, ApiError> {
         let uid = self.check_is_user(principal).await?;

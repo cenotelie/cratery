@@ -314,6 +314,18 @@ async fn api_reactivate_user(mut connection: DbConn, auth_data: AuthData, Path(B
     )
 }
 
+/// Attempts to delete a user
+async fn api_delete_user(mut connection: DbConn, auth_data: AuthData, Path(Base64(email)): Path<Base64>) -> ApiResult<()> {
+    response(
+        in_transaction(&mut connection, |transaction| async {
+            let app = Application::new(transaction);
+            let principal = auth_data.authenticate(|token| authenticate(token, &app)).await?;
+            app.delete_user(&principal, &email).await
+        })
+        .await,
+    )
+}
+
 /// Gets the tokens for a user
 async fn api_get_tokens(mut connection: DbConn, auth_data: AuthData) -> ApiResult<Vec<RegistryUserToken>> {
     response(
@@ -814,6 +826,7 @@ async fn main() {
                     Router::new()
                         .route("/", get(api_get_users))
                         .route("/:target", patch(api_update_user))
+                        .route("/:target", delete(api_delete_user))
                         .route("/:target/deactivate", post(api_deactivate_user))
                         .route("/:target/reactivate", post(api_reactivate_user)),
                 )
