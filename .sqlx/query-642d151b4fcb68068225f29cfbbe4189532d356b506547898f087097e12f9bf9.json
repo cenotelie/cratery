@@ -1,6 +1,6 @@
 {
   "db_name": "SQLite",
-  "query": "INSERT INTO RegistryUserToken (user, name, token, lastUsed) VALUES ($1, $2, $3, $4) RETURNING id",
+  "query": "SELECT id FROM RegistryUser WHERE email = $1",
   "describe": {
     "columns": [
       {
@@ -10,11 +10,11 @@
       }
     ],
     "parameters": {
-      "Right": 4
+      "Right": 1
     },
     "nullable": [
       false
     ]
   },
-  "hash": "fa517200c640177db778a7ddd54438b1faefc3efbeef2ecf705e709392eab1ed"
+  "hash": "642d151b4fcb68068225f29cfbbe4189532d356b506547898f087097e12f9bf9"
 }

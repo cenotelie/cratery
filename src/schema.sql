@@ -5,7 +5,7 @@ CREATE TABLE IF NOT EXISTS SchemaMetadata (
 
 CREATE INDEX IF NOT EXISTS SchemaMetadataIndex ON SchemaMetadata(name);
 
-INSERT INTO SchemaMetadata VALUES ('version', '1.0.0');
+INSERT INTO SchemaMetadata VALUES ('version', '1.1.0');
 
 CREATE TABLE RegistryUser (
     id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
@@ -24,7 +24,9 @@ CREATE TABLE RegistryUserToken (
     user INTEGER NOT NULL REFERENCES RegistryUser(id),
     name TEXT NOT NULL,
     token TEXT NOT NULL,
-    lastUsed TIMESTAMP NOT NULL
+    lastUsed TIMESTAMP NOT NULL,
+    canWrite BOOLEAN NOT NULL,
+    canAdmin BOOLEAN NOT NULL
 );
 
 CREATE INDEX IndexRegistryUserToken ON RegistryUserToken (user);

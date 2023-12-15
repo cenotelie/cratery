@@ -4,8 +4,8 @@ use cenotelie_lib_apierror::{error_forbidden, error_invalid_request, error_not_f
 use chrono::Local;
 
 use crate::objects::{
-    CrateUploadData, CrateUploadResult, DocsGenerationJob, OwnersQueryResult, RegistryUser, SearchResultCrate, SearchResults,
-    SearchResultsMeta, YesNoMsgResult, YesNoResult,
+    AuthenticatedUser, CrateUploadData, CrateUploadResult, DocsGenerationJob, OwnersQueryResult, RegistryUser,
+    SearchResultCrate, SearchResults, SearchResultsMeta, YesNoMsgResult, YesNoResult,
 };
 
 use super::Application;
@@ -46,8 +46,18 @@ impl<'c> Application<'c> {
 
     /// Publish a crate
     #[allow(clippy::similar_names)]
-    pub async fn publish(&self, principal: &str, package: &CrateUploadData) -> Result<CrateUploadResult, ApiError> {
-        let uid = self.check_is_user(principal).await?;
+    pub async fn publish(
+        &self,
+        authenticated_user: &AuthenticatedUser,
+        package: &CrateUploadData,
+    ) -> Result<CrateUploadResult, ApiError> {
+        let uid = self.check_is_user(&authenticated_user.principal).await?;
+        if !authenticated_user.can_write {
+            return Err(specialize(
+                error_forbidden(),
+                String::from("writing is forbidden for this authentication"),
+            ));
+        }
         let warnings = package.metadata.validate()?;
         let lowercase = package.metadata.name.to_ascii_lowercase();
         let row = sqlx::query!(
@@ -139,8 +149,8 @@ impl<'c> Application<'c> {
     }
 
     /// Checks the ownership of a package
-    async fn check_package_ownership(&self, principal: &str, package: &str) -> Result<i64, ApiError> {
-        let uid = self.check_is_user(principal).await?;
+    async fn check_package_ownership(&self, authenticated_user: &AuthenticatedUser, package: &str) -> Result<i64, ApiError> {
+        let uid = self.check_is_user(&authenticated_user.principal).await?;
         if self.check_is_admin(uid).await.is_ok() {
             return Ok(uid);
         }
@@ -161,8 +171,19 @@ impl<'c> Application<'c> {
     }
 
     /// Yank a crate version
-    pub async fn yank(&self, principal: &str, package: &str, version: &str) -> Result<YesNoResult, ApiError> {
-        self.check_package_ownership(principal, package).await?;
+    pub async fn yank(
+        &self,
+        authenticated_user: &AuthenticatedUser,
+        package: &str,
+        version: &str,
+    ) -> Result<YesNoResult, ApiError> {
+        if !authenticated_user.can_write {
+            return Err(specialize(
+                error_forbidden(),
+                String::from("writing is forbidden for this authentication"),
+            ));
+        }
+        self.check_package_ownership(authenticated_user, package).await?;
         let row = sqlx::query!(
             "SELECT yanked FROM PackageVersion WHERE package = $1 AND version = $2 LIMIT 1",
             package,
@@ -196,8 +217,19 @@ impl<'c> Application<'c> {
     }
 
     /// Unyank a crate version
-    pub async fn unyank(&self, principal: &str, package: &str, version: &str) -> Result<YesNoResult, ApiError> {
-        self.check_package_ownership(principal, package).await?;
+    pub async fn unyank(
+        &self,
+        authenticated_user: &AuthenticatedUser,
+        package: &str,
+        version: &str,
+    ) -> Result<YesNoResult, ApiError> {
+        if !authenticated_user.can_write {
+            return Err(specialize(
+                error_forbidden(),
+                String::from("writing is forbidden for this authentication"),
+            ));
+        }
+        self.check_package_ownership(authenticated_user, package).await?;
         let row = sqlx::query!(
             "SELECT yanked FROM PackageVersion WHERE package = $1 AND version = $2 LIMIT 1",
             package,
@@ -257,17 +289,32 @@ impl<'c> Application<'c> {
     }
 
     /// Gets the list of owners for a package
-    pub async fn get_owners(&self, principal: &str, package: &str) -> Result<OwnersQueryResult, ApiError> {
-        self.check_is_user(principal).await?;
+    pub async fn get_owners(
+        &self,
+        authenticated_user: &AuthenticatedUser,
+        package: &str,
+    ) -> Result<OwnersQueryResult, ApiError> {
+        self.check_is_user(&authenticated_user.principal).await?;
         let users = sqlx::query_as!(RegistryUser, "SELECT RegistryUser.id, isActive AS is_active, email, login, name, roles FROM RegistryUser INNER JOIN PackageOwner ON PackageOwner.owner = RegistryUser.id WHERE package = $1", package)
             .fetch_all(&mut *self.transaction.borrow().await).await?;
         Ok(OwnersQueryResult { users })
     }
 
     /// Add owners to a package
-    pub async fn add_owners(&self, principal: &str, package: &str, new_users: &[String]) -> Result<YesNoMsgResult, ApiError> {
+    pub async fn add_owners(
+        &self,
+        authenticated_user: &AuthenticatedUser,
+        package: &str,
+        new_users: &[String],
+    ) -> Result<YesNoMsgResult, ApiError> {
+        if !authenticated_user.can_admin {
+            return Err(specialize(
+                error_forbidden(),
+                String::from("administration is forbidden for this authentication"),
+            ));
+        }
         // check access
-        self.check_package_ownership(principal, package).await?;
+        self.check_package_ownership(authenticated_user, package).await?;
         // get all current owners
         let rows = sqlx::query!("SELECT owner FROM PackageOwner WHERE package = $1", package,)
             .fetch_all(&mut *self.transaction.borrow().await)
@@ -293,9 +340,20 @@ impl<'c> Application<'c> {
     }
 
     /// Remove owners from a package
-    pub async fn remove_owners(&self, principal: &str, package: &str, old_users: &[String]) -> Result<YesNoResult, ApiError> {
+    pub async fn remove_owners(
+        &self,
+        authenticated_user: &AuthenticatedUser,
+        package: &str,
+        old_users: &[String],
+    ) -> Result<YesNoResult, ApiError> {
+        if !authenticated_user.can_admin {
+            return Err(specialize(
+                error_forbidden(),
+                String::from("administration is forbidden for this authentication"),
+            ));
+        }
         // check access
-        self.check_package_ownership(principal, package).await?;
+        self.check_package_ownership(authenticated_user, package).await?;
         // get all current owners
         let rows = sqlx::query!("SELECT owner FROM PackageOwner WHERE package = $1", package,)
             .fetch_all(&mut *self.transaction.borrow().await)

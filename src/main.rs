@@ -46,8 +46,9 @@ use futures::lock::Mutex;
 use futures::{SinkExt, Stream};
 use log::info;
 use objects::{
-    AppVersion, Configuration, CrateMetadataIndex, CrateUploadData, CrateUploadResult, DocsGenerationJob, OwnersAddQuery,
-    OwnersQueryResult, RegistryUser, RegistryUserToken, RegistryUserTokenWithSecret, SearchResults, YesNoMsgResult,
+    AppVersion, AuthenticatedUser, Configuration, CrateMetadataIndex, CrateUploadData, CrateUploadResult, DocsGenerationJob,
+    OwnersAddQuery, OwnersQueryResult, RegistryUser, RegistryUserToken, RegistryUserTokenWithSecret, SearchResults,
+    YesNoMsgResult,
 };
 use serde::Deserialize;
 use sqlx::pool::PoolConnection;
@@ -118,10 +119,10 @@ struct PathInfoCrateVersion {
 }
 
 /// Tries to authenticate using a token
-async fn authenticate(token: &Token, app: &Application<'_>) -> Result<String, ApiError> {
+async fn authenticate(token: &Token, app: &Application<'_>) -> Result<AuthenticatedUser, ApiError> {
     if let Token::Basic { id, secret } = token {
-        let principal = app.check_token(id, secret).await?;
-        Ok(principal)
+        let user = app.check_token(id, secret).await?;
+        Ok(user)
     } else {
         Err(error_unauthorized())
     }
@@ -217,8 +218,8 @@ async fn api_get_current_user(mut connection: DbConn, auth_data: AuthData) -> Ap
     response(
         in_transaction(&mut connection, |transaction| async {
             let app = Application::new(transaction);
-            let principal = auth_data.authenticate(|token| authenticate(token, &app)).await?;
-            app.get_current_user(&principal).await
+            let authenticated_user = auth_data.authenticate(|token| authenticate(token, &app)).await?;
+            app.get_current_user(&authenticated_user).await
         })
         .await,
     )
@@ -238,7 +239,12 @@ async fn api_login_with_oauth_code(
     })
     .await
     .map_err(response_error)?;
-    let cookie = auth_data.create_id_cookie(&registry_user.email);
+    let cookie = auth_data.create_id_cookie(&AuthenticatedUser {
+        principal: registry_user.email.clone(),
+        // when authenticated via cookies, can do everything
+        can_write: true,
+        can_admin: true,
+    });
     Ok((
         StatusCode::OK,
         [(SET_COOKIE, HeaderValue::from_str(&cookie.to_string()).unwrap())],
@@ -260,8 +266,8 @@ async fn api_get_users(mut connection: DbConn, auth_data: AuthData) -> ApiResult
     response(
         in_transaction(&mut connection, |transaction| async {
             let app = Application::new(transaction);
-            let principal = auth_data.authenticate(|token| authenticate(token, &app)).await?;
-            app.get_users(&principal).await
+            let authenticated_user = auth_data.authenticate(|token| authenticate(token, &app)).await?;
+            app.get_users(&authenticated_user).await
         })
         .await,
     )
@@ -283,8 +289,8 @@ async fn api_update_user(
     response(
         in_transaction(&mut connection, |transaction| async {
             let app = Application::new(transaction);
-            let principal = auth_data.authenticate(|token| authenticate(token, &app)).await?;
-            app.update_user(&principal, &target).await
+            let authenticated_user = auth_data.authenticate(|token| authenticate(token, &app)).await?;
+            app.update_user(&authenticated_user, &target).await
         })
         .await,
     )
@@ -295,8 +301,8 @@ async fn api_deactivate_user(mut connection: DbConn, auth_data: AuthData, Path(B
     response(
         in_transaction(&mut connection, |transaction| async {
             let app = Application::new(transaction);
-            let principal = auth_data.authenticate(|token| authenticate(token, &app)).await?;
-            app.deactivate_user(&principal, &email).await
+            let authenticated_user = auth_data.authenticate(|token| authenticate(token, &app)).await?;
+            app.deactivate_user(&authenticated_user, &email).await
         })
         .await,
     )
@@ -307,8 +313,8 @@ async fn api_reactivate_user(mut connection: DbConn, auth_data: AuthData, Path(B
     response(
         in_transaction(&mut connection, |transaction| async {
             let app = Application::new(transaction);
-            let principal = auth_data.authenticate(|token| authenticate(token, &app)).await?;
-            app.reactivate_user(&principal, &email).await
+            let authenticated_user = auth_data.authenticate(|token| authenticate(token, &app)).await?;
+            app.reactivate_user(&authenticated_user, &email).await
         })
         .await,
     )
@@ -319,8 +325,8 @@ async fn api_delete_user(mut connection: DbConn, auth_data: AuthData, Path(Base6
     response(
         in_transaction(&mut connection, |transaction| async {
             let app = Application::new(transaction);
-            let principal = auth_data.authenticate(|token| authenticate(token, &app)).await?;
-            app.delete_user(&principal, &email).await
+            let authenticated_user = auth_data.authenticate(|token| authenticate(token, &app)).await?;
+            app.delete_user(&authenticated_user, &email).await
         })
         .await,
     )
@@ -331,20 +337,31 @@ async fn api_get_tokens(mut connection: DbConn, auth_data: AuthData) -> ApiResul
     response(
         in_transaction(&mut connection, |transaction| async {
             let app = Application::new(transaction);
-            let principal = auth_data.authenticate(|token| authenticate(token, &app)).await?;
-            app.get_tokens(&principal).await
+            let authenticated_user = auth_data.authenticate(|token| authenticate(token, &app)).await?;
+            app.get_tokens(&authenticated_user).await
         })
         .await,
     )
 }
 
+#[derive(Deserialize)]
+struct CreateTokenQuery {
+    can_write: bool,
+    can_admin: bool,
+}
+
 /// Creates a token for the current user
-async fn api_create_token(mut connection: DbConn, auth_data: AuthData, name: String) -> ApiResult<RegistryUserTokenWithSecret> {
+async fn api_create_token(
+    mut connection: DbConn,
+    auth_data: AuthData,
+    Query(CreateTokenQuery { can_write, can_admin }): Query<CreateTokenQuery>,
+    name: String,
+) -> ApiResult<RegistryUserTokenWithSecret> {
     response(
         in_transaction(&mut connection, |transaction| async {
             let app = Application::new(transaction);
-            let principal = auth_data.authenticate(|token| authenticate(token, &app)).await?;
-            app.create_token(&principal, &name).await
+            let authenticated_user = auth_data.authenticate(|token| authenticate(token, &app)).await?;
+            app.create_token(&authenticated_user, &name, can_write, can_admin).await
         })
         .await,
     )
@@ -355,8 +372,8 @@ async fn api_revoke_token(mut connection: DbConn, auth_data: AuthData, Path(toke
     response(
         in_transaction(&mut connection, |transaction| async {
             let app = Application::new(transaction);
-            let principal = auth_data.authenticate(|token| authenticate(token, &app)).await?;
-            app.revoke_token(&principal, token_id).await
+            let authenticated_user = auth_data.authenticate(|token| authenticate(token, &app)).await?;
+            app.revoke_token(&authenticated_user, token_id).await
         })
         .await,
     )
@@ -372,13 +389,13 @@ async fn api_v1_publish(
     response(
         in_transaction(&mut connection, |transaction| async move {
             let app = Application::new(transaction);
-            let principal = auth_data.authenticate(|token| authenticate(token, &app)).await?;
+            let authenticated_user = auth_data.authenticate(|token| authenticate(token, &app)).await?;
             // deserialize payload
             let package = CrateUploadData::new(&body)?;
             let index_data = package.build_index_data();
             // publish
             let index = state.index.lock().await;
-            let r = app.publish(&principal, &package).await?;
+            let r = app.publish(&authenticated_user, &package).await?;
             storage::store_crate(
                 &state.configuration,
                 &package.metadata.name,
@@ -455,8 +472,8 @@ async fn api_v1_yank(
     response(
         in_transaction(&mut connection, |transaction| async move {
             let app = Application::new(transaction);
-            let principal = auth_data.authenticate(|token| authenticate(token, &app)).await?;
-            let r = app.yank(&principal, &package, &version).await?;
+            let authenticated_user = auth_data.authenticate(|token| authenticate(token, &app)).await?;
+            let r = app.yank(&authenticated_user, &package, &version).await?;
             Ok(r)
         })
         .await,
@@ -472,8 +489,8 @@ async fn api_v1_unyank(
     response(
         in_transaction(&mut connection, |transaction| async move {
             let app = Application::new(transaction);
-            let principal = auth_data.authenticate(|token| authenticate(token, &app)).await?;
-            let r = app.unyank(&principal, &package, &version).await?;
+            let authenticated_user = auth_data.authenticate(|token| authenticate(token, &app)).await?;
+            let r = app.unyank(&authenticated_user, &package, &version).await?;
             Ok(r)
         })
         .await,
@@ -489,8 +506,8 @@ async fn api_v1_get_owners(
     response(
         in_transaction(&mut connection, |transaction| async move {
             let app = Application::new(transaction);
-            let principal = auth_data.authenticate(|token| authenticate(token, &app)).await?;
-            let r = app.get_owners(&principal, &package).await?;
+            let authenticated_user = auth_data.authenticate(|token| authenticate(token, &app)).await?;
+            let r = app.get_owners(&authenticated_user, &package).await?;
             Ok(r)
         })
         .await,
@@ -507,8 +524,8 @@ async fn api_v1_add_owners(
     response(
         in_transaction(&mut connection, |transaction| async move {
             let app = Application::new(transaction);
-            let principal = auth_data.authenticate(|token| authenticate(token, &app)).await?;
-            let r = app.add_owners(&principal, &package, &input.users).await?;
+            let authenticated_user = auth_data.authenticate(|token| authenticate(token, &app)).await?;
+            let r = app.add_owners(&authenticated_user, &package, &input.users).await?;
             Ok(r)
         })
         .await,
@@ -525,8 +542,8 @@ async fn api_v1_remove_owners(
     response(
         in_transaction(&mut connection, |transaction| async move {
             let app = Application::new(transaction);
-            let principal = auth_data.authenticate(|token| authenticate(token, &app)).await?;
-            let r = app.remove_owners(&principal, &package, &input.users).await?;
+            let authenticated_user = auth_data.authenticate(|token| authenticate(token, &app)).await?;
+            let r = app.remove_owners(&authenticated_user, &package, &input.users).await?;
             Ok(r)
         })
         .await,

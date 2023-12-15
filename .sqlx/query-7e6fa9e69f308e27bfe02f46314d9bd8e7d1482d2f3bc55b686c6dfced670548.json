@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "INSERT INTO SchemaMetadata (name, value) VALUES ($1, $2)",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 2
+    },
+    "nullable": []
+  },
+  "hash": "7e6fa9e69f308e27bfe02f46314d9bd8e7d1482d2f3bc55b686c6dfced670548"
+}

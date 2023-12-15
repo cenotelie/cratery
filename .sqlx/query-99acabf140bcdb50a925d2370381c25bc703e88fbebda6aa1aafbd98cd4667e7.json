@@ -1,6 +1,6 @@
 {
   "db_name": "SQLite",
-  "query": "SELECT id, name, lastUsed AS last_used FROM RegistryUserToken WHERE user = $1 ORDER BY id",
+  "query": "SELECT id, name, lastUsed AS last_used, canWrite AS can_write, canAdmin AS can_admin FROM RegistryUserToken WHERE user = $1 ORDER BY id",
   "describe": {
     "columns": [
       {
@@ -17,6 +17,16 @@
         "name": "last_used",
         "ordinal": 2,
         "type_info": "Datetime"
+      },
+      {
+        "name": "can_write",
+        "ordinal": 3,
+        "type_info": "Bool"
+      },
+      {
+        "name": "can_admin",
+        "ordinal": 4,
+        "type_info": "Bool"
       }
     ],
     "parameters": {
@@ -25,8 +35,10 @@
     "nullable": [
       false,
       false,
+      false,
+      false,
       false
     ]
   },
-  "hash": "89eaccbbbaa537d8521db490ebc943ef3d247ddd2698b1663c0f49132bdaef3a"
+  "hash": "99acabf140bcdb50a925d2370381c25bc703e88fbebda6aa1aafbd98cd4667e7"
 }

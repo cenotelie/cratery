@@ -1,0 +1,44 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT email, RegistryUserToken.id, token, canWrite AS can_write, canAdmin AS can_admin\n            FROM RegistryUser INNER JOIN RegistryUserToken ON RegistryUser.id = RegistryUserToken.user\n            WHERE isActive = TRUE AND login = $1",
+  "describe": {
+    "columns": [
+      {
+        "name": "email",
+        "ordinal": 0,
+        "type_info": "Text"
+      },
+      {
+        "name": "id",
+        "ordinal": 1,
+        "type_info": "Int64"
+      },
+      {
+        "name": "token",
+        "ordinal": 2,
+        "type_info": "Text"
+      },
+      {
+        "name": "can_write",
+        "ordinal": 3,
+        "type_info": "Bool"
+      },
+      {
+        "name": "can_admin",
+        "ordinal": 4,
+        "type_info": "Bool"
+      }
+    ],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      false,
+      false
+    ]
+  },
+  "hash": "52f8bb3190efbe4b701ccb9976cffec585a7cb52c1ba057a80ea854f1a9c9d98"
+}

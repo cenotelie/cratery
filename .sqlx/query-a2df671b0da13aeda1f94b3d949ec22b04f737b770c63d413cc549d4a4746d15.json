@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "UPDATE SchemaMetadata SET value = $2 WHERE name = $1",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 2
+    },
+    "nullable": []
+  },
+  "hash": "a2df671b0da13aeda1f94b3d949ec22b04f737b770c63d413cc549d4a4746d15"
+}

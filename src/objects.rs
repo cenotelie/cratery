@@ -195,6 +195,19 @@ pub struct RegistryUser {
     pub roles: String,
 }
 
+/// Represents the possible access for an authenticated user
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct AuthenticatedUser {
+    /// The principal (email of the user)
+    pub principal: String,
+    /// Whether a crate can be uploaded
+    #[serde(rename = "canWrite")]
+    pub can_write: bool,
+    /// Whether administration can be done
+    #[serde(rename = "canAdmin")]
+    pub can_admin: bool,
+}
+
 /// A token for a registry user
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct RegistryUserToken {
@@ -205,6 +218,12 @@ pub struct RegistryUserToken {
     /// The last time the token was used
     #[serde(rename = "lastUsed")]
     pub last_used: NaiveDateTime,
+    /// Whether a crate can be uploaded using this token
+    #[serde(rename = "canWrite")]
+    pub can_write: bool,
+    /// Whether administration can be done using this token through the API
+    #[serde(rename = "canAdmin")]
+    pub can_admin: bool,
 }
 
 /// A token for a registry user
@@ -219,6 +238,12 @@ pub struct RegistryUserTokenWithSecret {
     /// The last time the token was used
     #[serde(rename = "lastUsed")]
     pub last_used: NaiveDateTime,
+    /// Whether a crate can be uploaded using this token
+    #[serde(rename = "canWrite")]
+    pub can_write: bool,
+    /// Whether administration can be done using this token through the API
+    #[serde(rename = "canAdmin")]
+    pub can_admin: bool,
 }
 
 /// A crate to appear in search results
