@@ -36,16 +36,17 @@ function apiGetTokens() {
   });
 }
 
-function apiCreateToken(name) {
-  return fetch("/api/v1/tokens", { method: "PUT", body: name }).then(
-    (response) => {
-      if (response.status !== 200) {
-        throw response.text();
-      } else {
-        return response.json();
-      }
+function apiCreateToken(name, canWrite, canAdmin) {
+  return fetch(`/api/v1/tokens?canWrite=${canWrite}&canAdmin=${canAdmin}`, {
+    method: "PUT",
+    body: name,
+  }).then((response) => {
+    if (response.status !== 200) {
+      throw response.text();
+    } else {
+      return response.json();
     }
-  );
+  });
 }
 
 function apiRevokeToken(token_id) {
@@ -75,6 +76,18 @@ function apiUpdateUser(user) {
     method: "PATCH",
     body: JSON.stringify(user),
     headers: [["content-type", "application/json"]],
+  }).then((response) => {
+    if (response.status !== 200) {
+      throw response.text();
+    } else {
+      return response.json();
+    }
+  });
+}
+
+function apiDeleteUser(email) {
+  return fetch(`/api/v1/users/${btoa(email)}`, {
+    method: "DELETE",
   }).then((response) => {
     if (response.status !== 200) {
       throw response.text();
@@ -121,14 +134,13 @@ function apiLookupCrates(input) {
 }
 
 function apiGetCrate(crate) {
-  return fetch(`/api/v1/crates/${crate}`)
-    .then((response) => {
-      if (response.status !== 200) {
-        throw response.text();
-      } else {
-        return response.json();
-      }
-    });
+  return fetch(`/api/v1/crates/${crate}`).then((response) => {
+    if (response.status !== 200) {
+      throw response.text();
+    } else {
+      return response.json();
+    }
+  });
 }
 
 function getQueryParameters(queryString) {

@@ -346,7 +346,9 @@ async fn api_get_tokens(mut connection: DbConn, auth_data: AuthData) -> ApiResul
 
 #[derive(Deserialize)]
 struct CreateTokenQuery {
+    #[serde(rename = "canWrite")]
     can_write: bool,
+    #[serde(rename = "canAdmin")]
     can_admin: bool,
 }
 

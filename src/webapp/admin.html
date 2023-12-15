@@ -50,6 +50,9 @@
                 <th scope="col" class="px-6 py-3">
                     Is active
                 </th>
+                <th scope="col" class="px-6 py-3">
+                    Delete
+                </th>
               </tr>
             </thead>
             <tbody id="users">
@@ -58,6 +61,28 @@
       </div>
     </div>
   </section>
+  <div id="modal-delete-user" tabindex="-1" class="overflow-y-auto overflow-x-hidden fixed top-0 right-0 left-0 z-50 w-full md:inset-0 h-modal md:h-full" style="display: none;">
+    <div class="overflow-y-auto overflow-x-hidden fixed top-0 right-0 left-0 z-51 w-full md:inset-0 h-modal md:h-full" style="background-color: black; opacity: 0.75;"></div>
+    <div class="relative" style="margin: auto; margin-top: 20%; width: 800px;">
+        <div class="relative p-4 bg-white rounded-lg shadow dark:bg-gray-800 md:p-8">
+            <div class="mb-4 text-sm font-light text-gray-500 dark:text-gray-400">
+              <h3 class="mb-3 text-2xl font-bold text-gray-900 dark:text-white">Delete this user?</h3>
+            </div>
+            <form class="mb-3 space-y-8">
+              <div>
+                <label for="delete-user-email" class="block mb-2 text-sm font-medium text-gray-900 dark:text-gray-300">User</label>
+                <input type="text" id="delete-user-email" class="block p-3 w-full text-sm text-gray-900 bg-gray-50 rounded-lg border border-gray-300 shadow-sm focus:ring-primary-500 focus:border-primary-500 dark:bg-gray-700 dark:border-gray-600 dark:placeholder-gray-400 dark:text-white dark:focus:ring-primary-500 dark:focus:border-primary-500 dark:shadow-sm-light" disabled>
+              </div>
+            </form>
+            <div class="justify-between items-center pt-0 space-y-4 sm:flex sm:space-y-0">
+              <div class="items-center space-y-4 sm:space-x-4 sm:flex sm:space-y-0">
+                <button id="modal-delete-user-close" type="button"  class="py-2 px-4 w-full text-sm font-medium text-gray-500 bg-white rounded-lg border border-gray-200 sm:w-auto hover:bg-gray-100 focus:ring-4 focus:outline-none focus:ring-primary-300 hover:text-gray-900 focus:z-10 dark:bg-gray-700 dark:text-gray-300 dark:border-gray-500 dark:hover:text-white dark:hover:bg-gray-600 dark:focus:ring-gray-600">Cancel</button>
+                <button id="modal-delete-user-confirm" type="button" class="focus:outline-none text-white bg-red-700 hover:bg-red-800 focus:ring-4 focus:ring-red-300 font-medium rounded-lg text-sm px-5 py-2.5 me-2 mb-2 dark:bg-red-600 dark:hover:bg-red-700 dark:focus:ring-red-900">Delete</button>
+              </div>
+            </div>
+        </div>
+    </div>
+  </div>
 </body>
 <footer class="p-4 bg-white md:p-8 lg:p-10 dark:bg-gray-800">
   <div class="mx-auto max-w-screen-xl text-center">
@@ -118,6 +143,13 @@
       switchToggleEl.className = "w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-300 dark:peer-focus:ring-blue-800 rounded-full peer dark:bg-gray-700 peer-checked:after:translate-x-full rtl:peer-checked:after:-translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:start-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all dark:border-gray-600 peer-checked:bg-blue-600";
       switchEl.appendChild(switchInputEl);
       switchEl.appendChild(switchToggleEl);
+      const buttonDelete = document.createElement("button");
+      buttonDelete.className = "focus:outline-none text-white bg-red-700 hover:bg-red-800 focus:ring-4 focus:ring-red-300 font-medium rounded-lg text-sm px-5 py-2.5 me-2 mb-2 dark:bg-red-600 dark:hover:bg-red-700 dark:focus:ring-red-900";
+      buttonDelete.type = "button";
+      buttonDelete.appendChild(document.createTextNode("Delete"));
+      buttonDelete.addEventListener("click", () => {
+        openDeleteUser(user);
+      });
 
       const row = document.createElement("tr");
       const cell1 = document.createElement("th");
@@ -136,13 +168,40 @@
       const cell5 = document.createElement("td");
       cell5.className = "px-6 py-4";
       cell5.appendChild(switchEl);
+      const cell6 = document.createElement("td");
+      cell6.className = "px-6 py-4";
+      cell6.appendChild(buttonDelete);
+      
 
       row.appendChild(cell1);
       row.appendChild(cell2);
       row.appendChild(cell3);
       row.appendChild(cell4);
       row.appendChild(cell5);
+      row.appendChild(cell6);
       return row;
+    }
+
+    function openDeleteUser(user) {
+      const modalEl = document.getElementById('modal-delete-user');
+      modalEl.style.display = "unset";
+      const userEmailEl = document.getElementById("delete-user-email");
+      userEmailEl.value = user.email;
+      const closeEl = document.getElementById('modal-delete-user-close');
+      closeEl.addEventListener('click', function() {
+        modalEl.style.display = "none";
+      });
+      const confirmEl = document.getElementById('modal-delete-user-confirm');
+      confirmEl.addEventListener('click', function() {
+        closeEl.disabled = true;
+        confirmEl.disabled = true;
+        apiDeleteUser(user.email).then((_) => {
+          window.location.reload();
+        }).finally(() => {
+          closeEl.disabled = false;
+          confirmEl.disabled = false;
+        });
+      });
     }
 </script>
 </html>

@@ -57,13 +57,16 @@
               <thead class="text-xs text-gray-700 uppercase bg-gray-50 dark:bg-gray-700 dark:text-gray-400">
                   <tr>
                       <th scope="col" class="px-6 py-3">
-                          Token name
+                        Token name
                       </th>
                       <th scope="col" class="px-6 py-3">
-                          Last used
+                        Last used
                       </th>
                       <th scope="col" class="px-6 py-3">
-                          Revoke
+                        Accesses
+                      </th>
+                      <th scope="col" class="px-6 py-3">
+                        Revoke
                       </th>
                   </tr>
               </thead>
@@ -84,6 +87,20 @@
               <div>
                 <label for="new-token-name" class="block mb-2 text-sm font-medium text-gray-900 dark:text-gray-300">Token name</label>
                 <input type="text" id="new-token-name" class="block p-3 w-full text-sm text-gray-900 bg-gray-50 rounded-lg border border-gray-300 shadow-sm focus:ring-primary-500 focus:border-primary-500 dark:bg-gray-700 dark:border-gray-600 dark:placeholder-gray-400 dark:text-white dark:focus:ring-primary-500 dark:focus:border-primary-500 dark:shadow-sm-light">
+              </div>
+              <div>
+                <label class="relative inline-flex items-center cursor-pointer">
+                  <input id="new-token-can-write" type="checkbox" class="sr-only peer">
+                  <div class="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-300 dark:peer-focus:ring-blue-800 rounded-full peer dark:bg-gray-700 peer-checked:after:translate-x-full rtl:peer-checked:after:-translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:start-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all dark:border-gray-600 peer-checked:bg-blue-600"></div>
+                  <span class="ms-3 text-sm font-medium text-gray-900 dark:text-gray-300">Can write with this token (upload crates, etc)</span>
+                </label>
+              </div>
+              <div>
+                <label class="relative inline-flex items-center cursor-pointer">
+                  <input id="new-token-can-admin" type="checkbox" class="sr-only peer">
+                  <div class="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-300 dark:peer-focus:ring-blue-800 rounded-full peer dark:bg-gray-700 peer-checked:after:translate-x-full rtl:peer-checked:after:-translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:start-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all dark:border-gray-600 peer-checked:bg-blue-600"></div>
+                  <span class="ms-3 text-sm font-medium text-gray-900 dark:text-gray-300">Can perform admin operations</span>
+                </label>
               </div>
             </form>
               <div class="justify-between items-center pt-0 space-y-4 sm:flex sm:space-y-0">
@@ -172,6 +189,20 @@
       });
     }
 
+    function renderTokenAccess(token) {
+      if (!token.canWrite && !token.canAdmin) {
+        return document.createTextNode("read-only");
+      }
+      let access = "read";
+      if (token.canWrite) {
+        access = access + ", write"
+      }
+      if (token.canAdmin) {
+        access = access + ", admin"
+      }
+      return document.createTextNode(access);
+    }
+
     function renderToken(token) {
       const row = document.createElement("tr");
       row.className = "bg-white border-b dark:bg-gray-800 dark:border-gray-700";
@@ -184,6 +215,9 @@
       cell2.appendChild(document.createTextNode(serializeDateTime(token.lastUsed)));
       const cell3 = document.createElement("td");
       cell3.className = "px-6 py-4";
+      cell3.appendChild(renderTokenAccess(token));
+      const cell4 = document.createElement("td");
+      cell4.className = "px-6 py-4";
       const button = document.createElement("button");
       button.className = "focus:outline-none text-white bg-red-700 hover:bg-red-800 focus:ring-4 focus:ring-red-300 font-medium rounded-lg text-sm px-5 py-2.5 me-2 mb-2 dark:bg-red-600 dark:hover:bg-red-700 dark:focus:ring-red-900";
       button.type = "button";
@@ -192,10 +226,11 @@
         openRevokeTokenModal(token);
       });
 
-      cell3.appendChild(button);
+      cell4.appendChild(button);
       row.appendChild(cell1);
       row.appendChild(cell2);
       row.appendChild(cell3);
+      row.appendChild(cell4);
       return row;
     }
 
@@ -221,6 +256,10 @@
       const newTokenNameEl = document.getElementById("new-token-name");
       newTokenNameEl.value = "";
       newTokenNameEl.focus();
+      const newTokenCanWriteEl = document.getElementById("new-token-can-write");
+      newTokenCanWriteEl.checked = false;
+      const newTokenCanAdminEl = document.getElementById("new-token-can-admin");
+      newTokenCanAdminEl.checked = false;
 
       const closeEl = document.getElementById('modal-create-token-close');
       closeEl.addEventListener('click', function() {
@@ -233,10 +272,12 @@
         if (name.length === 0) {
           return;
         }
+        const canWrite = newTokenCanWriteEl.checked;
+        const canAdmin = newTokenCanAdminEl.checked;
         newTokenNameEl.disabled = true;
         closeEl.disabled = true;
         confirmEl.disabled = true;
-        apiCreateToken(name).then((tokenData) => {
+        apiCreateToken(name, canWrite, canAdmin).then((tokenData) => {
           modalEl.style.display = "none";
           openTokenCreatedModal(tokenData.secret);
         }).finally(() => {

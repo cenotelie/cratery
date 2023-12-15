@@ -290,6 +290,9 @@ impl<'c> Application<'c> {
             .await?
             .ok_or_else(error_not_found)?
             .id;
+        if uid == target_uid {
+            return Err(specialize(error_forbidden(), String::from("cannot delete self")));
+        }
         sqlx::query!("DELETE FROM RegistryUserToken WHERE user = $1", target_uid)
             .execute(&mut *self.transaction.borrow().await)
             .await?;
