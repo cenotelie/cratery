@@ -22,6 +22,8 @@ TERMINAL=""
 if [ -t 1 ] ; then
   docker run -it --rm --user=$(id -u) \
         -v "$ROOT:/src" \
+        -v "$HOME/.cargo/credentials:/home/builder/.cargo/credentials:ro" \
+        -v "$HOME/.git-credentials:/home/builder/.git-credentials:ro" \
         -v "cargo-registry:/home/builder/.cargo/registry" \
         -e "HOME=/home/builder" \
         -e "GIT_HASH=$HASH" \
@@ -32,6 +34,8 @@ if [ -t 1 ] ; then
 else
   docker run --rm --user=$(id -u) \
         -v "$ROOT:/src" \
+        -v "$HOME/.cargo/credentials:/home/builder/.cargo/credentials:ro" \
+        -v "$HOME/.git-credentials:/home/builder/.git-credentials:ro" \
         -v "cargo-registry:/home/builder/.cargo/registry" \
         -e "HOME=/home/builder" \
         -e "GIT_HASH=$HASH" \
