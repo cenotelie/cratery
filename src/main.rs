@@ -130,11 +130,14 @@ async fn authenticate(token: &Token, app: &Application<'_>) -> Result<Authentica
 
 /// Response for a GET on the root
 /// Redirect to the web app
-async fn get_root(State(state): State<Arc<AxumState>>) -> (StatusCode, [(HeaderName, HeaderValue); 1]) {
+async fn get_root(State(state): State<Arc<AxumState>>) -> (StatusCode, [(HeaderName, HeaderValue); 2]) {
     let target = format!("{}/webapp/index.html", state.configuration.uri);
     (
         StatusCode::FOUND,
-        [(header::LOCATION, HeaderValue::from_str(&target).unwrap())],
+        [
+            (header::LOCATION, HeaderValue::from_str(&target).unwrap()),
+            (header::CACHE_CONTROL, HeaderValue::from_static("no-cache")),
+        ],
     )
 }
 
@@ -183,7 +186,7 @@ async fn get_webapp_resource(
                 StatusCode::FOUND,
                 [
                     (header::LOCATION, HeaderValue::from_str(&target).unwrap()),
-                    (header::CACHE_CONTROL, HeaderValue::from_static("max-age=3600")),
+                    (header::CACHE_CONTROL, HeaderValue::from_static("no-cache")),
                 ],
                 &[],
             ));
@@ -205,11 +208,14 @@ async fn get_webapp_resource(
 }
 
 /// Redirects to the login page
-async fn webapp_me(State(state): State<Arc<AxumState>>) -> (StatusCode, [(HeaderName, HeaderValue); 1]) {
+async fn webapp_me(State(state): State<Arc<AxumState>>) -> (StatusCode, [(HeaderName, HeaderValue); 2]) {
     let target = format!("{}/webapp/index.html", state.configuration.uri);
     (
         StatusCode::FOUND,
-        [(header::LOCATION, HeaderValue::from_str(&target).unwrap())],
+        [
+            (header::LOCATION, HeaderValue::from_str(&target).unwrap()),
+            (header::CACHE_CONTROL, HeaderValue::from_static("no-cache")),
+        ],
     )
 }
 
