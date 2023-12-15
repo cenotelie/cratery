@@ -7,6 +7,7 @@
 mod api;
 mod docs;
 mod index;
+mod migrations;
 mod objects;
 mod storage;
 mod transaction;
@@ -14,7 +15,6 @@ mod transaction;
 use std::borrow::Cow;
 use std::collections::HashMap;
 use std::env;
-use std::error::Error;
 use std::future::IntoFuture;
 use std::net::SocketAddr;
 use std::ops::{Deref, DerefMut};
@@ -755,18 +755,17 @@ async fn main() {
         .await
         .unwrap();
 
-    // prepare the index
-    let index = Index::on_launch(configuration.get_index_git_config()).await.unwrap();
-
     // connection pool to the database
     let pool = SqlitePoolOptions::new()
         .max_connections(1)
         .connect_lazy(&configuration.get_database_url())
         .unwrap();
-    let body_limit = env::var("BODY_LIMIT")
-        .map_err::<Box<dyn Error>, _>(std::convert::Into::into)
-        .and_then(|var| var.parse::<usize>().map_err::<Box<dyn Error>, _>(std::convert::Into::into))
-        .unwrap_or(10 * 1024 * 1024);
+    // migrate the database, if appropriate
+    migrations::migrate_to_last(&mut pool.acquire().await.unwrap()).await.unwrap();
+
+    // prepare the index
+    let index = Index::on_launch(configuration.get_index_git_config()).await.unwrap();
+
     // docs worker
     let (docs_work, docs_worker_handle) = docs::create_docs_worker(configuration.clone(), pool.clone());
     // check undocumented packages
@@ -787,6 +786,7 @@ async fn main() {
 
     // web application
     let webapp_resources = embed_dir!("src/webapp");
+    let body_limit = configuration.body_limit;
     let state = Arc::new(AxumState {
         configuration,
         index: Mutex::new(index),

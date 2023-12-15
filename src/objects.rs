@@ -1,5 +1,6 @@
 //! Module for definition of API objects
 
+use std::error::Error;
 use std::io::Cursor;
 use std::{collections::HashMap, env::VarError};
 
@@ -29,6 +30,9 @@ pub struct Configuration {
     /// Web domain for the license
     #[serde(rename = "licenseWebDomain")]
     pub licence_web_domain: String,
+    /// The maximum size for the body of incoming requests
+    #[serde(rename = "licenseWebDomain")]
+    pub body_limit: usize,
     /// The data directory
     #[serde(rename = "dataDir")]
     pub data_dir: String,
@@ -89,6 +93,10 @@ impl Configuration {
         Ok(Self {
             license_id: std::env::var("REGISTRY_LICENSE_ID")?,
             licence_web_domain: licence_web_domain.clone(),
+            body_limit: std::env::var("REGISTRY_BODY_LIMIT")
+                .map_err::<Box<dyn Error>, _>(std::convert::Into::into)
+                .and_then(|var| var.parse::<usize>().map_err::<Box<dyn Error>, _>(std::convert::Into::into))
+                .unwrap_or(10 * 1024 * 1024),
             data_dir,
             index_config,
             uri,
