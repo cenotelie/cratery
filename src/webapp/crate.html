@@ -27,8 +27,50 @@
   </nav>
 </header>
 <body onload="doPageLoad()" class="bg-white dark:bg-gray-800">
-  <section class="bg-gray-50 dark:bg-gray-900 py-4">
-    
+  <section class="bg-white dark:bg-gray-900">
+    <div class="py-8 lg:py-16 px-4 mx-auto max-w-screen-lg">
+      <h3 id="meta-name" class="mb-2 text-2xl font-bold tracking-tight text-gray-900 dark:text-white"></h3>
+      <p id="meta-version" class="mb-3 font-normal text-gray-700 dark:text-gray-400"></p>
+      <p id="meta-description" class="mb-3 font-normal text-gray-700 dark:text-gray-400"></p>
+      <ul class="flex flex-wrap text-sm font-medium text-center text-gray-500 border-b border-gray-200 dark:border-gray-700 dark:text-gray-400">
+        <li class="me-2">
+            <a id="header-readme" class="inline-block p-4 text-blue-600 bg-gray-100 rounded-t-lg active dark:bg-gray-800 dark:text-blue-500" style="cursor: pointer;" onclick="onClickTab(0)">Readme</a>
+        </li>
+        <li class="me-2">
+            <a id="header-versions" class="inline-block p-4 rounded-t-lg hover:text-gray-600 hover:bg-gray-50 dark:hover:bg-gray-800 dark:hover:text-gray-300" style="cursor: pointer;" onclick="onClickTab(1)">Versions</a>
+        </li>
+        <li class="me-2">
+            <a id="header-dependencies" class="inline-block p-4 rounded-t-lg hover:text-gray-600 hover:bg-gray-50 dark:hover:bg-gray-800 dark:hover:text-gray-300" style="cursor: pointer;" onclick="onClickTab(2)">Dependencies</a>
+        </li>
+      </ul>
+      <div id="tab-readme" class="m-4 flex flex-row">
+        <div id="tab-readme-content" class="basis-3/4"></div>
+        <div class="basis-1/4 mx-2">
+          <h5 class="text-xl font-bold tracking-tight text-gray-900 dark:text-white">Metadata</h5>
+          <p id="meta-uploaded-on" class="ml-4 font-normal text-gray-700 dark:text-gray-400">
+            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-6 h-6" style="display: inline;">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M6.75 3v2.25M17.25 3v2.25M3 18.75V7.5a2.25 2.25 0 0 1 2.25-2.25h13.5A2.25 2.25 0 0 1 21 7.5v11.25m-18 0A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75m-18 0v-7.5A2.25 2.25 0 0 1 5.25 9h13.5A2.25 2.25 0 0 1 21 11.25v7.5m-9-6h.008v.008H12v-.008ZM12 15h.008v.008H12V15Zm0 2.25h.008v.008H12v-.008ZM9.75 15h.008v.008H9.75V15Zm0 2.25h.008v.008H9.75v-.008ZM7.5 15h.008v.008H7.5V15Zm0 2.25h.008v.008H7.5v-.008Zm6.75-4.5h.008v.008h-.008v-.008Zm0 2.25h.008v.008h-.008V15Zm0 2.25h.008v.008h-.008v-.008Zm2.25-4.5h.008v.008H16.5v-.008Zm0 2.25h.008v.008H16.5V15Z" />
+            </svg>
+          </p>
+          <p id="meta-uploaded-by" class="ml-4 font-normal text-gray-700 dark:text-gray-400">
+            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-6 h-6" style="display: inline;">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M17.982 18.725A7.488 7.488 0 0 0 12 15.75a7.488 7.488 0 0 0-5.982 2.975m11.963 0a9 9 0 1 0-11.963 0m11.963 0A8.966 8.966 0 0 1 12 21a8.966 8.966 0 0 1-5.982-2.275M15 9.75a3 3 0 1 1-6 0 3 3 0 0 1 6 0Z" />
+            </svg>
+          </p>
+          <h5 class="text-xl font-bold tracking-tight text-gray-900 dark:text-white mt-8">Install</h5>
+          <p class="ml-4 text-xs font-normal text-gray-700 dark:text-gray-400">
+            Add the following line to your Cargo.toml:
+          </p>
+          <pre class="max-w-xs"><code id="meta-install" class="language-toml hljs"></code></pre>
+          <h5 class="text-xl font-bold tracking-tight text-gray-900 dark:text-white mt-8">Documentation</h5>
+          <h5 class="text-xl font-bold tracking-tight text-gray-900 dark:text-white mt-8">Owners</h5>
+        </div>
+      </div>
+      <div id="tab-versions" class="m-4" style="display: none;">
+      </div>
+      <div id="tab-dependencies" class="m-4" style="display: none;">
+      </div>
+    </div>
   </section>
 </body>
 <footer class="p-4 bg-white md:p-8 lg:p-10 dark:bg-gray-800">
@@ -38,16 +80,140 @@
 </footer>
 
 <link href="/webapp/index.css" rel="stylesheet" />
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/default.min.css">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/vs2015.min.css">
 <script src="/webapp/api.js"></script>
 <script src="/webapp/index.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
 <script>
   function doPageLoad() {
     onPageLoad().then((_user) => {
       const params = getQueryParameters(window.location.search);
-      apiGetCrate(params.crate).then((crate) => {
-        console.log(crate);
-      });
+      Promise.all([
+        apiGetCrate(params.crate),
+        apiGetCrateReadme(params.crate),
+        apiGetCrateOwners(params.crate)
+      ]).then(([crate, readme, owners]) => renderCrate(crate, params.version, readme, owners));
     });
+  }
+
+  function renderCrate(crate, version, readme, owners) {
+    const domainParts = window.location.hostname.split(".");
+    const regName = domainParts.length >= 2 ? domainParts[domainParts.length - 2] : domainParts[0];
+    const currentVersion = version === undefined ? crate.versions[crate.versions.length - 1] : crate.versions.find(meta => meta.index.vers === version);
+    document.getElementById("meta-name").appendChild(document.createTextNode(currentVersion.index.name));
+    document.getElementById("meta-version").appendChild(document.createTextNode(`v${currentVersion.index.vers}`));
+    document.getElementById("meta-description").appendChild(document.createTextNode(crate.metadata?.description));
+    document.getElementById("meta-uploaded-on").appendChild(document.createTextNode(serializeDateTime(currentVersion.upload)));
+    document.getElementById("meta-uploaded-by").appendChild(document.createTextNode(currentVersion.uploadedBy.name));
+    document.getElementById("meta-install").appendChild(document.createTextNode(`${currentVersion.index.name} = { version = "${currentVersion.index.vers}", registry = "${regName}" }`));
+
+    const tabReadmeEl = document.getElementById("tab-readme-content");
+    tabReadmeEl.innerHTML = marked.parse(readme);
+    applyStyle(tabReadmeEl);
+
+    const tabVersions = document.getElementById("tab-versions");
+    for (const version of crate.versions.reverse()) {
+      tabVersions.appendChild(renderVersion(version));
+    }
+
+    hljs.highlightAll();
+  }
+
+  function renderVersion(version) {
+    const card = document.createElement("a");
+    card.href = `/webapp/crate.html?crate=${version.index.name}&version=${version.index.vers}`;
+    card.className = "flex block mb-4 p-6 bg-white border border-gray-200 rounded-lg shadow hover:bg-gray-100 dark:bg-gray-800 dark:border-gray-700 dark:hover:bg-gray-700";
+    const wrapper = document.createElement("div");
+    wrapper.className = "flex items-center me-4";
+    const title = document.createElement("h5");
+    title.className = "text-xl font-bold tracking-tight text-gray-900 dark:text-white";
+    title.appendChild(document.createTextNode(version.index.vers));
+    wrapper.appendChild(title);
+    wrapper.innerHTML += '<p class="ml-4 font-normal text-gray-700 dark:text-gray-400">\
+              <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-6 h-6">\
+                <path stroke-linecap="round" stroke-linejoin="round" d="M17.982 18.725A7.488 7.488 0 0 0 12 15.75a7.488 7.488 0 0 0-5.982 2.975m11.963 0a9 9 0 1 0-11.963 0m11.963 0A8.966 8.966 0 0 1 12 21a8.966 8.966 0 0 1-5.982-2.275M15 9.75a3 3 0 1 1-6 0 3 3 0 0 1 6 0Z" />\
+              </svg>\
+            </p>';
+    const dataUploadedBy = document.createElement("p");
+    dataUploadedBy.className = "font-normal text-gray-700 dark:text-gray-400";
+    dataUploadedBy.appendChild(document.createTextNode(`Uploaded by: ${version.uploadedBy.name}`));
+    wrapper.appendChild(dataUploadedBy);
+    wrapper.innerHTML += '<p class="ml-4 font-normal text-gray-700 dark:text-gray-400">\
+              <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-6 h-6">\
+                <path stroke-linecap="round" stroke-linejoin="round" d="M6.75 3v2.25M17.25 3v2.25M3 18.75V7.5a2.25 2.25 0 0 1 2.25-2.25h13.5A2.25 2.25 0 0 1 21 7.5v11.25m-18 0A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75m-18 0v-7.5A2.25 2.25 0 0 1 5.25 9h13.5A2.25 2.25 0 0 1 21 11.25v7.5m-9-6h.008v.008H12v-.008ZM12 15h.008v.008H12V15Zm0 2.25h.008v.008H12v-.008ZM9.75 15h.008v.008H9.75V15Zm0 2.25h.008v.008H9.75v-.008ZM7.5 15h.008v.008H7.5V15Zm0 2.25h.008v.008H7.5v-.008Zm6.75-4.5h.008v.008h-.008v-.008Zm0 2.25h.008v.008h-.008V15Zm0 2.25h.008v.008h-.008v-.008Zm2.25-4.5h.008v.008H16.5v-.008Zm0 2.25h.008v.008H16.5V15Z" />\
+              </svg>\
+            </p>';
+    const dataUploadedOn = document.createElement("p");
+    dataUploadedOn.className = "font-normal text-gray-700 dark:text-gray-400";
+    dataUploadedOn.appendChild(document.createTextNode(`Uploaded on: ${serializeDateTime(version.upload)}`));
+    wrapper.appendChild(dataUploadedOn);
+    wrapper.innerHTML += '<p class="ml-4 font-normal text-gray-700 dark:text-gray-400">\
+              <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-6 h-6">\
+                <path stroke-linecap="round" stroke-linejoin="round" d="M12 10.5v6m3-3H9m4.06-7.19-2.12-2.12a1.5 1.5 0 0 0-1.061-.44H4.5A2.25 2.25 0 0 0 2.25 6v12a2.25 2.25 0 0 0 2.25 2.25h15A2.25 2.25 0 0 0 21.75 18V9a2.25 2.25 0 0 0-2.25-2.25h-5.379a1.5 1.5 0 0 1-1.06-.44Z" />\
+              </svg>\
+            </p>';
+    const dataFeatures = document.createElement("p");
+    dataFeatures.className = "font-normal text-gray-700 dark:text-gray-400";
+    dataFeatures.appendChild(document.createTextNode(`${Object.getOwnPropertyNames(version.index.features).length} features`));
+    wrapper.appendChild(dataFeatures);
+    wrapper.innerHTML += '<p class="ml-4 font-normal text-gray-700 dark:text-gray-400">\
+              <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-6 h-6">\
+                <path stroke-linecap="round" stroke-linejoin="round" d="M7.217 10.907a2.25 2.25 0 1 0 0 2.186m0-2.186c.18.324.283.696.283 1.093s-.103.77-.283 1.093m0-2.186 9.566-5.314m-9.566 7.5 9.566 5.314m0 0a2.25 2.25 0 1 0 3.935 2.186 2.25 2.25 0 0 0-3.935-2.186Zm0-12.814a2.25 2.25 0 1 0 3.933-2.185 2.25 2.25 0 0 0-3.933 2.185Z" />\
+              </svg>\
+            </p>';
+    const dataDeps = document.createElement("p");
+    dataDeps.className = "font-normal text-gray-700 dark:text-gray-400";
+    dataDeps.appendChild(document.createTextNode(`${version.index.deps.length} dependencies`));
+    wrapper.appendChild(dataDeps);
+    card.appendChild(wrapper);
+    return card;
+  }
+
+  function onClickTab(index) {
+    const headers = [
+      document.getElementById("header-readme"),
+      document.getElementById("header-versions"),
+      document.getElementById("header-dependencies"),
+    ];
+    const tabs = [
+      document.getElementById("tab-readme"),
+      document.getElementById("tab-versions"),
+      document.getElementById("tab-dependencies"),
+    ];
+    for (const header of headers) {
+      header.className = "inline-block p-4 rounded-t-lg hover:text-gray-600 hover:bg-gray-50 dark:hover:bg-gray-800 dark:hover:text-gray-300";
+    }
+    for (const tab of tabs) {
+      tab.style.display = "none";
+    }
+    headers[index].className = "inline-block p-4 text-blue-600 bg-gray-100 rounded-t-lg active dark:bg-gray-800 dark:text-blue-500";
+    tabs[index].style.display = null;
+  }
+
+  function applyStyle(node) {
+    if (node.tagName === "H1") {
+      node.className = "mb-2 text-4xl font-bold tracking-tight text-gray-900 dark:text-white";
+    }
+    if (node.tagName === "H2") {
+      node.className = "mb-2 text-3xl font-bold tracking-tight text-gray-900 dark:text-white";
+    }
+    if (node.tagName === "H3") {
+      node.className = "mb-2 text-2xl font-bold tracking-tight text-gray-900 dark:text-white";
+    }
+    if (node.tagName === "H4") {
+      node.className = "mb-2 text-xl font-bold tracking-tight text-gray-900 dark:text-white";
+    }
+    if (node.tagName === "P") {
+      node.className = "mb-3 font-normal text-gray-700 dark:text-gray-400";
+    }
+    if (node.tagName === "UL") {
+      node.className = "max-w-md space-y-1 text-gray-500 list-disc list-inside dark:text-gray-400";
+    }
+    for (let i = 0; i != node.children.length; i++) {
+      applyStyle(node.children.item(i));
+    }
   }
 </script>
 </html>

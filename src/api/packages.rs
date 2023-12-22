@@ -3,9 +3,12 @@
 use cenotelie_lib_apierror::{error_forbidden, error_invalid_request, error_not_found, specialize, ApiError};
 use chrono::Local;
 
-use crate::objects::{
-    AuthenticatedUser, CrateUploadData, CrateUploadResult, DocsGenerationJob, OwnersQueryResult, RegistryUser,
-    SearchResultCrate, SearchResults, SearchResultsMeta, YesNoMsgResult, YesNoResult,
+use crate::{
+    index::Index,
+    objects::{
+        AuthenticatedUser, CrateInfoVersion, CrateUploadData, CrateUploadResult, DocsGenerationJob, OwnersQueryResult,
+        RegistryUser, SearchResultCrate, SearchResults, SearchResultsMeta, YesNoMsgResult, YesNoResult,
+    },
 };
 
 use super::Application;
@@ -42,6 +45,41 @@ impl<'c> Application<'c> {
             },
             meta: SearchResultsMeta { total },
         })
+    }
+
+    /// Gets the last version number for a package
+    pub async fn get_package_last_version(&self, package: &str) -> Result<String, ApiError> {
+        let row = sqlx::query!(
+            "SELECT version, description FROM PackageVersion WHERE package = $1 AND yanked = FALSE ORDER BY id DESC LIMIT 1",
+            package
+        )
+        .fetch_optional(&mut *self.transaction.borrow().await)
+        .await?
+        .ok_or_else(error_not_found)?;
+        Ok(row.version)
+    }
+
+    /// Gets all the data about versions of a crate
+    pub async fn get_package_versions(&self, package: &str, index: &Index) -> Result<Vec<CrateInfoVersion>, ApiError> {
+        let versions_index = index.get_crate_data(package).await?;
+        let rows = sqlx::query!(
+            "SELECT version, upload, uploadedBy AS uploaded_by FROM PackageVersion WHERE package = $1 ORDER BY id",
+            package
+        )
+        .fetch_all(&mut *self.transaction.borrow().await)
+        .await?;
+        let mut result = Vec::new();
+        for index_data in versions_index {
+            if let Some(row) = rows.iter().find(|row| row.version == index_data.vers) {
+                let uploaded_by = self.get_user_profile(row.uploaded_by).await?;
+                result.push(CrateInfoVersion {
+                    index: index_data,
+                    upload: row.upload,
+                    uploaded_by,
+                });
+            }
+        }
+        Ok(result)
     }
 
     /// Publish a crate

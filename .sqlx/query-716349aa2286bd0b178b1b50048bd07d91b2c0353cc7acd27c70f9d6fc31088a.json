@@ -1,0 +1,32 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT version, upload, uploadedBy AS uploaded_by FROM PackageVersion WHERE package = $1 ORDER BY id",
+  "describe": {
+    "columns": [
+      {
+        "name": "version",
+        "ordinal": 0,
+        "type_info": "Text"
+      },
+      {
+        "name": "upload",
+        "ordinal": 1,
+        "type_info": "Datetime"
+      },
+      {
+        "name": "uploaded_by",
+        "ordinal": 2,
+        "type_info": "Int64"
+      }
+    ],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": [
+      false,
+      false,
+      false
+    ]
+  },
+  "hash": "716349aa2286bd0b178b1b50048bd07d91b2c0353cc7acd27c70f9d6fc31088a"
+}

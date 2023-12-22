@@ -143,6 +143,26 @@ function apiGetCrate(crate) {
   });
 }
 
+function apiGetCrateReadme(crate) {
+  return fetch(`/api/v1/crates/${crate}/readme`).then((response) => {
+    if (response.status !== 200) {
+      throw response.text();
+    } else {
+      return response.text();
+    }
+  });
+}
+
+function apiGetCrateOwners(crate) {
+  return fetch(`/api/v1/crates/${crate}/owners`).then((response) => {
+    if (response.status !== 200) {
+      throw response.text();
+    } else {
+      return response.json();
+    }
+  });
+}
+
 function getQueryParameters(queryString) {
   const regex = new RegExp("[\\?&]([a-zA-Z0-9_-]+)=([^&#]*)", "g");
   let match = null;

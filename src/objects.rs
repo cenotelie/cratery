@@ -508,7 +508,19 @@ pub struct CrateInfo {
     /// The last metadata, if any
     pub metadata: Option<CrateMetadata>,
     /// Gets the versions in the index
-    pub versions: Vec<CrateMetadataIndex>,
+    pub versions: Vec<CrateInfoVersion>,
+}
+
+/// The data for a crate version
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CrateInfoVersion {
+    /// The data from the index
+    pub index: CrateMetadataIndex,
+    /// The upload date time
+    pub upload: NaiveDateTime,
+    /// The user that uploaded the version
+    #[serde(rename = "uploadedBy")]
+    pub uploaded_by: RegistryUser,
 }
 
 /// The upload data for publishing a crate

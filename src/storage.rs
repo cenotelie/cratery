@@ -17,24 +17,37 @@ pub async fn store_crate(config: &Configuration, metadata: &CrateMetadata, conte
         // bucket does not exist => create it
         s3::create_bucket(&config.s3, &config.bucket).await?;
     }
-    let object_key = format!("{}/{}", metadata.name, metadata.vers);
-    s3::upload_object_raw(&config.s3, &config.bucket, &object_key, None, content).await?;
-    store_crate_last_metadata(config, metadata).await?;
-    store_crate_readme(config, &metadata.name, readme).await?;
-    Ok(())
-}
-
-/// Stores the last metadata for a crate
-pub async fn store_crate_last_metadata(config: &Configuration, metadata: &CrateMetadata) -> Result<(), ApiError> {
-    let content = serde_json::to_vec(metadata)?;
-    let object_key = format!("{}/metadata", metadata.name,);
-    s3::upload_object_raw(&config.s3, &config.bucket, &object_key, None, content).await?;
+    s3::upload_object_raw(
+        &config.s3,
+        &config.bucket,
+        &format!("{}/{}", metadata.name, metadata.vers),
+        None,
+        content,
+    )
+    .await?;
+    // version data
+    s3::upload_object_raw(
+        &config.s3,
+        &config.bucket,
+        &format!("{}/{}/metadata", metadata.name, metadata.vers),
+        None,
+        serde_json::to_vec(metadata)?,
+    )
+    .await?;
+    s3::upload_object_raw(
+        &config.s3,
+        &config.bucket,
+        &format!("{}/{}/readme", metadata.name, metadata.vers),
+        None,
+        readme,
+    )
+    .await?;
     Ok(())
 }
 
 /// Stores the README for a crate
-pub async fn store_crate_readme(config: &Configuration, name: &str, content: Vec<u8>) -> Result<(), ApiError> {
-    let object_key = format!("{name}/readme");
+pub async fn store_crate_readme(config: &Configuration, name: &str, version: &str, content: Vec<u8>) -> Result<(), ApiError> {
+    let object_key = format!("{name}/{version}/readme");
     s3::upload_object_raw(&config.s3, &config.bucket, &object_key, None, content).await?;
     Ok(())
 }
@@ -47,8 +60,12 @@ pub async fn download_crate(config: &Configuration, name: &str, version: &str) -
 }
 
 /// Downloads the last metadata for a crate
-pub async fn download_crate_last_metadata(config: &Configuration, name: &str) -> Result<Option<CrateMetadata>, ApiError> {
-    let object_key = format!("{name}/metadata");
+pub async fn download_crate_metadata(
+    config: &Configuration,
+    name: &str,
+    version: &str,
+) -> Result<Option<CrateMetadata>, ApiError> {
+    let object_key = format!("{name}/{version}/metadata");
     if let Ok(data) = s3::get_object(&config.s3, &config.bucket, &object_key).await {
         Ok(Some(serde_json::from_slice(&data)?))
     } else {
@@ -57,8 +74,8 @@ pub async fn download_crate_last_metadata(config: &Configuration, name: &str) ->
 }
 
 /// Downloads the last README for a crate
-pub async fn download_crate_readme(config: &Configuration, name: &str) -> Result<Vec<u8>, ApiError> {
-    let object_key = format!("{name}/readme");
+pub async fn download_crate_readme(config: &Configuration, name: &str, version: &str) -> Result<Vec<u8>, ApiError> {
+    let object_key = format!("{name}/{version}/readme");
     let data = s3::get_object(&config.s3, &config.bucket, &object_key).await?;
     Ok(data)
 }

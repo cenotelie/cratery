@@ -53,7 +53,7 @@ impl<'c> Application<'c> {
     }
 
     /// Retrieves a user profile
-    async fn get_user_profile(&self, uid: i64) -> Result<RegistryUser, ApiError> {
+    pub async fn get_user_profile(&self, uid: i64) -> Result<RegistryUser, ApiError> {
         let maybe_row = sqlx::query_as!(
             RegistryUser,
             "SELECT id, isActive AS is_active, email, login, name, roles FROM RegistryUser WHERE id = $1",
