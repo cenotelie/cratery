@@ -219,6 +219,16 @@ function serializeDateTime(date) {
   )}`;
 }
 
+function serializeDate(date) {
+  if (date === null) {
+    return "";
+  }
+  date = toDate(date);
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(
+    date.getDate()
+  )}`;
+}
+
 function pad(x) {
   if (x < 10) {
     return "0" + x;
