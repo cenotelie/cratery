@@ -7,7 +7,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <link rel="icon" type="image/png" href="./favicon.png">
   <title>
-    Cratery
+    Cratery -- My account
   </title>
   <script src="https://cdn.tailwindcss.com"></script>
 </head>
@@ -179,6 +179,21 @@
         document.getElementById("login").value = user.login;
         document.getElementById("name").value = user.name;
         document.getElementById("roles").value = user.roles;
+        setupOnChange(document.getElementById("login"), (login) => {
+          const user = JSON.parse(window.localStorage.getItem("cratery-user"));
+          return apiUpdateUser({...user, login}).then(user => {
+            window.localStorage.setItem("cratery-user", JSON.stringify(user));
+            return user;
+          });
+        });
+
+        setupOnChange(document.getElementById("name"), (name) => {
+          const user = JSON.parse(window.localStorage.getItem("cratery-user"));
+          return apiUpdateUser({...user, name}).then(user => {
+            window.localStorage.setItem("cratery-user", JSON.stringify(user));
+            return user;
+          });
+        });
         apiGetTokens().then((tokens) => {
           const table = document.getElementById("tokens");
           for (const token of tokens) {
@@ -232,22 +247,6 @@
       row.appendChild(cell4);
       return row;
     }
-
-    setupOnChange(document.getElementById("login"), (login) => {
-      const user = JSON.parse(window.localStorage.getItem("cratery-user"));
-      return apiUpdateUser({...user, login}).then(user => {
-        window.localStorage.setItem("cratery-user", JSON.stringify(user));
-        return user;
-      });
-    });
-
-    setupOnChange(document.getElementById("name"), (name) => {
-      const user = JSON.parse(window.localStorage.getItem("cratery-user"));
-      return apiUpdateUser({...user, name}).then(user => {
-        window.localStorage.setItem("cratery-user", JSON.stringify(user));
-        return user;
-      });
-    });
 
     function onOpenCreateToken() {
       const modalEl = document.getElementById('modal-create-token');

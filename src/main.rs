@@ -7,6 +7,7 @@
 mod api;
 mod docs;
 mod index;
+mod jobs;
 mod migrations;
 mod objects;
 mod storage;
@@ -46,7 +47,7 @@ use futures::lock::Mutex;
 use futures::{SinkExt, Stream};
 use log::info;
 use objects::{
-    AppVersion, AuthenticatedUser, Configuration, CrateMetadataIndex, CrateUploadData, CrateUploadResult, DocsGenerationJob,
+    AppVersion, AuthenticatedUser, Configuration, CrateInfo, CrateUploadData, CrateUploadResult, DocsGenerationJob,
     OwnersAddQuery, OwnersQueryResult, RegistryUser, RegistryUserToken, RegistryUserTokenWithSecret, SearchResults,
     YesNoMsgResult,
 };
@@ -404,13 +405,7 @@ async fn api_v1_publish(
             // publish
             let index = state.index.lock().await;
             let r = app.publish(&authenticated_user, &package).await?;
-            storage::store_crate(
-                &state.configuration,
-                &package.metadata.name,
-                &package.metadata.vers,
-                package.content,
-            )
-            .await?;
+            storage::store_crate(&state.configuration, &package.metadata, package.content).await?;
             index.publish_crate_version(&index_data).await?;
             // generate the doc
             state
@@ -432,16 +427,40 @@ async fn api_v1_get_package(
     auth_data: AuthData,
     State(state): State<Arc<AxumState>>,
     Path(PathInfoCrate { package }): Path<PathInfoCrate>,
-) -> ApiResult<Vec<CrateMetadataIndex>> {
+) -> ApiResult<CrateInfo> {
     response(
         in_transaction(&mut connection, |transaction| async move {
             let app = Application::new(transaction);
             let _principal = auth_data.authenticate(|token| authenticate(token, &app)).await?;
             let index = state.index.lock().await;
-            index.get_crate_data(&package).await
+            let versions = index.get_crate_data(&package).await?;
+            let metadata = storage::download_crate_last_metadata(&state.configuration, &package).await?;
+            Ok(CrateInfo { metadata, versions })
         })
         .await,
     )
+}
+
+async fn api_v1_get_package_readme(
+    mut connection: DbConn,
+    auth_data: AuthData,
+    State(state): State<Arc<AxumState>>,
+    Path(PathInfoCrate { package }): Path<PathInfoCrate>,
+) -> Result<(StatusCode, [(HeaderName, HeaderValue); 1], Vec<u8>), (StatusCode, Json<ApiError>)> {
+    let data = in_transaction(&mut connection, |transaction| async move {
+        let app = Application::new(transaction);
+        let _principal = auth_data.authenticate(|token| authenticate(token, &app)).await?;
+        let readme = storage::download_crate_readme(&state.configuration, &package).await?;
+        Ok(readme)
+    })
+    .await
+    .map_err(response_error)?;
+
+    Ok((
+        StatusCode::OK,
+        [(header::CONTENT_TYPE, HeaderValue::from_static("text/markdown"))],
+        data,
+    ))
 }
 
 // #[get("/crates/{package}/{version}/download")]
@@ -450,7 +469,7 @@ async fn api_v1_download(
     auth_data: AuthData,
     State(state): State<Arc<AxumState>>,
     Path(PathInfoCrateVersion { package, version }): Path<PathInfoCrateVersion>,
-) -> Result<(StatusCode, Vec<u8>), (StatusCode, Json<ApiError>)> {
+) -> Result<(StatusCode, [(HeaderName, HeaderValue); 1], Vec<u8>), (StatusCode, Json<ApiError>)> {
     match in_transaction(&mut connection, |transaction| async move {
         let app = Application::new(transaction);
         let _principal = auth_data.authenticate(|token| authenticate(token, &app)).await?;
@@ -460,7 +479,11 @@ async fn api_v1_download(
     })
     .await
     {
-        Ok(data) => Ok((StatusCode::OK, data)),
+        Ok(data) => Ok((
+            StatusCode::OK,
+            [(header::CONTENT_TYPE, HeaderValue::from_static("application/octet-stream"))],
+            data,
+        )),
         Err(mut error) => {
             if error.http == 401 {
                 // map to 403
@@ -788,6 +811,11 @@ async fn main() {
     // migrate the database, if appropriate
     migrations::migrate_to_last(&mut pool.acquire().await.unwrap()).await.unwrap();
 
+    // extract all readmes
+    // jobs::publish_readme_files(&mut pool.acquire().await.unwrap(), &configuration)
+    //     .await
+    //     .unwrap();
+
     // prepare the index
     let index = Index::on_launch(configuration.get_index_git_config()).await.unwrap();
 
@@ -861,6 +889,7 @@ async fn main() {
                         .route("/", get(api_v1_search))
                         .route("/new", put(api_v1_publish))
                         .route("/:package", get(api_v1_get_package))
+                        .route("/:package/readme", get(api_v1_get_package_readme))
                         .route("/:package/:version/download", get(api_v1_download))
                         .route("/:package/:version/yank", delete(api_v1_yank))
                         .route("/:package/:version/unyank", put(api_v1_unyank))

@@ -502,6 +502,15 @@ impl From<&Dependency> for DependencyIndex {
     }
 }
 
+/// Gets the last info for a crate
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CrateInfo {
+    /// The last metadata, if any
+    pub metadata: Option<CrateMetadata>,
+    /// Gets the versions in the index
+    pub versions: Vec<CrateMetadataIndex>,
+}
+
 /// The upload data for publishing a crate
 pub struct CrateUploadData {
     /// The metadata
