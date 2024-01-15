@@ -23,18 +23,9 @@ stages:
       image: rg.fr-par.scw.cloud/cenotelie/build-env:latest
       endpoint: scaleway
     steps:
-    - task: ShellScript@2
-      displayName: Cargo authentication
-      inputs:
-        scriptPath: /home/builder/cargo-auth.sh
-      env:
-        CARGO_LOGIN: $(cargoLogin)
-        CARGO_TOKEN: $(cargoSecret)
-    - task: ShellScript@2
-      displayName: Build sources
-      inputs:
-        scriptPath: build-src.sh
-        args: --target=production
+    - script: |
+        /home/builder/cargo-auth.sh $(cargoLogin) $(cargoSecret)
+        ./build-src.sh --target=production
     - task: CopyFiles@2
       condition: startsWith(variables['Build.SourceBranch'], 'refs/tags/')
       inputs:
