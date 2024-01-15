@@ -24,7 +24,7 @@ stages:
       endpoint: scaleway
     steps:
     - script: |
-        bash /home/builder/cargo-auth.sh $(cargoLogin) $(cargoSecret)
+        bash /home/builder/cargo-auth.sh $(cargoLogin) $(cargoToken)
         bash ./build-src.sh --target=production
     - task: CopyFiles@2
       condition: startsWith(variables['Build.SourceBranch'], 'refs/tags/')
