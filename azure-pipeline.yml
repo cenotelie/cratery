@@ -24,13 +24,17 @@ stages:
       endpoint: scaleway
     steps:
     - task: ShellScript@2
+      displayName: Cargo authentication
+      inputs:
+        scriptPath: /home/builder/cargo-auth.sh
+      env:
+        CARGO_LOGIN: $(cargoLogin)
+        CARGO_TOKEN: $(cargoSecret)
+    - task: ShellScript@2
       displayName: Build sources
       inputs:
         scriptPath: build-src.sh
         args: --target=production
-      env:
-        AWS_ACCESS_KEY_ID: $(s3KeyId)
-        AWS_SECRET_ACCESS_KEY: $(s3KeySecret)
     - task: CopyFiles@2
       condition: startsWith(variables['Build.SourceBranch'], 'refs/tags/')
       inputs:
