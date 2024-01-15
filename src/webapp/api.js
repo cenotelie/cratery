@@ -143,8 +143,18 @@ function apiGetCrate(crate) {
   });
 }
 
-function apiGetCrateReadme(crate) {
+function apiGetCrateLastReadme(crate) {
   return fetch(`/api/v1/crates/${crate}/readme`).then((response) => {
+    if (response.status !== 200) {
+      throw response.text();
+    } else {
+      return response.text();
+    }
+  });
+}
+
+function apiGetCrateReadmeAt(crate, version) {
+  return fetch(`/api/v1/crates/${crate}/${version}/readme`).then((response) => {
     if (response.status !== 200) {
       throw response.text();
     } else {

@@ -40,23 +40,29 @@
             <a id="header-versions" class="inline-block p-4 rounded-t-lg hover:text-gray-600 hover:bg-gray-50 dark:hover:bg-gray-800 dark:hover:text-gray-300" style="cursor: pointer;" onclick="onClickTab(1)">Versions</a>
         </li>
         <li class="me-2">
-            <a id="header-dependencies" class="inline-block p-4 rounded-t-lg hover:text-gray-600 hover:bg-gray-50 dark:hover:bg-gray-800 dark:hover:text-gray-300" style="cursor: pointer;" onclick="onClickTab(2)">Dependencies</a>
+          <a id="header-features" class="inline-block p-4 rounded-t-lg hover:text-gray-600 hover:bg-gray-50 dark:hover:bg-gray-800 dark:hover:text-gray-300" style="cursor: pointer;" onclick="onClickTab(2)">Features</a>
+        </li>
+        <li class="me-2">
+            <a id="header-dependencies" class="inline-block p-4 rounded-t-lg hover:text-gray-600 hover:bg-gray-50 dark:hover:bg-gray-800 dark:hover:text-gray-300" style="cursor: pointer;" onclick="onClickTab(3)">Dependencies</a>
+        </li>
+        <li class="me-2" style="display: none;">
+            <a id="header-admin" class="inline-block p-4 rounded-t-lg hover:text-gray-600 hover:bg-gray-50 dark:hover:bg-gray-800 dark:hover:text-gray-300" style="cursor: pointer;" onclick="onClickTab(4)">Settings</a>
         </li>
       </ul>
       <div id="tab-readme" class="m-4 flex flex-row">
         <div id="tab-readme-content" class="basis-3/4"></div>
-        <div class="basis-1/4 mx-2">
+        <div id="tab-readme-props" class="basis-1/4 mx-2">
           <h5 class="text-xl font-bold tracking-tight text-gray-900 dark:text-white">Metadata</h5>
           <p id="meta-uploaded-on" class="ml-4 font-normal text-gray-700 dark:text-gray-400">
             <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-6 h-6" style="display: inline;">
               <path stroke-linecap="round" stroke-linejoin="round" d="M6.75 3v2.25M17.25 3v2.25M3 18.75V7.5a2.25 2.25 0 0 1 2.25-2.25h13.5A2.25 2.25 0 0 1 21 7.5v11.25m-18 0A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75m-18 0v-7.5A2.25 2.25 0 0 1 5.25 9h13.5A2.25 2.25 0 0 1 21 11.25v7.5m-9-6h.008v.008H12v-.008ZM12 15h.008v.008H12V15Zm0 2.25h.008v.008H12v-.008ZM9.75 15h.008v.008H9.75V15Zm0 2.25h.008v.008H9.75v-.008ZM7.5 15h.008v.008H7.5V15Zm0 2.25h.008v.008H7.5v-.008Zm6.75-4.5h.008v.008h-.008v-.008Zm0 2.25h.008v.008h-.008V15Zm0 2.25h.008v.008h-.008v-.008Zm2.25-4.5h.008v.008H16.5v-.008Zm0 2.25h.008v.008H16.5V15Z" />
             </svg>
           </p>
-          <p id="meta-uploaded-by" class="ml-4 font-normal text-gray-700 dark:text-gray-400">
+          <a id="meta-uploaded-by" class="ml-4 font-normal text-gray-700 dark:text-gray-400">
             <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-6 h-6" style="display: inline;">
               <path stroke-linecap="round" stroke-linejoin="round" d="M17.982 18.725A7.488 7.488 0 0 0 12 15.75a7.488 7.488 0 0 0-5.982 2.975m11.963 0a9 9 0 1 0-11.963 0m11.963 0A8.966 8.966 0 0 1 12 21a8.966 8.966 0 0 1-5.982-2.275M15 9.75a3 3 0 1 1-6 0 3 3 0 0 1 6 0Z" />
             </svg>
-          </p>
+          </a>
           <h5 class="text-xl font-bold tracking-tight text-gray-900 dark:text-white mt-8">Install</h5>
           <p class="ml-4 text-xs font-normal text-gray-700 dark:text-gray-400">
             Add the following line to your Cargo.toml:
@@ -68,7 +74,13 @@
       </div>
       <div id="tab-versions" class="m-4" style="display: none;">
       </div>
+      <div id="tab-features" class="m-4" style="display: none;">
+      </div>
       <div id="tab-dependencies" class="m-4" style="display: none;">
+      </div>
+      <div id="tab-admin" class="m-4"" style="display: none;">
+        <h5 class="text-xl font-bold tracking-tight text-gray-900 dark:text-white mt-8">Owners</h5>
+        </p>
       </div>
     </div>
   </section>
@@ -88,17 +100,18 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
 <script>
   function doPageLoad() {
-    onPageLoad().then((_user) => {
+    onPageLoad().then((user) => {
       const params = getQueryParameters(window.location.search);
       Promise.all([
+        Promise.resolve(user),
         apiGetCrate(params.crate),
-        apiGetCrateReadme(params.crate),
+        params.version === undefined ? apiGetCrateLastReadme(params.crate) : apiGetCrateReadmeAt(params.crate, params.version),
         apiGetCrateOwners(params.crate)
-      ]).then(([crate, readme, owners]) => renderCrate(crate, params.version, readme, owners));
+      ]).then(([user, crate, readme, owners]) => renderCrate(user, crate, params.version, readme, owners));
     });
   }
 
-  function renderCrate(crate, version, readme, owners) {
+  function renderCrate(currentUser, crate, version, readme, owners) {
     const domainParts = window.location.hostname.split(".");
     const regName = domainParts.length >= 2 ? domainParts[domainParts.length - 2] : domainParts[0];
     const currentVersion = version === undefined ? crate.versions[crate.versions.length - 1] : crate.versions.find(meta => meta.index.vers === version);
@@ -107,15 +120,26 @@
     document.getElementById("meta-description").appendChild(document.createTextNode(crate.metadata?.description));
     document.getElementById("meta-uploaded-on").appendChild(document.createTextNode(serializeDate(currentVersion.upload)));
     document.getElementById("meta-uploaded-by").appendChild(document.createTextNode(currentVersion.uploadedBy.name));
+    document.getElementById("meta-uploaded-by").href = `mailto:${currentVersion.uploadedBy.email}`;
     document.getElementById("meta-install").appendChild(document.createTextNode(`${currentVersion.index.name} = { version = "${currentVersion.index.vers}", registry = "${regName}" }`));
 
     const tabReadmeEl = document.getElementById("tab-readme-content");
     tabReadmeEl.innerHTML = marked.parse(readme);
     applyStyle(tabReadmeEl);
+  
+    const tabReadmePropsEl = document.getElementById("tab-readme-props");
+    for (const owner of owners.users) {
+      tabReadmePropsEl.appendChild(renderOwner(owner));
+    }
 
     const tabVersions = document.getElementById("tab-versions");
     for (const version of crate.versions.reverse()) {
       tabVersions.appendChild(renderVersion(version));
+    }
+
+    const tabFeatures = document.getElementById("tab-features");
+    for (const featureName of Object.getOwnPropertyNames(currentVersion.index.features)) {
+      tabFeatures.appendChild(renderFeature(featureName, currentVersion.index.features[featureName]));
     }
 
     const tabDependencies = document.getElementById("tab-dependencies");
@@ -123,7 +147,24 @@
       tabDependencies.appendChild(renderDependency(dep));
     }
 
+    const canAdmin = currentUser.roles.includes("admin") || owners.users.find(u => u.id === currentUser.id) !== undefined;
+    if (canAdmin) {
+      document.getElementById("header-admin").parentElement.style.display = null;
+    }
+
     hljs.highlightAll();
+  }
+
+  function renderOwner(owner) {
+    const wrapper = document.createElement("a");
+    wrapper.href = `mailto:${owner.email}`;
+    wrapper.className = "ml-4 font-normal text-gray-700 dark:text-gray-400";
+    wrapper.innerHTML += '<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-6 h-6" style="display: inline;">\
+              <path stroke-linecap="round" stroke-linejoin="round" d="M17.982 18.725A7.488 7.488 0 0 0 12 15.75a7.488 7.488 0 0 0-5.982 2.975m11.963 0a9 9 0 1 0-11.963 0m11.963 0A8.966 8.966 0 0 1 12 21a8.966 8.966 0 0 1-5.982-2.275M15 9.75a3 3 0 1 1-6 0 3 3 0 0 1 6 0Z" />\
+            </svg>';
+    wrapper.appendChild(document.createTextNode(" "));
+    wrapper.appendChild(document.createTextNode(owner.name));
+    return wrapper;
   }
 
   function renderVersion(version) {
@@ -172,6 +213,23 @@
     dataDeps.className = "font-normal text-gray-700 dark:text-gray-400";
     dataDeps.appendChild(document.createTextNode(`${version.index.deps.length} dependencies`));
     wrapper.appendChild(dataDeps);
+    card.appendChild(wrapper);
+    return card;
+  }
+
+  function renderFeature(featureName, feature) {
+    const card = document.createElement("div");
+    card.className = "flex block mb-4 p-6 bg-white border border-gray-200 rounded-lg shadow hover:bg-gray-100 dark:bg-gray-800 dark:border-gray-700 dark:hover:bg-gray-700";
+    const wrapper = document.createElement("div");
+    wrapper.className = "flex items-center me-4";
+    const title = document.createElement("h5");
+    title.className = "text-xl font-bold tracking-tight text-gray-900 dark:text-white";
+    title.appendChild(document.createTextNode(featureName));
+    wrapper.appendChild(title);
+    const content = document.createElement("p");
+    content.className = "ml-4 font-normal text-gray-700 dark:text-gray-400";
+    content.appendChild(document.createTextNode(feature.join(", ")));
+    wrapper.appendChild(content);
     card.appendChild(wrapper);
     return card;
   }
@@ -230,19 +288,22 @@
 
     card.appendChild(wrapper);
     return card;
-
   }
 
   function onClickTab(index) {
     const headers = [
       document.getElementById("header-readme"),
       document.getElementById("header-versions"),
+      document.getElementById("header-features"),
       document.getElementById("header-dependencies"),
+      document.getElementById("header-admin"),
     ];
     const tabs = [
       document.getElementById("tab-readme"),
       document.getElementById("tab-versions"),
+      document.getElementById("tab-features"),
       document.getElementById("tab-dependencies"),
+      document.getElementById("tab-admin"),
     ];
     for (const header of headers) {
       header.className = "inline-block p-4 rounded-t-lg hover:text-gray-600 hover:bg-gray-50 dark:hover:bg-gray-800 dark:hover:text-gray-300";
