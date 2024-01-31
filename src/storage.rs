@@ -100,3 +100,9 @@ pub fn extract_readme(crate_content: &[u8]) -> Result<Vec<u8>, ApiError> {
         .transpose()?;
     Ok(buffer)
 }
+
+/// Gets the keys for all the objects in the bucket
+pub async fn get_objects_in_bucket(config: &Configuration) -> Result<Vec<String>, ApiError> {
+    let result = s3::list_objects(&config.s3, &config.bucket, None, None).await?;
+    Ok(result.into_iter().map(|o| o.key).collect())
+}
