@@ -141,7 +141,8 @@ impl<'c> Application<'c> {
         }
         let roles = if count == 0 { "admin" } else { "" };
         let id = sqlx::query!(
-            "INSERT INTO RegistryUser (isActive, login, name, roles) VALUES (TRUE, $1, $1, $2) RETURNING id",
+            "INSERT INTO RegistryUser (isActive, email, login, name, roles) VALUES (TRUE, $1, $2, $2, $3) RETURNING id",
+            email,
             login,
             roles
         )
