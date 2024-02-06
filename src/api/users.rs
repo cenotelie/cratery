@@ -5,22 +5,14 @@ use cenotelie_lib_apierror::{
 };
 use chrono::Local;
 use data_encoding::HEXLOWER;
-use rand::distributions::Alphanumeric;
-use rand::{thread_rng, Rng};
 use ring::digest::{Context, SHA256};
 
 use crate::objects::{
-    AuthenticatedUser, Configuration, OAuthToken, RegistryUser, RegistryUserToken, RegistryUserTokenWithSecret,
+    generate_token, AuthenticatedUser, Configuration, OAuthToken, RegistryUser, RegistryUserToken, RegistryUserTokenWithSecret,
 };
 
 use super::namegen::generate_name;
 use super::Application;
-
-/// Generates a token
-fn generate_token(length: usize) -> String {
-    let rng = thread_rng();
-    String::from_utf8(rng.sample_iter(&Alphanumeric).take(length).collect()).unwrap()
-}
 
 /// Computes the SHA256 digest of bytes
 fn sha256(buffer: &[u8]) -> String {

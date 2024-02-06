@@ -6,7 +6,7 @@ description = "Cratery -- a private cargo registry"
 repository = "https://github.com/cenotelie/cratery"
 homepage = "https://github.com/cenotelie/cratery"
 documentation = "https://github.com/cenotelie/cratery"
-license = "LGPL-3.0"
+license = "MIT"
 edition = "2021"
 publish = ["cenotelie"]
 
@@ -17,6 +17,7 @@ serde_derive = "1.0"
 serde_json = "1.0"
 chrono = { version = "0.4", features = ["serde"] }
 byteorder = "1.4"
+base64 = "0.21"
 mime = "0.3"
 rand = "0.8"
 data-encoding = "2.1"
@@ -27,7 +28,7 @@ tar = "0.4"
 futures = "0.3"
 tokio = { version = "1", features = ["full"] }
 tokio-util = {version = "0.7", features = ["io"]}
-sqlx = { version = "0.7", features = ["runtime-tokio-rustls", "sqlite", "macros", "chrono"] }
+sqlx = { version = "0.7", default-features = false, features = ["runtime-tokio-rustls", "sqlite", "macros", "chrono"] }
 axum = { version = "0.7", features = [] }
 reqwest = { version = "0.11", default-features = false, features = ["stream", "rustls-tls"] }
 cenotelie_lib_log = { version = "1.1", registry = "cenotelie" }

@@ -120,8 +120,16 @@ struct PathInfoCrateVersion {
 }
 
 /// Tries to authenticate using a token
-async fn authenticate(token: &Token, app: &Application<'_>) -> Result<AuthenticatedUser, ApiError> {
+async fn authenticate(token: &Token, app: &Application<'_>, config: &Configuration) -> Result<AuthenticatedUser, ApiError> {
     if let Token::Basic { id, secret } = token {
+        if id == &config.self_service_login && secret == &config.self_service_token {
+            // self authentication to read
+            return Ok(AuthenticatedUser {
+                principal: config.self_service_login.clone(),
+                can_write: false,
+                can_admin: false,
+            });
+        }
         let user = app.check_token(id, secret).await?;
         Ok(user)
     } else {
@@ -168,7 +176,9 @@ async fn get_webapp_resource(
     if path == "index.html" {
         let is_authenticated = in_transaction(&mut connection, |transaction| async {
             let app = Application::new(transaction);
-            auth_data.authenticate(|token| authenticate(token, &app)).await
+            auth_data
+                .authenticate(|token| authenticate(token, &app, &state.configuration))
+                .await
         })
         .await
         .is_ok();
@@ -221,11 +231,17 @@ async fn webapp_me(State(state): State<Arc<AxumState>>) -> (StatusCode, [(Header
 }
 
 /// Get the current user
-async fn api_get_current_user(mut connection: DbConn, auth_data: AuthData) -> ApiResult<RegistryUser> {
+async fn api_get_current_user(
+    mut connection: DbConn,
+    auth_data: AuthData,
+    State(state): State<Arc<AxumState>>,
+) -> ApiResult<RegistryUser> {
     response(
         in_transaction(&mut connection, |transaction| async {
             let app = Application::new(transaction);
-            let authenticated_user = auth_data.authenticate(|token| authenticate(token, &app)).await?;
+            let authenticated_user = auth_data
+                .authenticate(|token| authenticate(token, &app, &state.configuration))
+                .await?;
             app.get_current_user(&authenticated_user).await
         })
         .await,
@@ -269,11 +285,17 @@ async fn api_logout(mut auth_data: AuthData) -> (StatusCode, [(HeaderName, Heade
 }
 
 /// Gets the known users
-async fn api_get_users(mut connection: DbConn, auth_data: AuthData) -> ApiResult<Vec<RegistryUser>> {
+async fn api_get_users(
+    mut connection: DbConn,
+    auth_data: AuthData,
+    State(state): State<Arc<AxumState>>,
+) -> ApiResult<Vec<RegistryUser>> {
     response(
         in_transaction(&mut connection, |transaction| async {
             let app = Application::new(transaction);
-            let authenticated_user = auth_data.authenticate(|token| authenticate(token, &app)).await?;
+            let authenticated_user = auth_data
+                .authenticate(|token| authenticate(token, &app, &state.configuration))
+                .await?;
             app.get_users(&authenticated_user).await
         })
         .await,
@@ -284,6 +306,7 @@ async fn api_get_users(mut connection: DbConn, auth_data: AuthData) -> ApiResult
 async fn api_update_user(
     mut connection: DbConn,
     auth_data: AuthData,
+    State(state): State<Arc<AxumState>>,
     Path(Base64(email)): Path<Base64>,
     target: Json<RegistryUser>,
 ) -> ApiResult<RegistryUser> {
@@ -296,7 +319,9 @@ async fn api_update_user(
     response(
         in_transaction(&mut connection, |transaction| async {
             let app = Application::new(transaction);
-            let authenticated_user = auth_data.authenticate(|token| authenticate(token, &app)).await?;
+            let authenticated_user = auth_data
+                .authenticate(|token| authenticate(token, &app, &state.configuration))
+                .await?;
             app.update_user(&authenticated_user, &target).await
         })
         .await,
@@ -304,11 +329,18 @@ async fn api_update_user(
 }
 
 /// Attempts to deactivate a user
-async fn api_deactivate_user(mut connection: DbConn, auth_data: AuthData, Path(Base64(email)): Path<Base64>) -> ApiResult<()> {
+async fn api_deactivate_user(
+    mut connection: DbConn,
+    auth_data: AuthData,
+    State(state): State<Arc<AxumState>>,
+    Path(Base64(email)): Path<Base64>,
+) -> ApiResult<()> {
     response(
         in_transaction(&mut connection, |transaction| async {
             let app = Application::new(transaction);
-            let authenticated_user = auth_data.authenticate(|token| authenticate(token, &app)).await?;
+            let authenticated_user = auth_data
+                .authenticate(|token| authenticate(token, &app, &state.configuration))
+                .await?;
             app.deactivate_user(&authenticated_user, &email).await
         })
         .await,
@@ -316,11 +348,18 @@ async fn api_deactivate_user(mut connection: DbConn, auth_data: AuthData, Path(B
 }
 
 /// Attempts to deactivate a user
-async fn api_reactivate_user(mut connection: DbConn, auth_data: AuthData, Path(Base64(email)): Path<Base64>) -> ApiResult<()> {
+async fn api_reactivate_user(
+    mut connection: DbConn,
+    auth_data: AuthData,
+    State(state): State<Arc<AxumState>>,
+    Path(Base64(email)): Path<Base64>,
+) -> ApiResult<()> {
     response(
         in_transaction(&mut connection, |transaction| async {
             let app = Application::new(transaction);
-            let authenticated_user = auth_data.authenticate(|token| authenticate(token, &app)).await?;
+            let authenticated_user = auth_data
+                .authenticate(|token| authenticate(token, &app, &state.configuration))
+                .await?;
             app.reactivate_user(&authenticated_user, &email).await
         })
         .await,
@@ -328,11 +367,18 @@ async fn api_reactivate_user(mut connection: DbConn, auth_data: AuthData, Path(B
 }
 
 /// Attempts to delete a user
-async fn api_delete_user(mut connection: DbConn, auth_data: AuthData, Path(Base64(email)): Path<Base64>) -> ApiResult<()> {
+async fn api_delete_user(
+    mut connection: DbConn,
+    auth_data: AuthData,
+    State(state): State<Arc<AxumState>>,
+    Path(Base64(email)): Path<Base64>,
+) -> ApiResult<()> {
     response(
         in_transaction(&mut connection, |transaction| async {
             let app = Application::new(transaction);
-            let authenticated_user = auth_data.authenticate(|token| authenticate(token, &app)).await?;
+            let authenticated_user = auth_data
+                .authenticate(|token| authenticate(token, &app, &state.configuration))
+                .await?;
             app.delete_user(&authenticated_user, &email).await
         })
         .await,
@@ -340,11 +386,17 @@ async fn api_delete_user(mut connection: DbConn, auth_data: AuthData, Path(Base6
 }
 
 /// Gets the tokens for a user
-async fn api_get_tokens(mut connection: DbConn, auth_data: AuthData) -> ApiResult<Vec<RegistryUserToken>> {
+async fn api_get_tokens(
+    mut connection: DbConn,
+    auth_data: AuthData,
+    State(state): State<Arc<AxumState>>,
+) -> ApiResult<Vec<RegistryUserToken>> {
     response(
         in_transaction(&mut connection, |transaction| async {
             let app = Application::new(transaction);
-            let authenticated_user = auth_data.authenticate(|token| authenticate(token, &app)).await?;
+            let authenticated_user = auth_data
+                .authenticate(|token| authenticate(token, &app, &state.configuration))
+                .await?;
             app.get_tokens(&authenticated_user).await
         })
         .await,
@@ -363,13 +415,16 @@ struct CreateTokenQuery {
 async fn api_create_token(
     mut connection: DbConn,
     auth_data: AuthData,
+    State(state): State<Arc<AxumState>>,
     Query(CreateTokenQuery { can_write, can_admin }): Query<CreateTokenQuery>,
     name: String,
 ) -> ApiResult<RegistryUserTokenWithSecret> {
     response(
         in_transaction(&mut connection, |transaction| async {
             let app = Application::new(transaction);
-            let authenticated_user = auth_data.authenticate(|token| authenticate(token, &app)).await?;
+            let authenticated_user = auth_data
+                .authenticate(|token| authenticate(token, &app, &state.configuration))
+                .await?;
             app.create_token(&authenticated_user, &name, can_write, can_admin).await
         })
         .await,
@@ -377,11 +432,18 @@ async fn api_create_token(
 }
 
 /// Revoke a previous token
-async fn api_revoke_token(mut connection: DbConn, auth_data: AuthData, Path(token_id): Path<i64>) -> ApiResult<()> {
+async fn api_revoke_token(
+    mut connection: DbConn,
+    auth_data: AuthData,
+    State(state): State<Arc<AxumState>>,
+    Path(token_id): Path<i64>,
+) -> ApiResult<()> {
     response(
         in_transaction(&mut connection, |transaction| async {
             let app = Application::new(transaction);
-            let authenticated_user = auth_data.authenticate(|token| authenticate(token, &app)).await?;
+            let authenticated_user = auth_data
+                .authenticate(|token| authenticate(token, &app, &state.configuration))
+                .await?;
             app.revoke_token(&authenticated_user, token_id).await
         })
         .await,
@@ -398,7 +460,9 @@ async fn api_v1_publish(
     response(
         in_transaction(&mut connection, |transaction| async move {
             let app = Application::new(transaction);
-            let authenticated_user = auth_data.authenticate(|token| authenticate(token, &app)).await?;
+            let authenticated_user = auth_data
+                .authenticate(|token| authenticate(token, &app, &state.configuration))
+                .await?;
             // deserialize payload
             let package = CrateUploadData::new(&body)?;
             let index_data = package.build_index_data();
@@ -431,7 +495,9 @@ async fn api_v1_get_package(
     response(
         in_transaction(&mut connection, |transaction| async move {
             let app = Application::new(transaction);
-            let _principal = auth_data.authenticate(|token| authenticate(token, &app)).await?;
+            let _principal = auth_data
+                .authenticate(|token| authenticate(token, &app, &state.configuration))
+                .await?;
             let index = state.index.lock().await;
             let versions = app.get_package_versions(&package, &index).await?;
             let metadata =
@@ -450,7 +516,9 @@ async fn api_v1_get_package_readme_last(
 ) -> Result<(StatusCode, [(HeaderName, HeaderValue); 1], Vec<u8>), (StatusCode, Json<ApiError>)> {
     let data = in_transaction(&mut connection, |transaction| async move {
         let app = Application::new(transaction);
-        let _principal = auth_data.authenticate(|token| authenticate(token, &app)).await?;
+        let _principal = auth_data
+            .authenticate(|token| authenticate(token, &app, &state.configuration))
+            .await?;
         let version = app.get_package_last_version(&package).await?;
         let readme = storage::download_crate_readme(&state.configuration, &package, &version).await?;
         Ok(readme)
@@ -473,7 +541,9 @@ async fn api_v1_get_package_readme(
 ) -> Result<(StatusCode, [(HeaderName, HeaderValue); 1], Vec<u8>), (StatusCode, Json<ApiError>)> {
     let data = in_transaction(&mut connection, |transaction| async move {
         let app = Application::new(transaction);
-        let _principal = auth_data.authenticate(|token| authenticate(token, &app)).await?;
+        let _principal = auth_data
+            .authenticate(|token| authenticate(token, &app, &state.configuration))
+            .await?;
         let readme = storage::download_crate_readme(&state.configuration, &package, &version).await?;
         Ok(readme)
     })
@@ -496,7 +566,9 @@ async fn api_v1_download(
 ) -> Result<(StatusCode, [(HeaderName, HeaderValue); 1], Vec<u8>), (StatusCode, Json<ApiError>)> {
     match in_transaction(&mut connection, |transaction| async move {
         let app = Application::new(transaction);
-        let _principal = auth_data.authenticate(|token| authenticate(token, &app)).await?;
+        let _principal = auth_data
+            .authenticate(|token| authenticate(token, &app, &state.configuration))
+            .await?;
         app.check_package_exists(&package, &version).await?;
         let data = storage::download_crate(&state.configuration, &package, &version).await?;
         Ok::<_, ApiError>(data)
@@ -522,12 +594,15 @@ async fn api_v1_download(
 async fn api_v1_yank(
     mut connection: DbConn,
     auth_data: AuthData,
+    State(state): State<Arc<AxumState>>,
     Path(PathInfoCrateVersion { package, version }): Path<PathInfoCrateVersion>,
 ) -> ApiResult<YesNoResult> {
     response(
         in_transaction(&mut connection, |transaction| async move {
             let app = Application::new(transaction);
-            let authenticated_user = auth_data.authenticate(|token| authenticate(token, &app)).await?;
+            let authenticated_user = auth_data
+                .authenticate(|token| authenticate(token, &app, &state.configuration))
+                .await?;
             let r = app.yank(&authenticated_user, &package, &version).await?;
             Ok(r)
         })
@@ -539,12 +614,15 @@ async fn api_v1_yank(
 async fn api_v1_unyank(
     mut connection: DbConn,
     auth_data: AuthData,
+    State(state): State<Arc<AxumState>>,
     Path(PathInfoCrateVersion { package, version }): Path<PathInfoCrateVersion>,
 ) -> ApiResult<YesNoResult> {
     response(
         in_transaction(&mut connection, |transaction| async move {
             let app = Application::new(transaction);
-            let authenticated_user = auth_data.authenticate(|token| authenticate(token, &app)).await?;
+            let authenticated_user = auth_data
+                .authenticate(|token| authenticate(token, &app, &state.configuration))
+                .await?;
             let r = app.unyank(&authenticated_user, &package, &version).await?;
             Ok(r)
         })
@@ -556,12 +634,15 @@ async fn api_v1_unyank(
 async fn api_v1_get_owners(
     mut connection: DbConn,
     auth_data: AuthData,
+    State(state): State<Arc<AxumState>>,
     Path(PathInfoCrate { package }): Path<PathInfoCrate>,
 ) -> ApiResult<OwnersQueryResult> {
     response(
         in_transaction(&mut connection, |transaction| async move {
             let app = Application::new(transaction);
-            let authenticated_user = auth_data.authenticate(|token| authenticate(token, &app)).await?;
+            let authenticated_user = auth_data
+                .authenticate(|token| authenticate(token, &app, &state.configuration))
+                .await?;
             let r = app.get_owners(&authenticated_user, &package).await?;
             Ok(r)
         })
@@ -573,13 +654,16 @@ async fn api_v1_get_owners(
 async fn api_v1_add_owners(
     mut connection: DbConn,
     auth_data: AuthData,
+    State(state): State<Arc<AxumState>>,
     Path(PathInfoCrate { package }): Path<PathInfoCrate>,
     input: Json<OwnersAddQuery>,
 ) -> ApiResult<YesNoMsgResult> {
     response(
         in_transaction(&mut connection, |transaction| async move {
             let app = Application::new(transaction);
-            let authenticated_user = auth_data.authenticate(|token| authenticate(token, &app)).await?;
+            let authenticated_user = auth_data
+                .authenticate(|token| authenticate(token, &app, &state.configuration))
+                .await?;
             let r = app.add_owners(&authenticated_user, &package, &input.users).await?;
             Ok(r)
         })
@@ -591,13 +675,16 @@ async fn api_v1_add_owners(
 async fn api_v1_remove_owners(
     mut connection: DbConn,
     auth_data: AuthData,
+    State(state): State<Arc<AxumState>>,
     Path(PathInfoCrate { package }): Path<PathInfoCrate>,
     input: Json<OwnersAddQuery>,
 ) -> ApiResult<YesNoResult> {
     response(
         in_transaction(&mut connection, |transaction| async move {
             let app = Application::new(transaction);
-            let authenticated_user = auth_data.authenticate(|token| authenticate(token, &app)).await?;
+            let authenticated_user = auth_data
+                .authenticate(|token| authenticate(token, &app, &state.configuration))
+                .await?;
             let r = app.remove_owners(&authenticated_user, &package, &input.users).await?;
             Ok(r)
         })
@@ -612,11 +699,18 @@ struct SearchForm {
 }
 
 // #[get("/crates")]
-async fn api_v1_search(mut connection: DbConn, auth_data: AuthData, form: Query<SearchForm>) -> ApiResult<SearchResults> {
+async fn api_v1_search(
+    mut connection: DbConn,
+    auth_data: AuthData,
+    State(state): State<Arc<AxumState>>,
+    form: Query<SearchForm>,
+) -> ApiResult<SearchResults> {
     response(
         in_transaction(&mut connection, |transaction| async move {
             let app = Application::new(transaction);
-            let _principal = auth_data.authenticate(|token| authenticate(token, &app)).await?;
+            let _principal = auth_data
+                .authenticate(|token| authenticate(token, &app, &state.configuration))
+                .await?;
             app.search(&form.q, form.per_page).await
         })
         .await,
@@ -662,11 +756,12 @@ fn index_serve_map_err(e: ApiError, web_domain: &str) -> (StatusCode, [(HeaderNa
 async fn index_serve_check_auth(
     mut connection: DbConn,
     auth_data: &AuthData,
+    config: &Configuration,
     web_domain: &str,
 ) -> Result<(), (StatusCode, [(HeaderName, HeaderValue); 2], Json<ApiError>)> {
     in_transaction(&mut connection, |transaction| async move {
         let app = Application::new(transaction);
-        let _principal = auth_data.authenticate(|token| authenticate(token, &app)).await?;
+        let _principal = auth_data.authenticate(|token| authenticate(token, &app, config)).await?;
         Ok(())
     })
     .await
@@ -680,7 +775,13 @@ async fn index_serve(
     State(state): State<Arc<AxumState>>,
     request: Request<Body>,
 ) -> Result<(StatusCode, [(HeaderName, HeaderValue); 2], Body), (StatusCode, [(HeaderName, HeaderValue); 2], Json<ApiError>)> {
-    index_serve_check_auth(connection, &auth_data, &state.configuration.licence_web_domain).await?;
+    index_serve_check_auth(
+        connection,
+        &auth_data,
+        &state.configuration,
+        &state.configuration.licence_web_domain,
+    )
+    .await?;
     let index = state.index.lock().await;
     let (stream, content_type) = index_serve_inner(&index, request.uri().path())
         .await
@@ -703,7 +804,13 @@ async fn index_serve_info_refs(
     Query(query): Query<HashMap<String, String>>,
 ) -> Result<(StatusCode, [(HeaderName, HeaderValue); 2], Body), (StatusCode, [(HeaderName, HeaderValue); 2], Json<ApiError>)> {
     let map_err = |e| index_serve_map_err(e, &state.configuration.licence_web_domain);
-    index_serve_check_auth(connection, &auth_data, &state.configuration.licence_web_domain).await?;
+    index_serve_check_auth(
+        connection,
+        &auth_data,
+        &state.configuration,
+        &state.configuration.licence_web_domain,
+    )
+    .await?;
     let index = state.index.lock().await;
     if query.get("service").map(std::string::String::as_str) == Some("git-upload-pack") {
         // smart server response
@@ -743,7 +850,13 @@ async fn index_serve_git_upload_pack(
     body: Bytes,
 ) -> Result<(StatusCode, [(HeaderName, HeaderValue); 2], Body), (StatusCode, [(HeaderName, HeaderValue); 2], Json<ApiError>)> {
     let map_err = |e| index_serve_map_err(e, &state.configuration.licence_web_domain);
-    index_serve_check_auth(connection, &auth_data, &state.configuration.licence_web_domain).await?;
+    index_serve_check_auth(
+        connection,
+        &auth_data,
+        &state.configuration,
+        &state.configuration.licence_web_domain,
+    )
+    .await?;
     let index = state.index.lock().await;
     let data = index.get_upload_pack_for(&body).await.map_err(map_err)?;
     Ok((
@@ -826,6 +939,9 @@ async fn main() {
     cenotelie_lib_licenses::check_license(&configuration.license_id, &configuration.licence_web_domain)
         .await
         .unwrap();
+
+    // write the auth data
+    configuration.write_auth_config().await.unwrap();
 
     // connection pool to the database
     let pool = SqlitePoolOptions::new()

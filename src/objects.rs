@@ -4,13 +4,19 @@ use std::error::Error;
 use std::io::Cursor;
 use std::{collections::HashMap, env::VarError};
 
+use base64::engine::general_purpose::STANDARD;
+use base64::Engine;
 use byteorder::{LittleEndian, ReadBytesExt};
 use cenotelie_lib_apierror::{error_invalid_request, specialize, ApiError};
 use cenotelie_lib_s3::S3Params;
 use chrono::NaiveDateTime;
 use data_encoding::HEXLOWER;
+use rand::distributions::Alphanumeric;
+use rand::{thread_rng, Rng};
 use ring::digest::{Context, SHA256};
 use serde_derive::{Deserialize, Serialize};
+use tokio::fs::File;
+use tokio::io::{AsyncWriteExt, BufWriter};
 
 /// The object representing the application version
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -19,6 +25,19 @@ pub struct AppVersion {
     pub commit: String,
     /// The version tag, if any
     pub tag: String,
+}
+
+/// the configuration for an external registry
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct ConfigExternalRegistry {
+    /// The name for the registry
+    pub name: String,
+    /// The URI to the registry's index
+    pub index: String,
+    /// The login to connect to the registry
+    pub login: String,
+    /// The token for authentication
+    pub token: String,
 }
 
 /// A configuration for the registry
@@ -66,6 +85,21 @@ pub struct Configuration {
     /// The secret for the client to use
     #[serde(rename = "oauthClientScope")]
     pub oauth_client_scope: String,
+    /// The known external registries that require authentication
+    #[serde(rename = "externalRegistries")]
+    pub external_registries: Vec<ConfigExternalRegistry>,
+    /// The login to the service account for self authentication
+    #[serde(rename = "selfServiceLogin")]
+    pub self_service_login: String,
+    /// The token to the service account for self authentication
+    #[serde(rename = "selfServiceToken")]
+    pub self_service_token: String,
+}
+
+/// Generates a token
+pub fn generate_token(length: usize) -> String {
+    let rng = thread_rng();
+    String::from_utf8(rng.sample_iter(&Alphanumeric).take(length).collect()).unwrap()
 }
 
 impl Configuration {
@@ -90,6 +124,20 @@ impl Configuration {
                 auth_required: true,
             },
         };
+        let mut external_registries = Vec::new();
+        let mut external_registry_index = 1;
+        while let Ok(name) = std::env::var(format!("REGISTRY_EXTERNAL_{external_registry_index}_NAME")) {
+            let index = std::env::var(format!("REGISTRY_EXTERNAL_{external_registry_index}_INDEX"))?;
+            let login = std::env::var(format!("REGISTRY_EXTERNAL_{external_registry_index}_LOGIN"))?;
+            let token = std::env::var(format!("REGISTRY_EXTERNAL_{external_registry_index}_TOKEN"))?;
+            external_registries.push(ConfigExternalRegistry {
+                name,
+                index,
+                login,
+                token,
+            });
+            external_registry_index += 1;
+        }
         Ok(Self {
             license_id: std::env::var("REGISTRY_LICENSE_ID")?,
             licence_web_domain: licence_web_domain.clone(),
@@ -115,6 +163,9 @@ impl Configuration {
             oauth_client_id: std::env::var("REGISTRY_OAUTH_CLIENT_ID")?,
             oauth_client_secret: std::env::var("REGISTRY_OAUTH_CLIENT_SECRET")?,
             oauth_client_scope: std::env::var("REGISTRY_OAUTH_CLIENT_SCOPE")?,
+            external_registries,
+            self_service_login: generate_token(16),
+            self_service_token: generate_token(64),
         })
     }
 
@@ -126,6 +177,97 @@ impl Configuration {
     /// Gets the corresponding index git config
     pub fn get_index_git_config(&self) -> IndexConfig {
         self.index_config.clone()
+    }
+
+    /// Write the configuration for authenticating to registries
+    ///
+    /// # Errors
+    ///
+    /// Return an std::io::Error when writing fail
+    pub async fn write_auth_config(&self) -> Result<(), std::io::Error> {
+        {
+            let file = File::create("~/.gitconfig").await?;
+            let mut writer = BufWriter::new(file);
+            writer.write_all("[credential]\n    helper = store\n".as_bytes()).await?;
+            writer.flush().await?;
+        }
+        {
+            let file = File::create("~/.git-credentials").await?;
+            let mut writer = BufWriter::new(file);
+            let index = self.uri.find('/').unwrap() + 2;
+            writer
+                .write_all(
+                    format!(
+                        "{}{}:{}@{}",
+                        &self.uri[..index],
+                        self.self_service_login,
+                        self.self_service_token,
+                        &self.uri[index..]
+                    )
+                    .as_bytes(),
+                )
+                .await?;
+            for registry in &self.external_registries {
+                let index = registry.index.find('/').unwrap() + 2;
+                writer
+                    .write_all(
+                        format!(
+                            "{}{}:{}@{}",
+                            &registry.index[..index],
+                            registry.login,
+                            registry.token,
+                            &registry.index[index..]
+                        )
+                        .as_bytes(),
+                    )
+                    .await?;
+            }
+            writer.flush().await?;
+        }
+        {
+            let file = File::create("~/.cargo/config.toml").await?;
+            let mut writer = BufWriter::new(file);
+            writer.write_all("[registries]\n".as_bytes()).await?;
+            writer
+                .write_all(format!("local = {{ index = \"{}\" }}\n", self.uri).as_bytes())
+                .await?;
+            for registry in &self.external_registries {
+                writer
+                    .write_all(format!("{} = {{ index = \"{}\" }}\n", registry.name, registry.index).as_bytes())
+                    .await?;
+            }
+            writer.flush().await?;
+        }
+        {
+            let file = File::create("~/.cargo/credentials").await?;
+            let mut writer = BufWriter::new(file);
+            writer.write_all("[registries.local]\n".as_bytes()).await?;
+            writer
+                .write_all(
+                    format!(
+                        "token = \"Basic {}\"\n",
+                        STANDARD.encode(format!("{}:{}", self.self_service_login, self.self_service_token))
+                    )
+                    .as_bytes(),
+                )
+                .await?;
+            for registry in &self.external_registries {
+                writer
+                    .write_all(format!("[registries.{}]\n", registry.name).as_bytes())
+                    .await?;
+                writer
+                    .write_all(
+                        format!(
+                            "token = \"Basic {}\"\n",
+                            STANDARD.encode(format!("{}:{}", registry.login, registry.token))
+                        )
+                        .as_bytes(),
+                    )
+                    .await?;
+            }
+            writer.flush().await?;
+        }
+        Ok(())
     }
 }
 

@@ -6,6 +6,7 @@ function doLogout() {
 }
 
 function onPageLoad() {
+  document.getElementById("year").appendChild(document.createTextNode(new Date(Date.now()).getFullYear()));
   return apiMe()
     .then((user) => {
       // setup
