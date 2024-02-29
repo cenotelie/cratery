@@ -1,12 +1,19 @@
 //! Docs generation and management
 
-use std::sync::Arc;
+use std::{path::PathBuf, process::Stdio, sync::Arc};
 
-use cenotelie_lib_apierror::ApiError;
+use cenotelie_lib_apierror::{error_backend_failure, specialize, ApiError};
+use flate2::bufread::GzDecoder;
 use futures::{channel::mpsc::UnboundedSender, StreamExt};
-use log::error;
+use log::{error, info};
 use sqlx::{Pool, Sqlite};
-use tokio::task::JoinHandle;
+use tar::Archive;
+use tokio::{
+    fs::File,
+    io::{AsyncWriteExt, BufWriter},
+    process::Command,
+    task::JoinHandle,
+};
 
 use crate::{
     objects::{Configuration, DocsGenerationJob},
@@ -23,6 +30,9 @@ pub fn create_docs_worker(
         while let Some(job) = receiver.next().await {
             if let Err(e) = docs_worker_job(&configuration, &pool, job).await {
                 error!("{e}");
+                if let Some(backtrace) = &e.backtrace {
+                    error!("{backtrace}");
+                }
             }
         }
     });
@@ -31,10 +41,14 @@ pub fn create_docs_worker(
 
 /// Executes a documentation generation job
 async fn docs_worker_job(configuration: &Configuration, _pool: &Pool<Sqlite>, job: DocsGenerationJob) -> Result<(), ApiError> {
+    info!("generating doc for {} {}", job.crate_name, job.crate_version);
     // get the content
     let content = storage::download_crate(configuration, &job.crate_name, &job.crate_version).await?;
     // extract to a temp folder
-    extract_content(&job.crate_name, &job.crate_version, &content).await?;
+    let location = extract_content(&job.crate_name, &job.crate_version, &content)?;
+    // generate the doc
+    let _location_inner = generate_doc(&location, &job.crate_name).await?;
+    // transform the doc
 
     // // set the package as documented
     // let mut connection = pool.acquire().await?;
@@ -43,10 +57,71 @@ async fn docs_worker_job(configuration: &Configuration, _pool: &Pool<Sqlite>, jo
     //     app.set_package_documented(&job.crate_name, &job.crate_version).await
     // })
     // .await?;
+
+    // cleanup
+    // tokio::fs::remove_dir_all(&location).await?;
     Ok(())
 }
 
 /// Generates and upload the documentation for a crate
-async fn extract_content(_name: &str, _version: &str, _content: &[u8]) -> Result<(), ApiError> {
-    Ok(())
+fn extract_content(name: &str, version: &str, content: &[u8]) -> Result<String, ApiError> {
+    let decoder = GzDecoder::new(content);
+    let mut archive = Archive::new(decoder);
+    let target = format!("/tmp/{name}_{version}");
+    archive.unpack(&target)?;
+    Ok(target)
+}
+
+/// Generate the documentation for the package in a specific folder
+async fn generate_doc(location: &str, _name: &str) -> Result<PathBuf, ApiError> {
+    let mut path: PathBuf = PathBuf::from(location);
+    // get the first sub dir
+    let mut dir = tokio::fs::read_dir(&path).await?;
+    let first = dir.next_entry().await?.unwrap();
+    path = first.path();
+
+    let mut child = Command::new("cargo")
+        .current_dir(&path)
+        .arg("rustdoc")
+        .arg("-Zunstable-options")
+        .arg("-Zrustdoc-map")
+        .arg("-Zhost-config")
+        .arg("-Ztarget-applies-to-host")
+        .arg("--lib")
+        .arg("--all-features")
+        .arg("--config")
+        .arg("build.rustflags=[\"--cfg=docsrs\"]")
+        .arg("--config")
+        .arg("host.rustflags=[\"--cfg=docsrs\"]")
+        .arg("--config")
+        .arg("build.rustdocflags=[\"-Zunstable-options\",\"--cfg=docsrs\",\"--extern-html-root-takes-precedence\"]")
+        .arg("--config")
+        .arg("doc.extern-map.registries.crates-io=\"https://docs.rs\"")
+        .env("DOCS_RS", "1")
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()?;
+    drop(child.stdin.take()); // close stdin
+    let output = child.wait_with_output().await?;
+
+    {
+        // write output to file
+        let mut path = path.clone();
+        path.pop();
+        path.push("output.txt");
+        let file = File::create(path).await?;
+        let mut writer = BufWriter::new(file);
+        writer.write_all(&output.stdout).await?;
+        writer.write_all(&output.stderr).await?;
+        writer.flush().await?;
+    }
+
+    if !output.status.success() {
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        let error = format!("-- stdout\n{stdout}\n\n-- stderr\n{stderr}");
+        return Err(specialize(error_backend_failure(), error));
+    }
+    Ok(path)
 }
