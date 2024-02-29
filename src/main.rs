@@ -41,11 +41,12 @@ use cenotelie_lib_axum_utils::embedded::Resources;
 use cenotelie_lib_axum_utils::extractors::Base64;
 use cenotelie_lib_axum_utils::logging::LogLayer;
 use cenotelie_lib_axum_utils::{response, response_error, ApiResult};
+use chrono::{Datelike, Local};
 use futures::channel::mpsc::UnboundedSender;
 use futures::future::select;
 use futures::lock::Mutex;
 use futures::{SinkExt, Stream};
-use log::info;
+use log::{error, info};
 use objects::{
     AppVersion, AuthenticatedUser, Configuration, CrateInfo, CrateUploadData, CrateUploadResult, DocsGenerationJob,
     OwnersAddQuery, OwnersQueryResult, RegistryUser, RegistryUserToken, RegistryUserTokenWithSecret, SearchResults,
@@ -920,14 +921,8 @@ pub async fn get_version() -> ApiResult<AppVersion> {
     }))
 }
 
-/// Main entry point
-#[tokio::main]
-async fn main() {
-    cenotelie_lib_log::setup_log(|target| target.starts_with("cratery") || target.starts_with("cenotelie"));
-    info!("{} commit={} tag={}", CRATE_NAME, GIT_HASH, GIT_TAG);
-
-    // load configuration
-    let configuration = Configuration::from_env().unwrap();
+/// Main payload for serving the application
+async fn main_serve_app(configuration: Configuration) {
     let configuration = Arc::new(configuration);
     let cookie_key = Key::from(
         env::var("REGISTRY_COOKIE_SECRET")
@@ -1055,4 +1050,43 @@ async fn main() {
         .into_future(),
     );
     let _ = waiting_sigterm(program).await;
+}
+
+/// Main entry point for backing up the application's database
+async fn main_backup_db(configuration: Configuration) {
+    let file_name = configuration.get_database_filename();
+    let today = Local::now().naive_local().date();
+    let object_key = format!(
+        "{}{}-{:02}-{:02}{}",
+        configuration.backup.object_prefix,
+        today.year(),
+        today.month(),
+        today.day0() + 1,
+        configuration.backup.object_suffix,
+    );
+
+    if let Err(e) =
+        cenotelie_lib_s3::upload_object_file(&configuration.s3, &configuration.backup.bucket, &object_key, None, file_name)
+            .await
+    {
+        error!("{e}");
+    }
+}
+
+/// Main entry point
+#[tokio::main]
+async fn main() {
+    cenotelie_lib_log::setup_log(|target| target.starts_with("cratery") || target.starts_with("cenotelie"));
+    info!("{} commit={} tag={}", CRATE_NAME, GIT_HASH, GIT_TAG);
+
+    // load configuration
+    let configuration = Configuration::from_env().unwrap();
+
+    let task_name = std::env::args().nth(1);
+    if task_name.as_ref().is_some_and(|task_name| task_name == "backup") {
+        main_backup_db(configuration).await;
+        return;
+    }
+
+    main_serve_app(configuration).await;
 }

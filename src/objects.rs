@@ -55,6 +55,8 @@ pub struct Configuration {
     /// The data directory
     #[serde(rename = "dataDir")]
     pub data_dir: String,
+    /// The confuguration for the database backup
+    pub backup: DatabaseBackupConfig,
     /// The configuration for the index
     #[serde(rename = "indexConfig")]
     pub index_config: IndexConfig,
@@ -146,6 +148,11 @@ impl Configuration {
                 .and_then(|var| var.parse::<usize>().map_err::<Box<dyn Error>, _>(std::convert::Into::into))
                 .unwrap_or(10 * 1024 * 1024),
             data_dir,
+            backup: DatabaseBackupConfig {
+                bucket: std::env::var("REGISTRY_BACKUP_S3_BUCKET")?,
+                object_prefix: std::env::var("REGISTRY_BACKUP_S3_OBJECT_PREFIX")?,
+                object_suffix: std::env::var("REGISTRY_BACKUP_S3_OBJECT_SUFFIX")?,
+            },
             index_config,
             uri,
             s3: S3Params {
@@ -172,6 +179,11 @@ impl Configuration {
     /// Gets the corresponding database url
     pub fn get_database_url(&self) -> String {
         format!("sqlite://{}/registry.db", self.data_dir)
+    }
+
+    /// Gets the file path and name to the database
+    pub fn get_database_filename(&self) -> String {
+        format!("{}/registry.db", self.data_dir)
     }
 
     /// Gets the corresponding index git config
@@ -322,6 +334,19 @@ pub struct IndexPublicConfig {
     /// Whether authentication is always required
     #[serde(rename = "auth-required")]
     pub auth_required: bool,
+}
+
+/// The configuration for backing the database up to S3
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct DatabaseBackupConfig {
+    /// The S3 bucket to back up to
+    pub bucket: String,
+    /// The prefix for the S3 object name
+    #[serde(rename = "objectPrefix")]
+    pub object_prefix: String,
+    /// The suffix for the S3 object name
+    #[serde(rename = "objectSuffix")]
+    pub object_suffix: String,
 }
 
 /// A user for the registry
