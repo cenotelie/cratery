@@ -16,10 +16,10 @@ mod transaction;
 use std::borrow::Cow;
 use std::collections::HashMap;
 use std::env;
-use std::future::IntoFuture;
 use std::net::SocketAddr;
 use std::ops::{Deref, DerefMut};
 use std::path::PathBuf;
+use std::pin::pin;
 use std::str::FromStr;
 use std::sync::Arc;
 
@@ -474,7 +474,7 @@ async fn api_v1_publish(
             index.publish_crate_version(&index_data).await?;
             // generate the doc
             state
-                .docs_work
+                .docs_worker_sender
                 .clone()
                 .send(DocsGenerationJob {
                     crate_name: package.metadata.name.clone(),
@@ -865,7 +865,7 @@ pub struct AxumState {
     /// Key to access private cookies
     cookie_key: Key,
     /// Sender of documentation generation jobs
-    docs_work: UnboundedSender<DocsGenerationJob>,
+    docs_worker_sender: UnboundedSender<DocsGenerationJob>,
     /// The static resources for the web app
     webapp_resources: Resources,
 }
@@ -903,51 +903,13 @@ pub async fn get_version() -> ApiResult<AppVersion> {
 }
 
 /// Main payload for serving the application
-async fn main_serve_app(configuration: Configuration) {
-    let configuration = Arc::new(configuration);
-    let cookie_key = Key::from(
-        env::var("REGISTRY_COOKIE_SECRET")
-            .expect("REGISTRY_COOKIE_SECRET must be set")
-            .as_bytes(),
-    );
-
-    // write the auth data
-    configuration.write_auth_config().await.unwrap();
-
-    // connection pool to the database
-    let pool = SqlitePoolOptions::new()
-        .max_connections(1)
-        .connect_lazy(&configuration.get_database_url())
-        .unwrap();
-    // migrate the database, if appropriate
-    migrations::migrate_to_last(&mut pool.acquire().await.unwrap()).await.unwrap();
-
-    // prepare the index
-    let index = Index::on_launch(configuration.get_index_git_config()).await.unwrap();
-
-    // extract all readmes
-    // jobs::publish_readme_files(&mut pool.acquire().await.unwrap(), &configuration, &index)
-    //     .await
-    //     .unwrap();
-
-    // docs worker
-    let (docs_work, docs_worker_handle) = docs::create_docs_worker(configuration.clone(), pool.clone());
-    // check undocumented packages
-    {
-        let mut docs_work = docs_work.clone();
-        let mut connection = pool.acquire().await.unwrap();
-        in_transaction(&mut connection, |transaction| async move {
-            let app = Application::new(transaction);
-            let jobs = app.get_undocumented_packages().await?;
-            for job in jobs {
-                docs_work.send(job).await?;
-            }
-            Ok::<_, ApiError>(())
-        })
-        .await
-        .unwrap();
-    }
-
+async fn main_serve_app(
+    configuration: Arc<Configuration>,
+    cookie_key: Key,
+    index: Index,
+    pool: Pool<Sqlite>,
+    docs_worker_sender: UnboundedSender<DocsGenerationJob>,
+) -> Result<(), std::io::Error> {
     // web application
     let webapp_resources = embed_dir!("src/webapp");
     let body_limit = configuration.body_limit;
@@ -956,7 +918,7 @@ async fn main_serve_app(configuration: Configuration) {
         index: Mutex::new(index),
         cookie_key,
         pool,
-        docs_work,
+        docs_worker_sender,
         webapp_resources,
     });
     let app = Router::new()
@@ -1016,16 +978,11 @@ async fn main_serve_app(configuration: Configuration) {
         .layer(DefaultBodyLimit::max(body_limit))
         .with_state(state);
     let addr = SocketAddr::from(([0, 0, 0, 0], 80));
-
-    let program = select(
-        docs_worker_handle,
-        axum::serve(
-            tokio::net::TcpListener::bind(addr).await.unwrap(),
-            app.into_make_service_with_connect_info::<SocketAddr>(),
-        )
-        .into_future(),
-    );
-    let _ = waiting_sigterm(program).await;
+    axum::serve(
+        tokio::net::TcpListener::bind(addr).await.unwrap(),
+        app.into_make_service_with_connect_info::<SocketAddr>(),
+    )
+    .await
 }
 
 fn setup_log() {
@@ -1060,7 +1017,57 @@ async fn main() {
     info!("{} commit={} tag={}", CRATE_NAME, GIT_HASH, GIT_TAG);
 
     // load configuration
-    let configuration = Configuration::from_env().unwrap();
+    let configuration = Arc::new(Configuration::from_env().unwrap());
+    let cookie_key = Key::from(
+        env::var("REGISTRY_COOKIE_SECRET")
+            .expect("REGISTRY_COOKIE_SECRET must be set")
+            .as_bytes(),
+    );
 
-    main_serve_app(configuration).await;
+    // write the auth data
+    configuration.write_auth_config().await.unwrap();
+
+    // connection pool to the database
+    let pool = SqlitePoolOptions::new()
+        .max_connections(1)
+        .connect_lazy(&configuration.get_database_url())
+        .unwrap();
+    // migrate the database, if appropriate
+    migrations::migrate_to_last(&mut pool.acquire().await.unwrap()).await.unwrap();
+
+    // prepare the index
+    let index = Index::on_launch(configuration.get_index_git_config()).await.unwrap();
+
+    // extract all readmes
+    // jobs::publish_readme_files(&mut pool.acquire().await.unwrap(), &configuration, &index)
+    //     .await
+    //     .unwrap();
+
+    // docs worker
+    let (docs_worker_sender, docs_worker) = docs::create_docs_worker(configuration.clone(), pool.clone());
+    // check undocumented packages
+    {
+        let mut docs_worker_sender = docs_worker_sender.clone();
+        let mut connection = pool.acquire().await.unwrap();
+        in_transaction(&mut connection, |transaction| async move {
+            let app = Application::new(transaction);
+            let jobs = app.get_undocumented_packages().await?;
+            for job in jobs {
+                docs_worker_sender.send(job).await?;
+            }
+            Ok::<_, ApiError>(())
+        })
+        .await
+        .unwrap();
+    }
+
+    let server = pin!(main_serve_app(
+        configuration.clone(),
+        cookie_key,
+        index,
+        pool,
+        docs_worker_sender
+    ));
+    let program = select(docs_worker, server);
+    let _ = waiting_sigterm(program).await;
 }
