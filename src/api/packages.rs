@@ -315,7 +315,7 @@ impl<'c> Application<'c> {
     }
 
     /// Sets a package as having documentation
-    pub async fn _set_package_documented(&self, package: &str, version: &str) -> Result<(), ApiError> {
+    pub async fn set_package_documented(&self, package: &str, version: &str) -> Result<(), ApiError> {
         sqlx::query!(
             "UPDATE PackageVersion SET hasDocs = TRUE WHERE package = $1 AND version = $2",
             package,

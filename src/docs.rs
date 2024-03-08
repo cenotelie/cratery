@@ -1,8 +1,13 @@
 //! Docs generation and management
 
-use std::{path::PathBuf, process::Stdio, sync::Arc};
+use std::{
+    path::{Path, PathBuf},
+    process::Stdio,
+    sync::Arc,
+};
 
 use cenotelie_lib_apierror::{error_backend_failure, specialize, ApiError};
+use cenotelie_lib_async_utils::parallel_jobs::n_at_a_time;
 use flate2::bufread::GzDecoder;
 use futures::{channel::mpsc::UnboundedSender, StreamExt};
 use log::{error, info};
@@ -16,8 +21,10 @@ use tokio::{
 };
 
 use crate::{
+    api::Application,
     objects::{Configuration, DocsGenerationJob},
     storage,
+    transaction::in_transaction,
 };
 
 /// Creates a worker for the generation of documentation
@@ -28,7 +35,7 @@ pub fn create_docs_worker(
     let (sender, mut receiver) = futures::channel::mpsc::unbounded();
     let handle = tokio::spawn(async move {
         while let Some(job) = receiver.next().await {
-            if let Err(e) = docs_worker_job(&configuration, &pool, job).await {
+            if let Err(e) = docs_worker_job(configuration.clone(), &pool, job).await {
                 error!("{e}");
                 if let Some(backtrace) = &e.backtrace {
                     error!("{backtrace}");
@@ -40,41 +47,41 @@ pub fn create_docs_worker(
 }
 
 /// Executes a documentation generation job
-async fn docs_worker_job(configuration: &Configuration, _pool: &Pool<Sqlite>, job: DocsGenerationJob) -> Result<(), ApiError> {
+async fn docs_worker_job(
+    configuration: Arc<Configuration>,
+    pool: &Pool<Sqlite>,
+    job: DocsGenerationJob,
+) -> Result<(), ApiError> {
     info!("generating doc for {} {}", job.crate_name, job.crate_version);
-    // get the content
-    let content = storage::download_crate(configuration, &job.crate_name, &job.crate_version).await?;
-    // extract to a temp folder
-    let location = extract_content(&job.crate_name, &job.crate_version, &content)?;
-    // generate the doc
-    let _location_inner = generate_doc(configuration, &location, &job.crate_name).await?;
-    // transform the doc
-
-    // // set the package as documented
-    // let mut connection = pool.acquire().await?;
-    // in_transaction(&mut connection, |transaction| async move {
-    //     let app = Application::new(transaction);
-    //     app.set_package_documented(&job.crate_name, &job.crate_version).await
-    // })
-    // .await?;
-
-    // cleanup
-    // tokio::fs::remove_dir_all(&location).await?;
+    let content = storage::download_crate(&configuration, &job.crate_name, &job.crate_version).await?;
+    let temp_folder = extract_content(&job.crate_name, &job.crate_version, &content)?;
+    let mut project_folder = generate_doc(&configuration, &temp_folder).await?;
+    project_folder.push("target");
+    project_folder.push("doc");
+    let doc_folder = project_folder;
+    upload_package(configuration, &job.crate_name, &job.crate_version, &doc_folder).await?;
+    let mut connection = pool.acquire().await?;
+    in_transaction(&mut connection, |transaction| async move {
+        let app = Application::new(transaction);
+        app.set_package_documented(&job.crate_name, &job.crate_version).await
+    })
+    .await?;
+    tokio::fs::remove_dir_all(&temp_folder).await?;
     Ok(())
 }
 
 /// Generates and upload the documentation for a crate
-fn extract_content(name: &str, version: &str, content: &[u8]) -> Result<String, ApiError> {
+fn extract_content(name: &str, version: &str, content: &[u8]) -> Result<PathBuf, ApiError> {
     let decoder = GzDecoder::new(content);
     let mut archive = Archive::new(decoder);
     let target = format!("/tmp/{name}_{version}");
     archive.unpack(&target)?;
-    Ok(target)
+    Ok(PathBuf::from(target))
 }
 
 /// Generate the documentation for the package in a specific folder
-async fn generate_doc(configuration: &Configuration, location: &str, _name: &str) -> Result<PathBuf, ApiError> {
-    let mut path: PathBuf = PathBuf::from(location);
+async fn generate_doc(configuration: &Configuration, temp_folder: &Path) -> Result<PathBuf, ApiError> {
+    let mut path: PathBuf = temp_folder.to_path_buf();
     // get the first sub dir
     let mut dir = tokio::fs::read_dir(&path).await?;
     let first = dir.next_entry().await?.unwrap();
@@ -124,4 +131,48 @@ async fn generate_doc(configuration: &Configuration, location: &str, _name: &str
         return Err(specialize(error_backend_failure(), error));
     }
     Ok(path)
+}
+
+/// Uploads the documentation for package
+async fn upload_package(
+    configuration: Arc<Configuration>,
+    crate_name: &str,
+    crate_version: &str,
+    doc_folder: &Path,
+) -> Result<(), ApiError> {
+    let files = upload_package_find_files(doc_folder, &format!("docs/{crate_name}/{crate_version}")).await?;
+    let results = n_at_a_time(
+        files.into_iter().map(|(key, path)| {
+            let configuration = configuration.clone();
+            Box::pin(async move {
+                cenotelie_lib_s3::upload_object_file(&configuration.s3, &configuration.bucket, &key, None, path).await
+            })
+        }),
+        8,
+        Result::is_err,
+    )
+    .await;
+    for result in results {
+        result?;
+    }
+    Ok(())
+}
+
+/// Find target to upload in a folder and its sub-folders
+async fn upload_package_find_files(folder: &Path, prefix: &str) -> Result<Vec<(String, PathBuf)>, std::io::Error> {
+    let mut results = Vec::new();
+    let mut to_explore = vec![(folder.to_path_buf(), prefix.to_string())];
+    while let Some((folder, prefix)) = to_explore.pop() {
+        let mut dir = tokio::fs::read_dir(folder).await?;
+        while let Some(entry) = dir.next_entry().await? {
+            let entry_path = entry.path();
+            let entry_type = entry.file_type().await?;
+            if entry_type.is_file() {
+                results.push((format!("{prefix}/{}", entry.file_name().to_str().unwrap()), entry_path));
+            } else if entry_type.is_dir() {
+                to_explore.push((entry_path, format!("{prefix}/{}", entry.file_name().to_str().unwrap())));
+            }
+        }
+    }
+    Ok(results)
 }
