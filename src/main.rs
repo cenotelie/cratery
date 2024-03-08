@@ -20,6 +20,7 @@ use std::future::IntoFuture;
 use std::net::SocketAddr;
 use std::ops::{Deref, DerefMut};
 use std::path::PathBuf;
+use std::str::FromStr;
 use std::sync::Arc;
 
 use api::Application;
@@ -1073,10 +1074,35 @@ async fn main_backup_db(configuration: Configuration) {
     }
 }
 
+fn setup_log() {
+    let log_date_time_format =
+        env::var("REGISTRY_LOG_DATE_TIME_FORMAT").unwrap_or_else(|_| String::from("[%Y-%m-%d %H:%M:%S]"));
+    let log_level = env::var("REGISTRY_LOG_LEVEL")
+        .map(|v| log::LevelFilter::from_str(&v).expect("invalid REGISTRY_LOG_LEVEL"))
+        .unwrap_or(log::LevelFilter::Info);
+    fern::Dispatch::new()
+        .filter(move |metdata| {
+            let target = metdata.target();
+            target.starts_with("cratery") || target.starts_with("cenotelie")
+        })
+        .format(move |out, message, record| {
+            out.finish(format_args!(
+                "{}\t{}\t{}",
+                chrono::Local::now().format(&log_date_time_format),
+                record.level(),
+                message
+            ));
+        })
+        .level(log_level)
+        .chain(std::io::stdout())
+        .apply()
+        .expect("log configuration failed");
+}
+
 /// Main entry point
 #[tokio::main]
 async fn main() {
-    cenotelie_lib_log::setup_log(|target| target.starts_with("cratery") || target.starts_with("cenotelie"));
+    setup_log();
     info!("{} commit={} tag={}", CRATE_NAME, GIT_HASH, GIT_TAG);
 
     // load configuration

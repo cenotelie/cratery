@@ -9,7 +9,8 @@ services:
       - "80:80"
     environment:
       RUST_BACKTRACE: 1
-      LOG_LEVEL: INFO
+      REGISTRY_LOG_LEVEL: INFO
+      REGISTRY_LOG_DATE_TIME_FORMAT: "[%Y-%m-%d %H:%M:%S]"
       REGISTRY_COOKIE_SECRET: this is a secret
       REGISTRY_LICENSE_ID:
       REGISTRY_LICENSE_WEB_DOMAIN: localhost
