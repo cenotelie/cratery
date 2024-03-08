@@ -679,6 +679,9 @@ pub struct CrateInfoVersion {
     /// The user that uploaded the version
     #[serde(rename = "uploadedBy")]
     pub uploaded_by: RegistryUser,
+    /// Whether documentation was generated for this version
+    #[serde(rename = "hasDocs")]
+    pub has_docs: bool,
 }
 
 /// The upload data for publishing a crate

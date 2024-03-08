@@ -63,7 +63,7 @@ impl<'c> Application<'c> {
     pub async fn get_package_versions(&self, package: &str, index: &Index) -> Result<Vec<CrateInfoVersion>, ApiError> {
         let versions_index = index.get_crate_data(package).await?;
         let rows = sqlx::query!(
-            "SELECT version, upload, uploadedBy AS uploaded_by FROM PackageVersion WHERE package = $1 ORDER BY id",
+            "SELECT version, upload, uploadedBy AS uploaded_by, hasDocs AS has_docs FROM PackageVersion WHERE package = $1 ORDER BY id",
             package
         )
         .fetch_all(&mut *self.transaction.borrow().await)
@@ -76,6 +76,7 @@ impl<'c> Application<'c> {
                     index: index_data,
                     upload: row.upload,
                     uploaded_by,
+                    has_docs: row.has_docs,
                 });
             }
         }

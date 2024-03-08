@@ -69,6 +69,7 @@
           </p>
           <pre class="max-w-xs"><code id="meta-install" class="language-toml hljs"></code></pre>
           <h5 class="text-xl font-bold tracking-tight text-gray-900 dark:text-white mt-8">Documentation</h5>
+          <p id="meta-docs" class="ml-4 font-normal text-gray-700 dark:text-gray-400"></p>
           <h5 class="text-xl font-bold tracking-tight text-gray-900 dark:text-white mt-8">Owners</h5>
         </div>
       </div>
@@ -122,6 +123,12 @@
     document.getElementById("meta-uploaded-by").appendChild(document.createTextNode(currentVersion.uploadedBy.name));
     document.getElementById("meta-uploaded-by").href = `mailto:${currentVersion.uploadedBy.email}`;
     document.getElementById("meta-install").appendChild(document.createTextNode(`${currentVersion.index.name} = { version = "${currentVersion.index.vers}", registry = "${regName}" }`));
+    if (currentVersion.hasDocs) {
+      const link = document.createElement("a");
+      link.appendChild(document.createTextNode(`v${currentVersion.index.vers}`));
+      link.setAttribute("href", `/docs/${currentVersion.index.name}/${currentVersion.index.vers}/${currentVersion.index.name}/index.html`);
+      document.getElementById("meta-docs").appendChild(link);
+    }
 
     const tabReadmeEl = document.getElementById("tab-readme-content");
     tabReadmeEl.innerHTML = marked.parse(readme);

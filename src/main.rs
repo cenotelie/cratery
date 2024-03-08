@@ -231,6 +231,82 @@ async fn webapp_me(State(state): State<Arc<AxumState>>) -> (StatusCode, [(Header
     )
 }
 
+/// Gets a file from the documentation
+async fn get_docs_resource(
+    mut connection: DbConn,
+    auth_data: AuthData,
+    State(state): State<Arc<AxumState>>,
+    request: Request<Body>,
+) -> Result<(StatusCode, [(HeaderName, HeaderValue); 2], Body), (StatusCode, [(HeaderName, HeaderValue); 1], Body)> {
+    let is_authenticated = in_transaction(&mut connection, |transaction| async {
+        let app = Application::new(transaction);
+        auth_data
+            .authenticate(|token| authenticate(token, &app, &state.configuration))
+            .await
+    })
+    .await
+    .is_ok();
+    if !is_authenticated {
+        // redirect to login
+        let target = format!(
+            "{}?response_type={}&redirect_uri={}&client_id={}&scope={}&state={}",
+            state.configuration.oauth_login_uri,
+            "code",
+            urlencoding::encode(&format!("{}/webapp/oauthcallback.html", state.configuration.uri)),
+            state.configuration.oauth_client_id,
+            state.configuration.oauth_client_scope,
+            ""
+        );
+        return Ok((
+            StatusCode::FOUND,
+            [
+                (header::LOCATION, HeaderValue::from_str(&target).unwrap()),
+                (header::CACHE_CONTROL, HeaderValue::from_static("no-cache")),
+            ],
+            Body::empty(),
+        ));
+    }
+
+    let path = &request.uri().path()[1..]; // strip leading /
+    assert!(path.starts_with("docs/"));
+    let extension = get_content_type(path);
+    match cenotelie_lib_s3::get_object_stream(&state.configuration.s3, &state.configuration.bucket, path, None).await {
+        Ok(stream) => Ok((
+            StatusCode::OK,
+            [
+                (header::CONTENT_TYPE, HeaderValue::from_str(extension).unwrap()),
+                (header::CACHE_CONTROL, HeaderValue::from_static("max-age=3600")),
+            ],
+            Body::from_stream(stream),
+        )),
+        Err(e) => {
+            let message = e.to_string();
+            Err((
+                StatusCode::NOT_FOUND,
+                [(header::CACHE_CONTROL, HeaderValue::from_static("no-cache"))],
+                Body::from(message),
+            ))
+        }
+    }
+}
+
+fn get_content_type(name: &str) -> &'static str {
+    let extension = name.rfind('.').map(|index| &name[(index + 1)..]);
+    match extension {
+        Some("html") => "text/html",
+        Some("css") => "text/css",
+        Some("js") => "text/javascript",
+        Some("gif") => "image/gif",
+        Some("png") => "image/png",
+        Some("jpeg") => "image/jpeg",
+        Some("bmp") => "image/bmp",
+        Some("webp") => "image/webp",
+        Some("svg") => "image/svg+xml",
+        Some("ico") => "image/x-icon",
+        _ => "application/octet-stream",
+    }
+}
+
 /// Get the current user
 async fn api_get_current_user(
     mut connection: DbConn,
@@ -933,6 +1009,8 @@ async fn main_serve_app(
         .route("/version", get(get_version))
         // special handling for cargo login
         .route("/me", get(webapp_me))
+        // serve the documentation
+        .route("/docs/*path", get(get_docs_resource))
         // API
         .nest(
             "/api/v1",
