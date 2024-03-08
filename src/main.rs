@@ -42,12 +42,11 @@ use cenotelie_lib_axum_utils::embedded::Resources;
 use cenotelie_lib_axum_utils::extractors::Base64;
 use cenotelie_lib_axum_utils::logging::LogLayer;
 use cenotelie_lib_axum_utils::{response, response_error, ApiResult};
-use chrono::{Datelike, Local};
 use futures::channel::mpsc::UnboundedSender;
 use futures::future::select;
 use futures::lock::Mutex;
 use futures::{SinkExt, Stream};
-use log::{error, info};
+use log::info;
 use objects::{
     AppVersion, AuthenticatedUser, Configuration, CrateInfo, CrateUploadData, CrateUploadResult, DocsGenerationJob,
     OwnersAddQuery, OwnersQueryResult, RegistryUser, RegistryUserToken, RegistryUserTokenWithSecret, SearchResults,
@@ -1029,27 +1028,6 @@ async fn main_serve_app(configuration: Configuration) {
     let _ = waiting_sigterm(program).await;
 }
 
-/// Main entry point for backing up the application's database
-async fn main_backup_db(configuration: Configuration) {
-    let file_name = configuration.get_database_filename();
-    let today = Local::now().naive_local().date();
-    let object_key = format!(
-        "{}{}-{:02}-{:02}{}",
-        configuration.backup.object_prefix,
-        today.year(),
-        today.month(),
-        today.day0() + 1,
-        configuration.backup.object_suffix,
-    );
-
-    if let Err(e) =
-        cenotelie_lib_s3::upload_object_file(&configuration.s3, &configuration.backup.bucket, &object_key, None, file_name)
-            .await
-    {
-        error!("{e}");
-    }
-}
-
 fn setup_log() {
     let log_date_time_format =
         env::var("REGISTRY_LOG_DATE_TIME_FORMAT").unwrap_or_else(|_| String::from("[%Y-%m-%d %H:%M:%S]"));
@@ -1083,12 +1061,6 @@ async fn main() {
 
     // load configuration
     let configuration = Configuration::from_env().unwrap();
-
-    let task_name = std::env::args().nth(1);
-    if task_name.as_ref().is_some_and(|task_name| task_name == "backup") {
-        main_backup_db(configuration).await;
-        return;
-    }
 
     main_serve_app(configuration).await;
 }
