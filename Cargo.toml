@@ -33,7 +33,6 @@ sqlx = { version = "0.7", default-features = false, features = ["runtime-tokio-r
 axum = { version = "0.7", features = [] }
 reqwest = { version = "0.11", default-features = false, features = ["stream", "rustls-tls"] }
 cenotelie_lib_apierror = { version = "2", registry = "cenotelie" }
-cenotelie_lib_licenses = { version = "1.3", registry = "cenotelie" }
 cenotelie_lib_async_utils = { version = "1.20", registry = "cenotelie" }
 cenotelie_lib_dbutils = { version = "3.4", registry = "cenotelie" }
 cenotelie_lib_axum_utils = { version = "3.3", registry = "cenotelie" }

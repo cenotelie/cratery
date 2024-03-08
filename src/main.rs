@@ -740,14 +740,14 @@ async fn index_serve_inner(
     }
 }
 
-fn index_serve_map_err(e: ApiError, web_domain: &str) -> (StatusCode, [(HeaderName, HeaderValue); 2], Json<ApiError>) {
+fn index_serve_map_err(e: ApiError, domain: &str) -> (StatusCode, [(HeaderName, HeaderValue); 2], Json<ApiError>) {
     let (status, body) = response_error(e);
     (
         status,
         [
             (
                 header::WWW_AUTHENTICATE,
-                HeaderValue::from_str(&format!("Basic realm={web_domain}")).unwrap(),
+                HeaderValue::from_str(&format!("Basic realm={domain}")).unwrap(),
             ),
             (header::CACHE_CONTROL, HeaderValue::from_static("no-cache")),
         ],
@@ -759,7 +759,6 @@ async fn index_serve_check_auth(
     mut connection: DbConn,
     auth_data: &AuthData,
     config: &Configuration,
-    web_domain: &str,
 ) -> Result<(), (StatusCode, [(HeaderName, HeaderValue); 2], Json<ApiError>)> {
     in_transaction(&mut connection, |transaction| async move {
         let app = Application::new(transaction);
@@ -767,7 +766,7 @@ async fn index_serve_check_auth(
         Ok(())
     })
     .await
-    .map_err(|e| index_serve_map_err(e, web_domain))?;
+    .map_err(|e| index_serve_map_err(e, &config.domain))?;
     Ok(())
 }
 
@@ -777,17 +776,11 @@ async fn index_serve(
     State(state): State<Arc<AxumState>>,
     request: Request<Body>,
 ) -> Result<(StatusCode, [(HeaderName, HeaderValue); 2], Body), (StatusCode, [(HeaderName, HeaderValue); 2], Json<ApiError>)> {
-    index_serve_check_auth(
-        connection,
-        &auth_data,
-        &state.configuration,
-        &state.configuration.licence_web_domain,
-    )
-    .await?;
+    index_serve_check_auth(connection, &auth_data, &state.configuration).await?;
     let index = state.index.lock().await;
     let (stream, content_type) = index_serve_inner(&index, request.uri().path())
         .await
-        .map_err(|e| index_serve_map_err(e, &state.configuration.licence_web_domain))?;
+        .map_err(|e| index_serve_map_err(e, &state.configuration.domain))?;
     let body = Body::from_stream(stream);
     Ok((
         StatusCode::OK,
@@ -805,14 +798,8 @@ async fn index_serve_info_refs(
     State(state): State<Arc<AxumState>>,
     Query(query): Query<HashMap<String, String>>,
 ) -> Result<(StatusCode, [(HeaderName, HeaderValue); 2], Body), (StatusCode, [(HeaderName, HeaderValue); 2], Json<ApiError>)> {
-    let map_err = |e| index_serve_map_err(e, &state.configuration.licence_web_domain);
-    index_serve_check_auth(
-        connection,
-        &auth_data,
-        &state.configuration,
-        &state.configuration.licence_web_domain,
-    )
-    .await?;
+    let map_err = |e| index_serve_map_err(e, &state.configuration.domain);
+    index_serve_check_auth(connection, &auth_data, &state.configuration).await?;
     let index = state.index.lock().await;
     if query.get("service").map(std::string::String::as_str) == Some("git-upload-pack") {
         // smart server response
@@ -832,7 +819,7 @@ async fn index_serve_info_refs(
         // dumb server response
         let (stream, content_type) = index_serve_inner(&index, "/info/refs")
             .await
-            .map_err(|e| index_serve_map_err(e, &state.configuration.licence_web_domain))?;
+            .map_err(|e| index_serve_map_err(e, &state.configuration.domain))?;
         let body = Body::from_stream(stream);
         Ok((
             StatusCode::OK,
@@ -851,14 +838,8 @@ async fn index_serve_git_upload_pack(
     State(state): State<Arc<AxumState>>,
     body: Bytes,
 ) -> Result<(StatusCode, [(HeaderName, HeaderValue); 2], Body), (StatusCode, [(HeaderName, HeaderValue); 2], Json<ApiError>)> {
-    let map_err = |e| index_serve_map_err(e, &state.configuration.licence_web_domain);
-    index_serve_check_auth(
-        connection,
-        &auth_data,
-        &state.configuration,
-        &state.configuration.licence_web_domain,
-    )
-    .await?;
+    let map_err = |e| index_serve_map_err(e, &state.configuration.domain);
+    index_serve_check_auth(connection, &auth_data, &state.configuration).await?;
     let index = state.index.lock().await;
     let data = index.get_upload_pack_for(&body).await.map_err(map_err)?;
     Ok((
@@ -892,7 +873,7 @@ pub struct AxumState {
 
 impl AxumStateForCookies for AxumState {
     fn get_domain(&self) -> Cow<'static, str> {
-        Cow::Owned(self.configuration.licence_web_domain.clone())
+        Cow::Owned(self.configuration.domain.clone())
     }
 
     fn get_id_cookie_name(&self) -> Cow<'static, str> {
@@ -930,11 +911,6 @@ async fn main_serve_app(configuration: Configuration) {
             .expect("REGISTRY_COOKIE_SECRET must be set")
             .as_bytes(),
     );
-
-    // check the license
-    cenotelie_lib_licenses::check_license(&configuration.license_id, &configuration.licence_web_domain)
-        .await
-        .unwrap();
 
     // write the auth data
     configuration.write_auth_config().await.unwrap();

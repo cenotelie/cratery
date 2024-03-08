@@ -2,8 +2,10 @@
 
 use std::error::Error;
 use std::io::Cursor;
+use std::str::FromStr;
 use std::{collections::HashMap, env::VarError};
 
+use axum::http::Uri;
 use base64::engine::general_purpose::STANDARD;
 use base64::Engine;
 use byteorder::{LittleEndian, ReadBytesExt};
@@ -46,12 +48,6 @@ pub struct ConfigExternalRegistry {
 /// A configuration for the registry
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct Configuration {
-    /// Identifier for the license
-    #[serde(rename = "licenseId")]
-    pub license_id: String,
-    /// Web domain for the license
-    #[serde(rename = "licenseWebDomain")]
-    pub licence_web_domain: String,
     /// The maximum size for the body of incoming requests
     #[serde(rename = "licenseWebDomain")]
     pub body_limit: usize,
@@ -63,8 +59,10 @@ pub struct Configuration {
     /// The configuration for the index
     #[serde(rename = "indexConfig")]
     pub index_config: IndexConfig,
-    /// The root uri to publish to
+    /// The root uri from which the application is served
     pub uri: String,
+    /// The domain for the application
+    pub domain: String,
     /// The parameters to connect to S3
     pub s3: S3Params,
     /// The name of the s3 bucket to use
@@ -115,8 +113,7 @@ impl Configuration {
     /// Return a `VarError` when an expected environment variable is not present
     pub fn from_env() -> Result<Self, VarError> {
         let data_dir = std::env::var("REGISTRY_DATA_DIR")?;
-        let licence_web_domain = std::env::var("REGISTRY_LICENSE_WEB_DOMAIN")?;
-        let uri = std::env::var("REGISTRY_PUBLIC_URI")?.replace("?domain", &licence_web_domain);
+        let uri = std::env::var("REGISTRY_PUBLIC_URI")?;
         let index_config = IndexConfig {
             location: format!("{data_dir}/index"),
             remote_origin: std::env::var("REGISTRY_GIT_REMOTE").ok(),
@@ -149,8 +146,6 @@ impl Configuration {
             external_registry_index += 1;
         }
         Ok(Self {
-            license_id: std::env::var("REGISTRY_LICENSE_ID")?,
-            licence_web_domain: licence_web_domain.clone(),
             body_limit: std::env::var("REGISTRY_BODY_LIMIT")
                 .map_err::<Box<dyn Error>, _>(std::convert::Into::into)
                 .and_then(|var| var.parse::<usize>().map_err::<Box<dyn Error>, _>(std::convert::Into::into))
@@ -162,6 +157,11 @@ impl Configuration {
                 object_suffix: std::env::var("REGISTRY_BACKUP_S3_OBJECT_SUFFIX")?,
             },
             index_config,
+            domain: Uri::from_str(&uri)
+                .expect("invalid REGISTRY_PUBLIC_URI")
+                .host()
+                .unwrap_or_default()
+                .to_string(),
             uri,
             s3: S3Params {
                 uri: std::env::var("REGISTRY_S3_URI")?,
@@ -173,7 +173,7 @@ impl Configuration {
             bucket: std::env::var("REGISTRY_S3_BUCKET")?,
             oauth_login_uri: std::env::var("REGISTRY_OAUTH_LOGIN_URI")?,
             oauth_token_uri: std::env::var("REGISTRY_OAUTH_TOKEN_URI")?,
-            oauth_callback_uri: std::env::var("REGISTRY_OAUTH_CALLBACK_URI")?.replace("?domain", &licence_web_domain),
+            oauth_callback_uri: std::env::var("REGISTRY_OAUTH_CALLBACK_URI")?,
             oauth_userinfo_uri: std::env::var("REGISTRY_OAUTH_USERINFO_URI")?,
             oauth_client_id: std::env::var("REGISTRY_OAUTH_CLIENT_ID")?,
             oauth_client_secret: std::env::var("REGISTRY_OAUTH_CLIENT_SECRET")?,
