@@ -206,13 +206,13 @@ impl Configuration {
     /// Return an error when writing fail
     pub async fn write_auth_config(&self) -> Result<(), ApiError> {
         {
-            let file = File::create("/root/.gitconfig").await?;
+            let file = File::create("/home/cratery/.gitconfig").await?;
             let mut writer = BufWriter::new(file);
             writer.write_all("[credential]\n    helper = store\n".as_bytes()).await?;
             writer.flush().await?;
         }
         {
-            let file = File::create("/root/.git-credentials").await?;
+            let file = File::create("/home/cratery/.git-credentials").await?;
             let mut writer = BufWriter::new(file);
             let index = self.uri.find('/').unwrap() + 2;
             writer
@@ -245,7 +245,7 @@ impl Configuration {
             writer.flush().await?;
         }
         {
-            let file = File::create("/root/.cargo/config.toml").await?;
+            let file = File::create("/home/cratery/.cargo/config.toml").await?;
             let mut writer = BufWriter::new(file);
             writer.write_all("[registry]\n".as_bytes()).await?;
             writer
@@ -264,7 +264,7 @@ impl Configuration {
             writer.flush().await?;
         }
         {
-            let file = File::create("/root/.cargo/credentials").await?;
+            let file = File::create("/home/cratery/.cargo/credentials").await?;
             let mut writer = BufWriter::new(file);
             writer.write_all("[registries.local]\n".as_bytes()).await?;
             writer
