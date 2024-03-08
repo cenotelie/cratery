@@ -121,6 +121,9 @@ impl Configuration {
             location: format!("{data_dir}/index"),
             remote_origin: std::env::var("REGISTRY_GIT_REMOTE").ok(),
             remote_ssh_key_file_name: std::env::var("REGISTRY_GIT_REMOTE_SSH_KEY_FILENAME").ok(),
+            remote_push_changes: std::env::var("REGISTRY_GIT_REMOTE_PUSH_CHANGES")
+                .map(|value| value == "1" || value.eq_ignore_ascii_case("true"))
+                .unwrap_or_default(),
             user_name: std::env::var("REGISTRY_GIT_USER_NAME")?,
             user_email: std::env::var("REGISTRY_GIT_USER_EMAIL")?,
             public: IndexPublicConfig {
@@ -319,6 +322,9 @@ pub struct IndexConfig {
     /// The name of the file for the SSH key for the remote
     #[serde(rename = "remoteSshKeyFileName")]
     pub remote_ssh_key_file_name: Option<String>,
+    /// Do automatically push index changes to the remote
+    #[serde(rename = "remotePushChanges")]
+    pub remote_push_changes: bool,
     /// The user name to use for commits
     #[serde(rename = "userName")]
     pub user_name: String,

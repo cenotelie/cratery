@@ -94,7 +94,7 @@ impl Index {
         execute_git(&location, &["add", "."]).await?;
         execute_git(&location, &["commit", "-m", "Add initial configuration"]).await?;
         execute_git(&location, &["update-server-info"]).await?;
-        if let Some(remote_origin) = self.config.remote_origin.as_ref() {
+        if let (Some(remote_origin), true) = (self.config.remote_origin.as_ref(), self.config.remote_push_changes) {
             info!("index: pushing to {remote_origin}");
             execute_git(&location, &["push", "origin", "master"]).await?;
         }
@@ -169,7 +169,7 @@ impl Index {
         execute_git(&location, &["add", "."]).await?;
         execute_git(&location, &["commit", "-m", &message]).await?;
         execute_git(&location, &["update-server-info"]).await?;
-        if self.config.remote_origin.is_some() {
+        if let (Some(_), true) = (self.config.remote_origin.as_ref(), self.config.remote_push_changes) {
             execute_git(&location, &["push", "origin", "master"]).await?;
         }
         Ok(())
