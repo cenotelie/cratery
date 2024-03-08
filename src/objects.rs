@@ -34,6 +34,9 @@ pub struct ConfigExternalRegistry {
     pub name: String,
     /// The URI to the registry's index
     pub index: String,
+    /// The root uri to docs for packages in this registry
+    #[serde(rename = "docsRoot")]
+    pub docs_root: String,
     /// The login to connect to the registry
     pub login: String,
     /// The token for authentication
@@ -130,11 +133,13 @@ impl Configuration {
         let mut external_registry_index = 1;
         while let Ok(name) = std::env::var(format!("REGISTRY_EXTERNAL_{external_registry_index}_NAME")) {
             let index = std::env::var(format!("REGISTRY_EXTERNAL_{external_registry_index}_INDEX"))?;
+            let docs_root = std::env::var(format!("REGISTRY_EXTERNAL_{external_registry_index}_DOCS"))?;
             let login = std::env::var(format!("REGISTRY_EXTERNAL_{external_registry_index}_LOGIN"))?;
             let token = std::env::var(format!("REGISTRY_EXTERNAL_{external_registry_index}_TOKEN"))?;
             external_registries.push(ConfigExternalRegistry {
                 name,
                 index,
+                docs_root,
                 login,
                 token,
             });

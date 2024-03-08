@@ -47,7 +47,7 @@ async fn docs_worker_job(configuration: &Configuration, _pool: &Pool<Sqlite>, jo
     // extract to a temp folder
     let location = extract_content(&job.crate_name, &job.crate_version, &content)?;
     // generate the doc
-    let _location_inner = generate_doc(&location, &job.crate_name).await?;
+    let _location_inner = generate_doc(configuration, &location, &job.crate_name).await?;
     // transform the doc
 
     // // set the package as documented
@@ -73,31 +73,31 @@ fn extract_content(name: &str, version: &str, content: &[u8]) -> Result<String, 
 }
 
 /// Generate the documentation for the package in a specific folder
-async fn generate_doc(location: &str, _name: &str) -> Result<PathBuf, ApiError> {
+async fn generate_doc(configuration: &Configuration, location: &str, _name: &str) -> Result<PathBuf, ApiError> {
     let mut path: PathBuf = PathBuf::from(location);
     // get the first sub dir
     let mut dir = tokio::fs::read_dir(&path).await?;
     let first = dir.next_entry().await?.unwrap();
     path = first.path();
 
-    let mut child = Command::new("cargo")
+    let mut command = Command::new("cargo");
+    command
         .current_dir(&path)
         .arg("rustdoc")
         .arg("-Zunstable-options")
         .arg("-Zrustdoc-map")
-        .arg("-Zhost-config")
-        .arg("-Ztarget-applies-to-host")
-        .arg("--lib")
         .arg("--all-features")
         .arg("--config")
-        .arg("build.rustflags=[\"--cfg=docsrs\"]")
+        .arg("build.rustdocflags=[\"-Zunstable-options\",\"--extern-html-root-takes-precedence\"]")
         .arg("--config")
-        .arg("host.rustflags=[\"--cfg=docsrs\"]")
-        .arg("--config")
-        .arg("build.rustdocflags=[\"-Zunstable-options\",\"--cfg=docsrs\",\"--extern-html-root-takes-precedence\"]")
-        .arg("--config")
-        .arg("doc.extern-map.registries.crates-io=\"https://docs.rs\"")
-        .env("DOCS_RS", "1")
+        .arg(format!("doc.extern-map.registries.local=\"{}/docs\"", configuration.uri));
+    for external in &configuration.external_registries {
+        command.arg("--config").arg(format!(
+            "doc.extern-map.registries.{}=\"{}\"",
+            external.name, external.docs_root
+        ));
+    }
+    let mut child = command
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())

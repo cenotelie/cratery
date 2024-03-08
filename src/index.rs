@@ -4,6 +4,7 @@ use std::path::{Path, PathBuf};
 use std::process::Stdio;
 
 use cenotelie_lib_apierror::{error_backend_failure, error_not_found, specialize, ApiError};
+use log::info;
 use tokio::fs::{self, create_dir_all, File, OpenOptions};
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 use tokio::process::Command;
@@ -43,7 +44,12 @@ impl Index {
         let mut content = fs::read_dir(&location).await?;
         if content.next_entry().await?.is_none() {
             // the folder is empty
+            info!("index: initializing on empty index");
             index.initialize_index(location).await?;
+        } else if index.config.remote_origin.is_some() {
+            // attempt to pull changes
+            info!("index: pulling changes from origin");
+            execute_git(&location, &["pull", "origin", "master"]).await?;
         }
         Ok(index)
     }
@@ -52,9 +58,11 @@ impl Index {
     async fn initialize_index(&self, location: PathBuf) -> Result<(), ApiError> {
         if let Some(remote_origin) = &self.config.remote_origin {
             // attempts to clone
+            info!("index: cloning from {remote_origin}");
             if execute_git(&location, &["clone", remote_origin, "."]).await.is_ok() {
                 return Ok(());
             }
+            info!("index: clone failed!");
         }
 
         // initializes an empty index
@@ -65,6 +73,7 @@ impl Index {
     /// Intializes an empty index at the specified location
     async fn initialize_empty_index(&self, location: PathBuf) -> Result<(), ApiError> {
         // initialise an empty repo
+        info!("index: initializing empty index");
         execute_git(&location, &["init"]).await?;
         execute_git(&location, &["config", "user.name", &self.config.user_name]).await?;
         execute_git(&location, &["config", "user.email", &self.config.user_email]).await?;
@@ -85,7 +94,8 @@ impl Index {
         execute_git(&location, &["add", "."]).await?;
         execute_git(&location, &["commit", "-m", "Add initial configuration"]).await?;
         execute_git(&location, &["update-server-info"]).await?;
-        if self.config.remote_origin.is_some() {
+        if let Some(remote_origin) = self.config.remote_origin.as_ref() {
+            info!("index: pushing to {remote_origin}");
             execute_git(&location, &["push", "origin", "master"]).await?;
         }
         Ok(())
