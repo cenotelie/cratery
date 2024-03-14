@@ -25,6 +25,7 @@ use crate::app::Application;
 use crate::model::config::Configuration;
 use crate::model::objects::DocsGenerationJob;
 use crate::storage;
+use crate::storage::Storage;
 use crate::transaction::in_transaction;
 
 /// Creates a worker for the generation of documentation
@@ -53,7 +54,9 @@ async fn docs_worker_job(
     job: DocsGenerationJob,
 ) -> Result<(), ApiError> {
     info!("generating doc for {} {}", job.crate_name, job.crate_version);
-    let content = storage::download_crate(&configuration, &job.crate_name, &job.crate_version).await?;
+    let content = storage::get_storage(&configuration)
+        .download_crate(&job.crate_name, &job.crate_version)
+        .await?;
     let temp_folder = extract_content(&job.crate_name, &job.crate_version, &content)?;
     let mut project_folder = generate_doc(&configuration, &temp_folder).await?;
     project_folder.push("target");
@@ -143,13 +146,11 @@ async fn upload_package(
     crate_version: &str,
     doc_folder: &Path,
 ) -> Result<(), ApiError> {
-    let files = upload_package_find_files(doc_folder, &format!("docs/{crate_name}/{crate_version}")).await?;
+    let files = upload_package_find_files(doc_folder, &format!("{crate_name}/{crate_version}")).await?;
     let results = n_at_a_time(
         files.into_iter().map(|(key, path)| {
             let configuration = configuration.clone();
-            Box::pin(async move {
-                cenotelie_lib_s3::upload_object_file(&configuration.s3, &configuration.bucket, &key, None, path).await
-            })
+            Box::pin(async move { storage::get_storage(&configuration).store_doc_file(&key, &path).await })
         }),
         8,
         Result::is_err,

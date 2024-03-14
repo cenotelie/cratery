@@ -27,9 +27,9 @@ pub fn get_var<T: AsRef<str>>(name: T) -> Result<String, MissingEnvVar> {
     })
 }
 
-/// the configuration for an external registry
+/// The configuration for an external registry
 #[derive(Debug, Serialize, Deserialize, Clone)]
-pub struct ConfigExternalRegistry {
+pub struct ExternalRegistry {
     /// The name for the registry
     pub name: String,
     /// The URI to the registry's index
@@ -41,6 +41,20 @@ pub struct ConfigExternalRegistry {
     pub login: String,
     /// The token for authentication
     pub token: String,
+}
+
+/// The specification of the storage system to use
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub enum StorageConfig {
+    /// The file system
+    FileSystem,
+    /// An S3 bucket
+    S3 {
+        /// The parameters to connect to S3
+        params: S3Params,
+        /// The name of the s3 bucket to use
+        bucket: String,
+    },
 }
 
 /// A configuration for the registry
@@ -72,11 +86,9 @@ pub struct Configuration {
     pub data_dir: String,
     /// The configuration for the index
     #[serde(rename = "indexConfig")]
-    pub index_config: IndexConfig,
-    /// The parameters to connect to S3
-    pub s3: S3Params,
-    /// The name of the s3 bucket to use
-    pub bucket: String,
+    pub index: IndexConfig,
+    /// The configuration for the storage
+    pub storage: StorageConfig,
     /// The uri of the OAuth login page
     #[serde(rename = "oauthLoginUri")]
     pub oauth_login_uri: String,
@@ -100,7 +112,7 @@ pub struct Configuration {
     pub oauth_client_scope: String,
     /// The known external registries that require authentication
     #[serde(rename = "externalRegistries")]
-    pub external_registries: Vec<ConfigExternalRegistry>,
+    pub external_registries: Vec<ExternalRegistry>,
     /// The name to use for the local registry in cargo and git config
     #[serde(rename = "selfLocalName")]
     pub self_local_name: String,
@@ -133,7 +145,7 @@ impl Configuration {
                 None => web_domain.clone(),
             },
         };
-        let index_config = IndexConfig {
+        let index = IndexConfig {
             location: format!("{data_dir}/index"),
             remote_origin: get_var("REGISTRY_GIT_REMOTE").ok(),
             remote_ssh_key_file_name: get_var("REGISTRY_GIT_REMOTE_SSH_KEY_FILENAME").ok(),
@@ -148,6 +160,21 @@ impl Configuration {
                 auth_required: true,
             },
         };
+        let storage_kind = get_var("REGISTRY_STORAGE")?;
+        let storage = match storage_kind.as_str() {
+            "s3" | "S3" => StorageConfig::S3 {
+                params: S3Params {
+                    uri: get_var("REGISTRY_S3_URI")?,
+                    region: get_var("REGISTRY_S3_REGION")?,
+                    service: get_var("REGISTRY_S3_SERVICE").ok(),
+                    access_key: get_var("REGISTRY_S3_ACCESS_KEY")?,
+                    secret_key: get_var("REGISTRY_S3_SECRET_KEY")?,
+                },
+                bucket: get_var("REGISTRY_S3_BUCKET")?,
+            },
+            "" | "fs" | "FS" | "filesystem" | "FileSystem" => StorageConfig::FileSystem,
+            _ => panic!("invalid REGISTRY_STORAGE"),
+        };
         let mut external_registries = Vec::new();
         let mut external_registry_index = 1;
         while let Ok(name) = get_var(format!("REGISTRY_EXTERNAL_{external_registry_index}_NAME")) {
@@ -155,7 +182,7 @@ impl Configuration {
             let docs_root = get_var(format!("REGISTRY_EXTERNAL_{external_registry_index}_DOCS"))?;
             let login = get_var(format!("REGISTRY_EXTERNAL_{external_registry_index}_LOGIN"))?;
             let token = get_var(format!("REGISTRY_EXTERNAL_{external_registry_index}_TOKEN"))?;
-            external_registries.push(ConfigExternalRegistry {
+            external_registries.push(ExternalRegistry {
                 name,
                 index,
                 docs_root,
@@ -168,9 +195,10 @@ impl Configuration {
             log_level: std::env::var("REGISTRY_LOG_LEVEL").unwrap_or_else(|_| String::from("INFO")),
             log_datetime_format: std::env::var("REGISTRY_LOG_DATE_TIME_FORMAT")
                 .unwrap_or_else(|_| String::from("[%Y-%m-%d %H:%M:%S]")),
-            web_listenon_ip: std::env::var("REGISTRY_WEB_LISTENON_IP")
-                .map(|s| IpAddr::from_str(&s).expect("invalud REGISTRY_WEB_LISTENON_IP"))
-                .unwrap_or_else(|_| IpAddr::V4(Ipv4Addr::new(0, 0, 0, 0))),
+            web_listenon_ip: std::env::var("REGISTRY_WEB_LISTENON_IP").map_or_else(
+                |_| IpAddr::V4(Ipv4Addr::new(0, 0, 0, 0)),
+                |s| IpAddr::from_str(&s).expect("invalud REGISTRY_WEB_LISTENON_IP"),
+            ),
             web_listenon_port: std::env::var("REGISTRY_WEB_LISTENON_PORT")
                 .map(|s| s.parse().expect("invalid REGISTRY_WEB_LISTENON_PORT"))
                 .unwrap_or(8080),
@@ -180,15 +208,8 @@ impl Configuration {
                 .map(|s| s.parse().expect("invalid REGISTRY_WEB_BODY_LIMIT"))
                 .unwrap_or(10 * 1024 * 1024),
             data_dir,
-            index_config,
-            s3: S3Params {
-                uri: get_var("REGISTRY_S3_URI")?,
-                region: get_var("REGISTRY_S3_REGION")?,
-                service: get_var("REGISTRY_S3_SERVICE").ok(),
-                access_key: get_var("REGISTRY_S3_ACCESS_KEY")?,
-                secret_key: get_var("REGISTRY_S3_SECRET_KEY")?,
-            },
-            bucket: get_var("REGISTRY_S3_BUCKET")?,
+            index,
+            storage,
             oauth_login_uri: get_var("REGISTRY_OAUTH_LOGIN_URI")?,
             oauth_token_uri: get_var("REGISTRY_OAUTH_TOKEN_URI")?,
             oauth_callback_uri: get_var("REGISTRY_OAUTH_CALLBACK_URI")?,
@@ -210,7 +231,7 @@ impl Configuration {
 
     /// Gets the corresponding index git config
     pub fn get_index_git_config(&self) -> IndexConfig {
-        self.index_config.clone()
+        self.index.clone()
     }
 
     /// Write the configuration for authenticating to registries

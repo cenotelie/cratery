@@ -61,6 +61,7 @@ use serde::Deserialize;
 use sqlx::pool::PoolConnection;
 use sqlx::sqlite::SqlitePoolOptions;
 use sqlx::{Pool, Sqlite};
+use storage::Storage;
 use tokio::fs::File;
 use tokio_util::io::ReaderStream;
 use transaction::in_transaction;
@@ -274,14 +275,14 @@ async fn get_docs_resource(
     let path = &request.uri().path()[1..]; // strip leading /
     assert!(path.starts_with("docs/"));
     let extension = get_content_type(path);
-    match cenotelie_lib_s3::get_object_stream(&state.configuration.s3, &state.configuration.bucket, path, None).await {
-        Ok(stream) => Ok((
+    match storage::get_storage(&state.configuration).download_doc_file(&path[5..]).await {
+        Ok(content) => Ok((
             StatusCode::OK,
             [
                 (header::CONTENT_TYPE, HeaderValue::from_str(extension).unwrap()),
                 (header::CACHE_CONTROL, HeaderValue::from_static("max-age=3600")),
             ],
-            Body::from_stream(stream),
+            Body::from(content),
         )),
         Err(e) => {
             let message = e.to_string();
@@ -550,7 +551,9 @@ async fn api_v1_publish(
             // publish
             let index = state.index.lock().await;
             let r = app.publish(&authenticated_user, &package).await?;
-            storage::store_crate(&state.configuration, &package.metadata, package.content).await?;
+            storage::get_storage(&state.configuration)
+                .store_crate(&package.metadata, package.content)
+                .await?;
             index.publish_crate_version(&index_data).await?;
             // generate the doc
             state
@@ -581,8 +584,9 @@ async fn api_v1_get_package(
                 .await?;
             let index = state.index.lock().await;
             let versions = app.get_package_versions(&package, &index).await?;
-            let metadata =
-                storage::download_crate_metadata(&state.configuration, &package, &versions.last().unwrap().index.vers).await?;
+            let metadata = storage::get_storage(&state.configuration)
+                .download_crate_metadata(&package, &versions.last().unwrap().index.vers)
+                .await?;
             Ok(CrateInfo { metadata, versions })
         })
         .await,
@@ -601,7 +605,9 @@ async fn api_v1_get_package_readme_last(
             .authenticate(|token| authenticate(token, &app, &state.configuration))
             .await?;
         let version = app.get_package_last_version(&package).await?;
-        let readme = storage::download_crate_readme(&state.configuration, &package, &version).await?;
+        let readme = storage::get_storage(&state.configuration)
+            .download_crate_readme(&package, &version)
+            .await?;
         Ok(readme)
     })
     .await
@@ -625,7 +631,9 @@ async fn api_v1_get_package_readme(
         let _principal = auth_data
             .authenticate(|token| authenticate(token, &app, &state.configuration))
             .await?;
-        let readme = storage::download_crate_readme(&state.configuration, &package, &version).await?;
+        let readme = storage::get_storage(&state.configuration)
+            .download_crate_readme(&package, &version)
+            .await?;
         Ok(readme)
     })
     .await
@@ -651,7 +659,9 @@ async fn api_v1_download(
             .authenticate(|token| authenticate(token, &app, &state.configuration))
             .await?;
         app.check_package_exists(&package, &version).await?;
-        let data = storage::download_crate(&state.configuration, &package, &version).await?;
+        let data = storage::get_storage(&state.configuration)
+            .download_crate(&package, &version)
+            .await?;
         Ok::<_, ApiError>(data)
     })
     .await
@@ -1063,7 +1073,7 @@ async fn main_serve_app(
     axum::serve(
         tokio::net::TcpListener::bind(socket_addr)
             .await
-            .expect(&format!("failed to bind {socket_addr}")),
+            .unwrap_or_else(|_| panic!("failed to bind {socket_addr}")),
         app.into_make_service_with_connect_info::<SocketAddr>(),
     )
     .await
