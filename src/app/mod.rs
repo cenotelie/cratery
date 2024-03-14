@@ -1,6 +1,9 @@
+/*******************************************************************************
+ * Copyright (c) 2024 Cénotélie Opérations SAS (cenotelie.fr)
+ ******************************************************************************/
+
 //! Module for the application
 
-pub mod namegen;
 pub mod packages;
 pub mod users;
 

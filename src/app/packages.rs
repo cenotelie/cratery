@@ -1,14 +1,16 @@
+/*******************************************************************************
+ * Copyright (c) 2024 Cénotélie Opérations SAS (cenotelie.fr)
+ ******************************************************************************/
+
 //! Module for the application
 
 use cenotelie_lib_apierror::{error_forbidden, error_invalid_request, error_not_found, specialize, ApiError};
 use chrono::Local;
 
-use crate::{
-    index::Index,
-    objects::{
-        AuthenticatedUser, CrateInfoVersion, CrateUploadData, CrateUploadResult, DocsGenerationJob, OwnersQueryResult,
-        RegistryUser, SearchResultCrate, SearchResults, SearchResultsMeta, YesNoMsgResult, YesNoResult,
-    },
+use crate::index::Index;
+use crate::model::objects::{
+    AuthenticatedUser, CrateInfoVersion, CrateUploadData, CrateUploadResult, DocsGenerationJob, OwnersQueryResult,
+    RegistryUser, SearchResultCrate, SearchResults, SearchResultsMeta, YesNoMsgResult, YesNoResult,
 };
 
 use super::Application;

@@ -1,16 +1,14 @@
 /*******************************************************************************
- * Copyright (c) 2019 Cénotélie Opérations SAS (cenotelie.fr)
-******************************************************************************/
+ * Copyright (c) 2024 Cénotélie Opérations SAS (cenotelie.fr)
+ ******************************************************************************/
 
 //! Module for the migrations of the platform database
 
 use std::ops::DerefMut;
 
 use cenotelie_lib_apierror::ApiError;
-use cenotelie_lib_dbutils::{
-    migration::{Migration, MigrationContent, MigrationError, VersionNumber},
-    SCHEMA_METADATA_VERSION,
-};
+use cenotelie_lib_dbutils::migration::{Migration, MigrationContent, MigrationError, VersionNumber};
+use cenotelie_lib_dbutils::SCHEMA_METADATA_VERSION;
 use log::info;
 use sqlx::{Executor, SqliteConnection};
 

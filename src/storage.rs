@@ -1,3 +1,7 @@
+/*******************************************************************************
+ * Copyright (c) 2024 Cénotélie Opérations SAS (cenotelie.fr)
+ ******************************************************************************/
+
 //! Manage the storage of crates' data
 
 use std::io::Read;
@@ -7,7 +11,8 @@ use cenotelie_lib_s3 as s3;
 use flate2::bufread::GzDecoder;
 use tar::Archive;
 
-use crate::objects::{Configuration, CrateMetadata};
+use crate::model::config::Configuration;
+use crate::model::objects::CrateMetadata;
 
 /// Stores the data for a crate
 pub async fn store_crate(config: &Configuration, metadata: &CrateMetadata, content: Vec<u8>) -> Result<(), ApiError> {

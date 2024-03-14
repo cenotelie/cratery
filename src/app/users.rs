@@ -1,3 +1,7 @@
+/*******************************************************************************
+ * Copyright (c) 2024 Cénotélie Opérations SAS (cenotelie.fr)
+ ******************************************************************************/
+
 //! Module for the application
 
 use cenotelie_lib_apierror::{
@@ -7,12 +11,13 @@ use chrono::Local;
 use data_encoding::HEXLOWER;
 use ring::digest::{Context, SHA256};
 
-use crate::objects::{
-    generate_token, AuthenticatedUser, Configuration, OAuthToken, RegistryUser, RegistryUserToken, RegistryUserTokenWithSecret,
-};
+use crate::model::auth::OAuthToken;
+use crate::model::config::Configuration;
+use crate::model::generate_token;
+use crate::model::objects::{AuthenticatedUser, RegistryUser, RegistryUserToken, RegistryUserTokenWithSecret};
 
-use super::namegen::generate_name;
 use super::Application;
+use crate::model::namegen::generate_name;
 
 /// Computes the SHA256 digest of bytes
 fn sha256(buffer: &[u8]) -> String {

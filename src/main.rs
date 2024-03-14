@@ -1,15 +1,19 @@
+/*******************************************************************************
+ * Copyright (c) 2024 Cénotélie Opérations SAS (cenotelie.fr)
+ ******************************************************************************/
+
 //! Main module
 
 #![forbid(unsafe_code)]
 #![warn(clippy::pedantic)]
 #![allow(clippy::module_name_repetitions)]
 
-mod api;
+mod app;
 mod docs;
 mod index;
 mod jobs;
 mod migrations;
-mod objects;
+mod model;
 mod storage;
 mod transaction;
 
@@ -23,7 +27,7 @@ use std::pin::pin;
 use std::str::FromStr;
 use std::sync::Arc;
 
-use api::Application;
+use app::Application;
 use axum::body::{Body, Bytes};
 use axum::extract::{DefaultBodyLimit, FromRequestParts, Path, Query, State};
 use axum::http::header::{HeaderName, SET_COOKIE};
@@ -47,11 +51,12 @@ use futures::future::select;
 use futures::lock::Mutex;
 use futures::{SinkExt, Stream};
 use log::info;
-use objects::{
-    AppVersion, AuthenticatedUser, Configuration, CrateInfo, CrateUploadData, CrateUploadResult, DocsGenerationJob,
-    OwnersAddQuery, OwnersQueryResult, RegistryUser, RegistryUserToken, RegistryUserTokenWithSecret, SearchResults,
-    YesNoMsgResult,
+use model::config::Configuration;
+use model::objects::{
+    AuthenticatedUser, CrateInfo, CrateUploadData, CrateUploadResult, DocsGenerationJob, OwnersAddQuery, OwnersQueryResult,
+    RegistryUser, RegistryUserToken, RegistryUserTokenWithSecret, SearchResults, YesNoMsgResult, YesNoResult,
 };
+use model::AppVersion;
 use serde::Deserialize;
 use sqlx::pool::PoolConnection;
 use sqlx::sqlite::SqlitePoolOptions;
@@ -61,7 +66,6 @@ use tokio_util::io::ReaderStream;
 use transaction::in_transaction;
 
 use crate::index::Index;
-use crate::objects::YesNoResult;
 
 /// The name of this program
 pub const CRATE_NAME: &str = env!("CARGO_PKG_NAME");

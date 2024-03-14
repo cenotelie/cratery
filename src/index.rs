@@ -1,3 +1,7 @@
+/*******************************************************************************
+ * Copyright (c) 2024 Cénotélie Opérations SAS (cenotelie.fr)
+ ******************************************************************************/
+
 //! API for index manipulation
 
 use std::path::{Path, PathBuf};
@@ -9,7 +13,8 @@ use tokio::fs::{self, create_dir_all, File, OpenOptions};
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 use tokio::process::Command;
 
-use crate::objects::{CrateMetadataIndex, IndexConfig};
+use crate::model::config::IndexConfig;
+use crate::model::objects::CrateMetadataIndex;
 
 /// Manages the index on git
 pub struct Index {

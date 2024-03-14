@@ -1,10 +1,17 @@
+/*******************************************************************************
+ * Copyright (c) 2024 Cénotélie Opérations SAS (cenotelie.fr)
+ ******************************************************************************/
+
 //! API for maintenance jobs
 
 use cenotelie_lib_apierror::ApiError;
 use log::info;
 use sqlx::SqliteConnection;
 
-use crate::{api::Application, index::Index, objects::Configuration, transaction::in_transaction};
+use crate::app::Application;
+use crate::index::Index;
+use crate::model::config::Configuration;
+use crate::transaction::in_transaction;
 
 /// Publish readme files on S3
 #[allow(unused)]

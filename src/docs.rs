@@ -1,31 +1,31 @@
+/*******************************************************************************
+ * Copyright (c) 2024 Cénotélie Opérations SAS (cenotelie.fr)
+ ******************************************************************************/
+
 //! Docs generation and management
 
-use std::{
-    path::{Path, PathBuf},
-    process::Stdio,
-    sync::Arc,
-};
+use std::path::{Path, PathBuf};
+use std::process::Stdio;
+use std::sync::Arc;
 
 use cenotelie_lib_apierror::{error_backend_failure, specialize, ApiError};
 use cenotelie_lib_async_utils::parallel_jobs::n_at_a_time;
 use flate2::bufread::GzDecoder;
-use futures::{channel::mpsc::UnboundedSender, StreamExt};
+use futures::channel::mpsc::UnboundedSender;
+use futures::StreamExt;
 use log::{error, info};
 use sqlx::{Pool, Sqlite};
 use tar::Archive;
-use tokio::{
-    fs::File,
-    io::{AsyncWriteExt, BufWriter},
-    process::Command,
-    task::JoinHandle,
-};
+use tokio::fs::File;
+use tokio::io::{AsyncWriteExt, BufWriter};
+use tokio::process::Command;
+use tokio::task::JoinHandle;
 
-use crate::{
-    api::Application,
-    objects::{Configuration, DocsGenerationJob},
-    storage,
-    transaction::in_transaction,
-};
+use crate::app::Application;
+use crate::model::config::Configuration;
+use crate::model::objects::DocsGenerationJob;
+use crate::storage;
+use crate::transaction::in_transaction;
 
 /// Creates a worker for the generation of documentation
 pub fn create_docs_worker(
