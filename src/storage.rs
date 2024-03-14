@@ -25,7 +25,7 @@ pub async fn store_crate(config: &Configuration, metadata: &CrateMetadata, conte
     s3::upload_object_raw(
         &config.s3,
         &config.bucket,
-        &format!("{}/{}", metadata.name, metadata.vers),
+        &format!("crates/{}/{}", metadata.name, metadata.vers),
         None,
         content,
     )
@@ -34,7 +34,7 @@ pub async fn store_crate(config: &Configuration, metadata: &CrateMetadata, conte
     s3::upload_object_raw(
         &config.s3,
         &config.bucket,
-        &format!("{}/{}/metadata", metadata.name, metadata.vers),
+        &format!("crates/{}/{}/metadata", metadata.name, metadata.vers),
         None,
         serde_json::to_vec(metadata)?,
     )
@@ -42,7 +42,7 @@ pub async fn store_crate(config: &Configuration, metadata: &CrateMetadata, conte
     s3::upload_object_raw(
         &config.s3,
         &config.bucket,
-        &format!("{}/{}/readme", metadata.name, metadata.vers),
+        &format!("crates/{}/{}/readme", metadata.name, metadata.vers),
         None,
         readme,
     )
@@ -52,7 +52,7 @@ pub async fn store_crate(config: &Configuration, metadata: &CrateMetadata, conte
 
 /// Stores the README for a crate
 pub async fn store_crate_readme(config: &Configuration, name: &str, version: &str, content: Vec<u8>) -> Result<(), ApiError> {
-    let object_key = format!("{name}/{version}/readme");
+    let object_key = format!("crates/{name}/{version}/readme");
     s3::upload_object_raw(&config.s3, &config.bucket, &object_key, None, content).await?;
     Ok(())
 }
@@ -70,7 +70,7 @@ pub async fn download_crate_metadata(
     name: &str,
     version: &str,
 ) -> Result<Option<CrateMetadata>, ApiError> {
-    let object_key = format!("{name}/{version}/metadata");
+    let object_key = format!("crates/{name}/{version}/metadata");
     if let Ok(data) = s3::get_object(&config.s3, &config.bucket, &object_key).await {
         Ok(Some(serde_json::from_slice(&data)?))
     } else {
@@ -80,7 +80,7 @@ pub async fn download_crate_metadata(
 
 /// Downloads the last README for a crate
 pub async fn download_crate_readme(config: &Configuration, name: &str, version: &str) -> Result<Vec<u8>, ApiError> {
-    let object_key = format!("{name}/{version}/readme");
+    let object_key = format!("crates/{name}/{version}/readme");
     let data = s3::get_object(&config.s3, &config.bucket, &object_key).await?;
     Ok(data)
 }
@@ -107,7 +107,7 @@ pub fn extract_readme(crate_content: &[u8]) -> Result<Vec<u8>, ApiError> {
 }
 
 /// Gets the keys for all the objects in the bucket
-pub async fn get_objects_in_bucket(config: &Configuration) -> Result<Vec<String>, ApiError> {
-    let result = s3::list_objects(&config.s3, &config.bucket, None, None).await?;
+pub async fn get_objects_in_bucket(config: &Configuration, prefix: Option<&str>) -> Result<Vec<String>, ApiError> {
+    let result = s3::list_objects(&config.s3, &config.bucket, prefix, None).await?;
     Ok(result.into_iter().map(|o| o.key).collect())
 }

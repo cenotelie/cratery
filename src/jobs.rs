@@ -26,11 +26,11 @@ pub async fn publish_readme_files(
         Ok::<_, ApiError>(result.crates)
     })
     .await?;
-    let keys = crate::storage::get_objects_in_bucket(configuration).await?;
+    let keys = crate::storage::get_objects_in_bucket(configuration, Some("crates")).await?;
     for crate_data in crates {
         let versions = index.get_crate_data(&crate_data.name).await?;
         for version in versions {
-            let readme_key = format!("{}/{}/readme", crate_data.name, version.vers);
+            let readme_key = format!("crates/{}/{}/readme", crate_data.name, version.vers);
             if keys.contains(&readme_key) {
                 continue;
             }
