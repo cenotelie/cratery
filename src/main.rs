@@ -50,7 +50,7 @@ use futures::channel::mpsc::UnboundedSender;
 use futures::future::select;
 use futures::lock::Mutex;
 use futures::{SinkExt, Stream};
-use log::info;
+use log::{error, info};
 use model::config::Configuration;
 use model::objects::{
     AuthenticatedUser, CrateInfo, CrateUploadData, CrateUploadResult, DocsGenerationJob, OwnersAddQuery, OwnersQueryResult,
@@ -145,7 +145,7 @@ async fn authenticate(token: &Token, app: &Application<'_>, config: &Configurati
 /// Response for a GET on the root
 /// Redirect to the web app
 async fn get_root(State(state): State<Arc<AxumState>>) -> (StatusCode, [(HeaderName, HeaderValue); 2]) {
-    let target = format!("{}/webapp/index.html", state.configuration.uri);
+    let target = format!("{}/webapp/index.html", state.configuration.web_public_uri);
     (
         StatusCode::FOUND,
         [
@@ -193,7 +193,7 @@ async fn get_webapp_resource(
                 "{}?response_type={}&redirect_uri={}&client_id={}&scope={}&state={}",
                 state.configuration.oauth_login_uri,
                 "code",
-                urlencoding::encode(&format!("{}/webapp/oauthcallback.html", state.configuration.uri)),
+                urlencoding::encode(&format!("{}/webapp/oauthcallback.html", state.configuration.web_public_uri)),
                 state.configuration.oauth_client_id,
                 state.configuration.oauth_client_scope,
                 ""
@@ -225,7 +225,7 @@ async fn get_webapp_resource(
 
 /// Redirects to the login page
 async fn webapp_me(State(state): State<Arc<AxumState>>) -> (StatusCode, [(HeaderName, HeaderValue); 2]) {
-    let target = format!("{}/webapp/index.html", state.configuration.uri);
+    let target = format!("{}/webapp/index.html", state.configuration.web_public_uri);
     (
         StatusCode::FOUND,
         [
@@ -256,7 +256,7 @@ async fn get_docs_resource(
             "{}?response_type={}&redirect_uri={}&client_id={}&scope={}&state={}",
             state.configuration.oauth_login_uri,
             "code",
-            urlencoding::encode(&format!("{}/webapp/oauthcallback.html", state.configuration.uri)),
+            urlencoding::encode(&format!("{}/webapp/oauthcallback.html", state.configuration.web_public_uri)),
             state.configuration.oauth_client_id,
             state.configuration.oauth_client_scope,
             ""
@@ -845,7 +845,7 @@ async fn index_serve_check_auth(
         Ok(())
     })
     .await
-    .map_err(|e| index_serve_map_err(e, &config.domain))?;
+    .map_err(|e| index_serve_map_err(e, &config.web_domain))?;
     Ok(())
 }
 
@@ -859,7 +859,7 @@ async fn index_serve(
     let index = state.index.lock().await;
     let (stream, content_type) = index_serve_inner(&index, request.uri().path())
         .await
-        .map_err(|e| index_serve_map_err(e, &state.configuration.domain))?;
+        .map_err(|e| index_serve_map_err(e, &state.configuration.web_domain))?;
     let body = Body::from_stream(stream);
     Ok((
         StatusCode::OK,
@@ -877,7 +877,7 @@ async fn index_serve_info_refs(
     State(state): State<Arc<AxumState>>,
     Query(query): Query<HashMap<String, String>>,
 ) -> Result<(StatusCode, [(HeaderName, HeaderValue); 2], Body), (StatusCode, [(HeaderName, HeaderValue); 2], Json<ApiError>)> {
-    let map_err = |e| index_serve_map_err(e, &state.configuration.domain);
+    let map_err = |e| index_serve_map_err(e, &state.configuration.web_domain);
     index_serve_check_auth(connection, &auth_data, &state.configuration).await?;
     let index = state.index.lock().await;
     if query.get("service").map(std::string::String::as_str) == Some("git-upload-pack") {
@@ -898,7 +898,7 @@ async fn index_serve_info_refs(
         // dumb server response
         let (stream, content_type) = index_serve_inner(&index, "/info/refs")
             .await
-            .map_err(|e| index_serve_map_err(e, &state.configuration.domain))?;
+            .map_err(|e| index_serve_map_err(e, &state.configuration.web_domain))?;
         let body = Body::from_stream(stream);
         Ok((
             StatusCode::OK,
@@ -917,7 +917,7 @@ async fn index_serve_git_upload_pack(
     State(state): State<Arc<AxumState>>,
     body: Bytes,
 ) -> Result<(StatusCode, [(HeaderName, HeaderValue); 2], Body), (StatusCode, [(HeaderName, HeaderValue); 2], Json<ApiError>)> {
-    let map_err = |e| index_serve_map_err(e, &state.configuration.domain);
+    let map_err = |e| index_serve_map_err(e, &state.configuration.web_domain);
     index_serve_check_auth(connection, &auth_data, &state.configuration).await?;
     let index = state.index.lock().await;
     let data = index.get_upload_pack_for(&body).await.map_err(map_err)?;
@@ -952,7 +952,7 @@ pub struct AxumState {
 
 impl AxumStateForCookies for AxumState {
     fn get_domain(&self) -> Cow<'static, str> {
-        Cow::Owned(self.configuration.domain.clone())
+        Cow::Owned(self.configuration.web_domain.clone())
     }
 
     fn get_id_cookie_name(&self) -> Cow<'static, str> {
@@ -992,7 +992,8 @@ async fn main_serve_app(
 ) -> Result<(), std::io::Error> {
     // web application
     let webapp_resources = embed_dir!("src/webapp");
-    let body_limit = configuration.body_limit;
+    let body_limit = configuration.web_body_limit;
+    let socket_addr = SocketAddr::new(configuration.web_listenon_ip, configuration.web_listenon_port);
     let state = Arc::new(AxumState {
         configuration,
         index: Mutex::new(index),
@@ -1059,9 +1060,8 @@ async fn main_serve_app(
         .layer(LogLayer)
         .layer(DefaultBodyLimit::max(body_limit))
         .with_state(state);
-    let addr = SocketAddr::from(([0, 0, 0, 0], 80));
     axum::serve(
-        tokio::net::TcpListener::bind(addr).await.unwrap(),
+        tokio::net::TcpListener::bind(socket_addr).await.unwrap(),
         app.into_make_service_with_connect_info::<SocketAddr>(),
     )
     .await
@@ -1099,10 +1099,17 @@ async fn main() {
     info!("{} commit={} tag={}", CRATE_NAME, GIT_HASH, GIT_TAG);
 
     // load configuration
-    let configuration = Arc::new(Configuration::from_env().unwrap());
+    let configuration = match Configuration::from_env() {
+        Ok(c) => c,
+        Err(e) => {
+            error!("{e}");
+            return;
+        }
+    };
+    let configuration = Arc::new(configuration);
     let cookie_key = Key::from(
-        env::var("REGISTRY_COOKIE_SECRET")
-            .expect("REGISTRY_COOKIE_SECRET must be set")
+        env::var("REGISTRY_WEB_COOKIE_SECRET")
+            .expect("REGISTRY_WEB_COOKIE_SECRET must be set")
             .as_bytes(),
     );
 

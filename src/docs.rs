@@ -97,7 +97,10 @@ async fn generate_doc(configuration: &Configuration, temp_folder: &Path) -> Resu
         .arg("--config")
         .arg("build.rustdocflags=[\"-Zunstable-options\",\"--extern-html-root-takes-precedence\"]")
         .arg("--config")
-        .arg(format!("doc.extern-map.registries.local=\"{}/docs\"", configuration.uri));
+        .arg(format!(
+            "doc.extern-map.registries.local=\"{}/docs\"",
+            configuration.web_public_uri
+        ));
     for external in &configuration.external_registries {
         command.arg("--config").arg(format!(
             "doc.extern-map.registries.{}=\"{}\"",
