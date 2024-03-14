@@ -11,7 +11,6 @@
 mod app;
 mod docs;
 mod index;
-mod jobs;
 mod migrations;
 mod model;
 mod storage;
@@ -1138,11 +1137,6 @@ async fn main() {
 
     // prepare the index
     let index = Index::on_launch(configuration.get_index_git_config()).await.unwrap();
-
-    // extract all readmes
-    // jobs::publish_readme_files(&mut pool.acquire().await.unwrap(), &configuration, &index)
-    //     .await
-    //     .unwrap();
 
     // docs worker
     let (docs_worker_sender, docs_worker) = docs::create_docs_worker(configuration.clone(), pool.clone());

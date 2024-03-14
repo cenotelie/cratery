@@ -9,10 +9,7 @@ use std::path::Path;
 use cenotelie_lib_apierror::ApiError;
 use cenotelie_lib_s3 as s3;
 
-use crate::model::{
-    config::{Configuration, StorageConfig},
-    objects::CrateMetadata,
-};
+use crate::model::objects::CrateMetadata;
 
 use super::Storage;
 
@@ -111,13 +108,4 @@ impl<'config> Storage for S3Storage<'config> {
         let data = s3::get_object(self.params, self.bucket, &object_key).await?;
         Ok(data)
     }
-}
-
-/// Gets the keys for all the objects in the bucket
-pub async fn get_objects_in_bucket(config: &Configuration, prefix: Option<&str>) -> Result<Vec<String>, ApiError> {
-    let StorageConfig::S3 { params, bucket } = &config.storage else {
-        return Ok(Vec::new());
-    };
-    let result = s3::list_objects(params, bucket, prefix, None).await?;
-    Ok(result.into_iter().map(|o| o.key).collect())
 }
