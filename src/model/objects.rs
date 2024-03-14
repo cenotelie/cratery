@@ -361,6 +361,9 @@ pub struct CrateInfoVersion {
     /// Whether documentation was generated for this version
     #[serde(rename = "hasDocs")]
     pub has_docs: bool,
+    /// Whether the documentation generation was attempted
+    #[serde(rename = "docGenAttempted")]
+    pub doc_gen_attempted: bool,
 }
 
 /// The upload data for publishing a crate

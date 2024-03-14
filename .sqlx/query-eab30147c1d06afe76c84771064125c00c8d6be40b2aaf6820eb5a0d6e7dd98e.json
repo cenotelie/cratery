@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "UPDATE PackageVersion SET docGenAttempted = TRUE, hasDocs = $3 WHERE package = $1 AND version = $2",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 3
+    },
+    "nullable": []
+  },
+  "hash": "eab30147c1d06afe76c84771064125c00c8d6be40b2aaf6820eb5a0d6e7dd98e"
+}

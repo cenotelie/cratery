@@ -46,6 +46,9 @@ pub trait Storage {
     /// Stores a documentation file
     fn store_doc_file(&self, path: &str, file: &Path) -> impl Future<Output = Result<(), ApiError>> + Send;
 
+    /// Stores a documentation file
+    fn store_doc_data(&self, path: &str, content: Vec<u8>) -> impl Future<Output = Result<(), ApiError>> + Send;
+
     /// Gets the content of a documentation file
     fn download_doc_file(&self, path: &str) -> impl Future<Output = Result<Vec<u8>, ApiError>> + Send;
 }
@@ -125,6 +128,14 @@ impl<'config> Storage for StorageImpl<'config> {
         match &self.config.storage {
             StorageConfig::FileSystem => fs::FsStorage::new(&self.config.data_dir).store_doc_file(path, file).await,
             StorageConfig::S3 { params, bucket } => s3::S3Storage::new(params, bucket).store_doc_file(path, file).await,
+        }
+    }
+
+    /// Stores a documentation file
+    async fn store_doc_data(&self, path: &str, content: Vec<u8>) -> Result<(), ApiError> {
+        match &self.config.storage {
+            StorageConfig::FileSystem => fs::FsStorage::new(&self.config.data_dir).store_doc_data(path, content).await,
+            StorageConfig::S3 { params, bucket } => s3::S3Storage::new(params, bucket).store_doc_data(path, content).await,
         }
     }
 

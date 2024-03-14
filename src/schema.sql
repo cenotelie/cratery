@@ -5,7 +5,7 @@ CREATE TABLE IF NOT EXISTS SchemaMetadata (
 
 CREATE INDEX IF NOT EXISTS SchemaMetadataIndex ON SchemaMetadata(name);
 
-INSERT INTO SchemaMetadata VALUES ('version', '1.1.0');
+INSERT INTO SchemaMetadata VALUES ('version', '1.2.0');
 
 CREATE TABLE RegistryUser (
     id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
@@ -54,7 +54,8 @@ CREATE TABLE PackageVersion (
     upload TIMESTAMP NOT NULL,
     uploadedBy INTEGER NOT NULL REFERENCES RegistryUser(id),
     yanked BOOLEAN NOT NULL,
-    hasDocs BOOLEAN NOT NULL
+    hasDocs BOOLEAN NOT NULL,
+    docGenAttempted BOOLEAN NOT NULL
 );
 
 CREATE INDEX IndexPackageVersion ON PackageVersion(package);

@@ -65,7 +65,7 @@ impl<'c> Application<'c> {
     pub async fn get_package_versions(&self, package: &str, index: &Index) -> Result<Vec<CrateInfoVersion>, ApiError> {
         let versions_index = index.get_crate_data(package).await?;
         let rows = sqlx::query!(
-            "SELECT version, upload, uploadedBy AS uploaded_by, hasDocs AS has_docs FROM PackageVersion WHERE package = $1 ORDER BY id",
+            "SELECT version, upload, uploadedBy AS uploaded_by, hasDocs AS has_docs, docGenAttempted AS doc_gen_attempted FROM PackageVersion WHERE package = $1 ORDER BY id",
             package
         )
         .fetch_all(&mut *self.transaction.borrow().await)
@@ -79,6 +79,7 @@ impl<'c> Application<'c> {
                     upload: row.upload,
                     uploaded_by,
                     has_docs: row.has_docs,
+                    doc_gen_attempted: row.doc_gen_attempted,
                 });
             }
         }
@@ -161,7 +162,7 @@ impl<'c> Application<'c> {
         // create the version
         let description = package.metadata.description.as_ref().map_or("", std::string::String::as_str);
         sqlx::query!(
-            "INSERT INTO PackageVersion (package, version, description, upload, uploadedBy, yanked, hasDocs) VALUES ($1, $2, $3, $4, $5, false, false)",
+            "INSERT INTO PackageVersion (package, version, description, upload, uploadedBy, yanked, hasDocs, docGenAttempted) VALUES ($1, $2, $3, $4, $5, false, false, false)",
             package.metadata.name,
             package.metadata.vers,
             description,
@@ -305,9 +306,11 @@ impl<'c> Application<'c> {
 
     /// Gets the packages that need documentation generation
     pub async fn get_undocumented_packages(&self) -> Result<Vec<DocsGenerationJob>, ApiError> {
-        let rows = sqlx::query!("SELECT package, version FROM PackageVersion WHERE hasDocs = FALSE ORDER BY id")
-            .fetch_all(&mut *self.transaction.borrow().await)
-            .await?;
+        let rows = sqlx::query!(
+            "SELECT package, version FROM PackageVersion WHERE hasDocs = FALSE AND docGenAttempted = FALSE ORDER BY id"
+        )
+        .fetch_all(&mut *self.transaction.borrow().await)
+        .await?;
         Ok(rows
             .into_iter()
             .map(|row| DocsGenerationJob {
@@ -318,15 +321,56 @@ impl<'c> Application<'c> {
     }
 
     /// Sets a package as having documentation
-    pub async fn set_package_documented(&self, package: &str, version: &str) -> Result<(), ApiError> {
+    pub async fn set_package_documention(&self, package: &str, version: &str, has_docs: bool) -> Result<(), ApiError> {
         sqlx::query!(
-            "UPDATE PackageVersion SET hasDocs = TRUE WHERE package = $1 AND version = $2",
+            "UPDATE PackageVersion SET docGenAttempted = TRUE, hasDocs = $3 WHERE package = $1 AND version = $2",
             package,
-            version
+            version,
+            has_docs
         )
         .execute(&mut *self.transaction.borrow().await)
         .await?;
         Ok(())
+    }
+
+    /// Force the re-generation for the documentation of a package
+    pub async fn regenerate_documentation(
+        &self,
+        authenticated_user: &AuthenticatedUser,
+        package: &str,
+        version: &str,
+    ) -> Result<(), ApiError> {
+        if !authenticated_user.can_write {
+            return Err(specialize(
+                error_forbidden(),
+                String::from("writing is forbidden for this authentication"),
+            ));
+        }
+        self.check_package_ownership(authenticated_user, package).await?;
+        let row = sqlx::query!(
+            "SELECT yanked FROM PackageVersion WHERE package = $1 AND version = $2 LIMIT 1",
+            package,
+            version
+        )
+        .fetch_optional(&mut *self.transaction.borrow().await)
+        .await?;
+        match row {
+            None => Err(specialize(
+                error_invalid_request(),
+                format!("Version {version} of crate {package} does not exist"),
+            )),
+            Some(_row) => {
+                sqlx::query!(
+                    "UPDATE PackageVersion SET docGenAttempted = FALSE, hasDocs = FALSE WHERE package = $1 AND version = $2",
+                    package,
+                    version
+                )
+                .execute(&mut *self.transaction.borrow().await)
+                .await?;
+
+                Ok(())
+            }
+        }
     }
 
     /// Gets the list of owners for a package

@@ -15,10 +15,16 @@ use sqlx::{Executor, SqliteConnection};
 use crate::transaction::in_transaction;
 
 /// The migrations
-const MIGRATIONS: &[Migration<'static>] = &[Migration {
-    target: "1.1.0",
-    content: MigrationContent::Sql(include_bytes!("v1.1.0.sql")),
-}];
+const MIGRATIONS: &[Migration<'static>] = &[
+    Migration {
+        target: "1.1.0",
+        content: MigrationContent::Sql(include_bytes!("v1.1.0.sql")),
+    },
+    Migration {
+        target: "1.2.0",
+        content: MigrationContent::Sql(include_bytes!("v1.2.0.sql")),
+    },
+];
 
 /// Gets the value for the metadata item
 ///

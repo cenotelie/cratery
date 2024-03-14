@@ -16,8 +16,6 @@ use futures::StreamExt;
 use log::{error, info};
 use sqlx::{Pool, Sqlite};
 use tar::Archive;
-use tokio::fs::File;
-use tokio::io::{AsyncWriteExt, BufWriter};
 use tokio::process::Command;
 use tokio::task::JoinHandle;
 
@@ -58,15 +56,29 @@ async fn docs_worker_job(
         .download_crate(&job.crate_name, &job.crate_version)
         .await?;
     let temp_folder = extract_content(&job.crate_name, &job.crate_version, &content)?;
-    let mut project_folder = generate_doc(&configuration, &temp_folder).await?;
-    project_folder.push("target");
-    project_folder.push("doc");
-    let doc_folder = project_folder;
-    upload_package(configuration, &job.crate_name, &job.crate_version, &doc_folder).await?;
+    let gen_is_ok = match generate_doc(&configuration, &temp_folder).await {
+        Ok(mut project_folder) => {
+            project_folder.push("target");
+            project_folder.push("doc");
+            let doc_folder = project_folder;
+            upload_package(configuration, &job.crate_name, &job.crate_version, &doc_folder).await?;
+            true
+        }
+        Err(e) => {
+            // upload the log
+            let log = e.details.unwrap();
+            let path = format!("{}/{}/log.txt", job.crate_name, job.crate_version);
+            storage::get_storage(&configuration)
+                .store_doc_data(&path, log.into_bytes())
+                .await?;
+            false
+        }
+    };
     let mut connection = pool.acquire().await?;
     in_transaction(&mut connection, |transaction| async move {
         let app = Application::new(transaction);
-        app.set_package_documented(&job.crate_name, &job.crate_version).await
+        app.set_package_documention(&job.crate_name, &job.crate_version, gen_is_ok)
+            .await
     })
     .await?;
     tokio::fs::remove_dir_all(&temp_folder).await?;
@@ -117,18 +129,6 @@ async fn generate_doc(configuration: &Configuration, temp_folder: &Path) -> Resu
         .spawn()?;
     drop(child.stdin.take()); // close stdin
     let output = child.wait_with_output().await?;
-
-    {
-        // write output to file
-        let mut path = path.clone();
-        path.pop();
-        path.push("output.txt");
-        let file = File::create(path).await?;
-        let mut writer = BufWriter::new(file);
-        writer.write_all(&output.stdout).await?;
-        writer.write_all(&output.stderr).await?;
-        writer.flush().await?;
-    }
 
     if !output.status.success() {
         let stdout = String::from_utf8_lossy(&output.stdout);

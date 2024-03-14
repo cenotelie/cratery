@@ -1,6 +1,6 @@
 {
   "db_name": "SQLite",
-  "query": "SELECT version, upload, uploadedBy AS uploaded_by, hasDocs AS has_docs FROM PackageVersion WHERE package = $1 ORDER BY id",
+  "query": "SELECT version, upload, uploadedBy AS uploaded_by, hasDocs AS has_docs, docGenAttempted AS doc_gen_attempted FROM PackageVersion WHERE package = $1 ORDER BY id",
   "describe": {
     "columns": [
       {
@@ -22,6 +22,11 @@
         "name": "has_docs",
         "ordinal": 3,
         "type_info": "Bool"
+      },
+      {
+        "name": "doc_gen_attempted",
+        "ordinal": 4,
+        "type_info": "Bool"
       }
     ],
     "parameters": {
@@ -31,8 +36,9 @@
       false,
       false,
       false,
+      false,
       false
     ]
   },
-  "hash": "bedd7a77027ba14b65be485c4e3f47e281aed4f6f3607e13ecabb8ccb1330a41"
+  "hash": "3602dde24fb9472d46c3d08176090ffd8f34c9ec0a5f4ff0c4b13e076aa84d3e"
 }

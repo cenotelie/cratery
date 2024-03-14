@@ -128,6 +128,8 @@
       link.appendChild(document.createTextNode(`v${currentVersion.index.vers}`));
       link.setAttribute("href", `/docs/${currentVersion.index.name}/${currentVersion.index.vers}/${currentVersion.index.name}/index.html`);
       document.getElementById("meta-docs").appendChild(link);
+    } else {
+      // TODO: add regen button here
     }
 
     const tabReadmeEl = document.getElementById("tab-readme-content");

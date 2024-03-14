@@ -173,6 +173,18 @@ function apiGetCrateOwners(crate) {
   });
 }
 
+function apiRegenCrateDoc(crate, version) {
+  return fetch(`/api/v1/crates/${crate}/${version}/docsregen`, {
+    method: "POST",
+  }).then((response) => {
+    if (response.status !== 200) {
+      throw response.text();
+    } else {
+      return response.json();
+    }
+  });
+}
+
 function getQueryParameters(queryString) {
   const regex = new RegExp("[\\?&]([a-zA-Z0-9_-]+)=([^&#]*)", "g");
   let match = null;

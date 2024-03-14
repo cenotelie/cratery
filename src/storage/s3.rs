@@ -102,6 +102,13 @@ impl<'config> Storage for S3Storage<'config> {
         Ok(())
     }
 
+    /// Stores a documentation file
+    async fn store_doc_data(&self, path: &str, content: Vec<u8>) -> Result<(), ApiError> {
+        let object_key = format!("docs/{path}");
+        s3::upload_object_raw(self.params, self.bucket, &object_key, None, content).await?;
+        Ok(())
+    }
+
     /// Gets the content of a documentation file
     async fn download_doc_file(&self, path: &str) -> Result<Vec<u8>, ApiError> {
         let object_key = format!("docs/{path}");

@@ -720,6 +720,34 @@ async fn api_v1_unyank(
     )
 }
 
+// #[post("/crates/{package}/{version}/docsregen")]
+async fn api_v1_docs_regen(
+    mut connection: DbConn,
+    auth_data: AuthData,
+    State(state): State<Arc<AxumState>>,
+    Path(PathInfoCrateVersion { package, version }): Path<PathInfoCrateVersion>,
+) -> ApiResult<()> {
+    response(
+        in_transaction(&mut connection, |transaction| async move {
+            let app = Application::new(transaction);
+            let authenticated_user = auth_data
+                .authenticate(|token| authenticate(token, &app, &state.configuration))
+                .await?;
+            app.regenerate_documentation(&authenticated_user, &package, &version).await?;
+            state
+                .docs_worker_sender
+                .clone()
+                .send(DocsGenerationJob {
+                    crate_name: package.clone(),
+                    crate_version: version.clone(),
+                })
+                .await?;
+            Ok(())
+        })
+        .await,
+    )
+}
+
 // #[get("/crates/{package}/owners")]
 async fn api_v1_get_owners(
     mut connection: DbConn,
@@ -1059,6 +1087,7 @@ async fn main_serve_app(
                         .route("/:package/:version/download", get(api_v1_download))
                         .route("/:package/:version/yank", delete(api_v1_yank))
                         .route("/:package/:version/unyank", put(api_v1_unyank))
+                        .route("/:package/:version/docsregen", post(api_v1_docs_regen))
                         .route("/:package/owners", get(api_v1_get_owners))
                         .route("/:package/owners", put(api_v1_add_owners))
                         .route("/:package/owners", delete(api_v1_remove_owners)),

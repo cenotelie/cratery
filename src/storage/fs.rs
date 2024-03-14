@@ -105,6 +105,12 @@ impl<'config> Storage for FsStorage<'config> {
         Ok(())
     }
 
+    /// Stores a documentation file
+    async fn store_doc_data(&self, path: &str, content: Vec<u8>) -> Result<(), ApiError> {
+        self.write_to_file(&format!("docs/{path}"), &content).await?;
+        Ok(())
+    }
+
     /// Gets the content of a documentation file
     async fn download_doc_file(&self, path: &str) -> Result<Vec<u8>, ApiError> {
         self.read_from_file(&format!("docs/{path}")).await
