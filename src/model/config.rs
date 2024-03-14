@@ -4,7 +4,6 @@
 
 //! Module for configuration management
 
-use std::error::Error;
 use std::net::{IpAddr, Ipv4Addr};
 use std::str::FromStr;
 
@@ -166,20 +165,19 @@ impl Configuration {
             external_registry_index += 1;
         }
         Ok(Self {
-            log_level: get_var("REGISTRY_LOG_LEVEL").unwrap_or_else(|_| String::from("INFO")),
-            log_datetime_format: get_var("REGISTRY_LOG_DATE_TIME_FORMAT")
+            log_level: std::env::var("REGISTRY_LOG_LEVEL").unwrap_or_else(|_| String::from("INFO")),
+            log_datetime_format: std::env::var("REGISTRY_LOG_DATE_TIME_FORMAT")
                 .unwrap_or_else(|_| String::from("[%Y-%m-%d %H:%M:%S]")),
-            web_listenon_ip: get_var("REGISTRY_WEB_LISTENON_IP")
+            web_listenon_ip: std::env::var("REGISTRY_WEB_LISTENON_IP")
                 .map(|s| IpAddr::from_str(&s).expect("invalud REGISTRY_WEB_LISTENON_IP"))
                 .unwrap_or_else(|_| IpAddr::V4(Ipv4Addr::new(0, 0, 0, 0))),
-            web_listenon_port: get_var("REGISTRY_WEB_LISTENON_PORT")
+            web_listenon_port: std::env::var("REGISTRY_WEB_LISTENON_PORT")
                 .map(|s| s.parse().expect("invalid REGISTRY_WEB_LISTENON_PORT"))
                 .unwrap_or(8080),
             web_domain,
             web_public_uri,
-            web_body_limit: get_var("REGISTRY_WEB_BODY_LIMIT")
-                .map_err::<Box<dyn Error>, _>(std::convert::Into::into)
-                .and_then(|var| var.parse::<usize>().map_err::<Box<dyn Error>, _>(std::convert::Into::into))
+            web_body_limit: std::env::var("REGISTRY_WEB_BODY_LIMIT")
+                .map(|s| s.parse().expect("invalid REGISTRY_WEB_BODY_LIMIT"))
                 .unwrap_or(10 * 1024 * 1024),
             data_dir,
             index_config,
