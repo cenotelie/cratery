@@ -1061,7 +1061,9 @@ async fn main_serve_app(
         .layer(DefaultBodyLimit::max(body_limit))
         .with_state(state);
     axum::serve(
-        tokio::net::TcpListener::bind(socket_addr).await.unwrap(),
+        tokio::net::TcpListener::bind(socket_addr)
+            .await
+            .expect(&format!("failed to bind {socket_addr}")),
         app.into_make_service_with_connect_info::<SocketAddr>(),
     )
     .await
