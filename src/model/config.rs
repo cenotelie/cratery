@@ -102,6 +102,9 @@ pub struct Configuration {
     /// The known external registries that require authentication
     #[serde(rename = "externalRegistries")]
     pub external_registries: Vec<ConfigExternalRegistry>,
+    /// The name to use for the local registry in cargo and git config
+    #[serde(rename = "selfLocalName")]
+    pub self_local_name: String,
     /// The login to the service account for self authentication
     #[serde(rename = "selfServiceLogin")]
     pub self_service_login: String,
@@ -119,6 +122,18 @@ impl Configuration {
     pub fn from_env() -> Result<Self, MissingEnvVar> {
         let data_dir = get_var("REGISTRY_DATA_DIR")?;
         let web_public_uri = get_var("REGISTRY_WEB_PUBLIC_URI")?;
+        let web_domain = Uri::from_str(&web_public_uri)
+            .expect("invalid REGISTRY_WEB_PUBLIC_URI")
+            .host()
+            .unwrap_or_default()
+            .to_string();
+        let self_local_name = match std::env::var("REGISTRY_SELF_LOCAL_NAME") {
+            Ok(value) => value,
+            Err(_) => match web_domain.rfind('.') {
+                Some(index) => web_domain[index..].to_string(),
+                None => web_domain.clone(),
+            },
+        };
         let index_config = IndexConfig {
             location: format!("{data_dir}/index"),
             remote_origin: get_var("REGISTRY_GIT_REMOTE").ok(),
@@ -160,11 +175,7 @@ impl Configuration {
             web_listenon_port: get_var("REGISTRY_WEB_LISTENON_PORT")
                 .map(|s| s.parse().expect("invalid REGISTRY_WEB_LISTENON_PORT"))
                 .unwrap_or(8080),
-            web_domain: Uri::from_str(&web_public_uri)
-                .expect("invalid REGISTRY_WEB_PUBLIC_URI")
-                .host()
-                .unwrap_or_default()
-                .to_string(),
+            web_domain,
             web_public_uri,
             web_body_limit: get_var("REGISTRY_WEB_BODY_LIMIT")
                 .map_err::<Box<dyn Error>, _>(std::convert::Into::into)
@@ -187,9 +198,10 @@ impl Configuration {
             oauth_client_id: get_var("REGISTRY_OAUTH_CLIENT_ID")?,
             oauth_client_secret: get_var("REGISTRY_OAUTH_CLIENT_SECRET")?,
             oauth_client_scope: get_var("REGISTRY_OAUTH_CLIENT_SCOPE")?,
-            external_registries,
+            self_local_name,
             self_service_login: super::generate_token(16),
             self_service_token: super::generate_token(64),
+            external_registries,
         })
     }
 
@@ -258,7 +270,7 @@ impl Configuration {
             writer.write_all("\n".as_bytes()).await?;
             writer.write_all("[registries]\n".as_bytes()).await?;
             writer
-                .write_all(format!("local = {{ index = \"{}\" }}\n", self.web_public_uri).as_bytes())
+                .write_all(format!("{} = {{ index = \"{}\" }}\n", self.self_local_name, self.web_public_uri).as_bytes())
                 .await?;
             for registry in &self.external_registries {
                 writer
@@ -268,9 +280,11 @@ impl Configuration {
             writer.flush().await?;
         }
         {
-            let file = File::create("/home/cratery/.cargo/credentials").await?;
+            let file = File::create("/home/cratery/.cargo/credentials.toml").await?;
             let mut writer = BufWriter::new(file);
-            writer.write_all("[registries.local]\n".as_bytes()).await?;
+            writer
+                .write_all(format!("[registries.{}]\n", self.self_local_name).as_bytes())
+                .await?;
             writer
                 .write_all(
                     format!(
