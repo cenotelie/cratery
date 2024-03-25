@@ -73,7 +73,7 @@ impl<'config> Storage for S3Storage<'config> {
 
     /// Downloads a crate
     async fn download_crate(&self, name: &str, version: &str) -> Result<Vec<u8>, ApiError> {
-        let object_key = format!("{name}/{version}");
+        let object_key = format!("crates/{name}/{version}");
         let data = s3::get_object(self.params, self.bucket, &object_key).await?;
         Ok(data)
     }
