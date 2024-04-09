@@ -150,8 +150,7 @@ impl Configuration {
             remote_origin: get_var("REGISTRY_GIT_REMOTE").ok(),
             remote_ssh_key_file_name: get_var("REGISTRY_GIT_REMOTE_SSH_KEY_FILENAME").ok(),
             remote_push_changes: get_var("REGISTRY_GIT_REMOTE_PUSH_CHANGES")
-                .map(|value| value == "1" || value.eq_ignore_ascii_case("true"))
-                .unwrap_or_default(),
+                .is_ok_and(|value| value == "1" || value.eq_ignore_ascii_case("true")),
             user_name: get_var("REGISTRY_GIT_USER_NAME")?,
             user_email: get_var("REGISTRY_GIT_USER_EMAIL")?,
             public: IndexPublicConfig {
