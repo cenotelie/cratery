@@ -9,9 +9,8 @@ use std::path::Path;
 use cenotelie_lib_apierror::ApiError;
 use cenotelie_lib_s3 as s3;
 
-use crate::model::objects::CrateMetadata;
-
 use super::Storage;
+use crate::model::objects::CrateMetadata;
 
 /// An storage implementation that uses s3
 pub struct S3Storage<'config> {

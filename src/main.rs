@@ -164,7 +164,7 @@ async fn get_favicon(State(state): State<Arc<AxumState>>) -> (StatusCode, [(Head
             (header::CONTENT_TYPE, HeaderValue::from_static(favicon.content_type)),
             (header::CACHE_CONTROL, HeaderValue::from_static("max-age=3600")),
         ],
-        &favicon.content,
+        favicon.content,
     )
 }
 
@@ -217,7 +217,7 @@ async fn get_webapp_resource(
                 (header::CONTENT_TYPE, HeaderValue::from_static(resource.content_type)),
                 (header::CACHE_CONTROL, HeaderValue::from_static("max-age=3600")),
             ],
-            &resource.content,
+            resource.content,
         )),
         None => Err(StatusCode::NOT_FOUND),
     }

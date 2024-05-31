@@ -11,13 +11,12 @@ use chrono::Local;
 use data_encoding::HEXLOWER;
 use ring::digest::{Context, SHA256};
 
+use super::Application;
 use crate::model::auth::OAuthToken;
 use crate::model::config::Configuration;
 use crate::model::generate_token;
-use crate::model::objects::{AuthenticatedUser, RegistryUser, RegistryUserToken, RegistryUserTokenWithSecret};
-
-use super::Application;
 use crate::model::namegen::generate_name;
+use crate::model::objects::{AuthenticatedUser, RegistryUser, RegistryUserToken, RegistryUserTokenWithSecret};
 
 /// Computes the SHA256 digest of bytes
 fn sha256(buffer: &[u8]) -> String {

@@ -7,11 +7,12 @@
 pub mod fs;
 pub mod s3;
 
+use std::io::Read;
+use std::path::Path;
+
 use cenotelie_lib_apierror::ApiError;
 use flate2::bufread::GzDecoder;
 use futures::Future;
-use std::io::Read;
-use std::path::Path;
 use tar::Archive;
 
 use crate::model::config::{Configuration, StorageConfig};

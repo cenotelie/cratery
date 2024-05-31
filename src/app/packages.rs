@@ -7,13 +7,12 @@
 use cenotelie_lib_apierror::{error_forbidden, error_invalid_request, error_not_found, specialize, ApiError};
 use chrono::Local;
 
+use super::Application;
 use crate::index::Index;
 use crate::model::objects::{
     AuthenticatedUser, CrateInfoVersion, CrateUploadData, CrateUploadResult, DocsGenerationJob, OwnersQueryResult,
     RegistryUser, SearchResultCrate, SearchResults, SearchResultsMeta, YesNoMsgResult, YesNoResult,
 };
-
-use super::Application;
 
 impl<'c> Application<'c> {
     /// Search for crates

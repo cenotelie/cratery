@@ -9,9 +9,8 @@ use std::path::{Path, PathBuf};
 use cenotelie_lib_apierror::{error_not_found, ApiError};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 
-use crate::model::objects::CrateMetadata;
-
 use super::Storage;
+use crate::model::objects::CrateMetadata;
 
 /// An storage implementation that uses the file system
 pub struct FsStorage<'config> {
