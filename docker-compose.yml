@@ -7,6 +7,8 @@ services:
       - "80"
     ports:
       - "80:80"
+    volumes:
+      - ./data:/data
     environment:
       RUST_BACKTRACE: 1
       # REGISTRY_LOG_LEVEL: INFO
@@ -20,8 +22,8 @@ services:
       # REGISTRY_GIT_REMOTE:
       # REGISTRY_GIT_REMOTE_SSH_KEY_FILENAME:
       # REGISTRY_GIT_REMOTE_PUSH_CHANGES:
-      REGISTRY_GIT_USER_NAME:
-      REGISTRY_GIT_USER_EMAIL:
+      REGISTRY_GIT_USER_NAME: Cratery
+      REGISTRY_GIT_USER_EMAIL: cratery@acme.org
       REGISTRY_STORAGE: "fs"
       # REGISTRY_S3_URI:
       # REGISTRY_S3_REGION:
