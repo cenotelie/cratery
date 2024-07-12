@@ -162,6 +162,9 @@ fn setup_log() {
         .expect("log configuration failed");
 }
 
+/// The empty database
+const DB_EMPTY: &[u8] = include_bytes!("empty.db");
+
 /// Main entry point
 #[tokio::main]
 async fn main() {
@@ -187,6 +190,12 @@ async fn main() {
     configuration.write_auth_config().await.unwrap();
 
     // connection pool to the database
+    let db_filename = configuration.get_database_filename();
+    if tokio::fs::metadata(&db_filename).await.is_err() {
+        // write the file
+        info!("db file is inaccessible => attempt to create an empty one");
+        tokio::fs::write(&db_filename, DB_EMPTY).await.unwrap();
+    }
     let pool = SqlitePoolOptions::new()
         .max_connections(1)
         .connect_lazy(&configuration.get_database_url())

@@ -4,6 +4,4 @@
 # Other
 *.override.yml
 .env
-*.db
-data.sql
 /data/

@@ -223,6 +223,11 @@ impl Configuration {
         })
     }
 
+    /// Gets the name of the file for the database
+    pub fn get_database_filename(&self) -> String {
+        format!("{}/registry.db", self.data_dir)
+    }
+
     /// Gets the corresponding database url
     pub fn get_database_url(&self) -> String {
         format!("sqlite://{}/registry.db", self.data_dir)
