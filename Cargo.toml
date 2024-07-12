@@ -11,26 +11,36 @@ edition = "2021"
 publish = ["cenotelie"]
 
 [dependencies]
+# logging
 log = "0.4"
 fern = "0.6"
+
+# serde
 serde = "1.0"
 serde_derive = "1.0"
 serde_json = "1.0"
-chrono = { version = "0.4", features = ["serde"] }
-byteorder = "1.4"
+
+# basic dependencies
 base64 = "0.22"
+byteorder = "1.4"
+bytes = "1.5"
+chrono = { version = "0.4", features = ["serde"] }
 cookie = { version = "0.18", features = ["secure", "percent-encode"] }
-mime = "0.3"
-rand = "0.8"
 data-encoding = "2.1"
-urlencoding = "2.1"
-ring = "0.17"
 flate2 ="1.0"
+mime = "0.3"
+quick-xml = "0.36"
+rand = "0.8"
+ring = "0.17"
+urlencoding = "2.1"
 tar = "0.4"
+
+# async support
 futures = "0.3"
 tokio = { version = "1", features = ["full"] }
 tokio-util = {version = "0.7", features = ["io"]}
+
+# framework for the application
 sqlx = { version = "0.7", default-features = false, features = ["runtime-tokio-rustls", "sqlite", "macros", "chrono"] }
 axum = { version = "0.7", features = [] }
 reqwest = { version = "0.12", default-features = false, features = ["stream", "rustls-tls"] }
-cenotelie_lib_s3 = { version = "3.2", registry = "cenotelie" }
