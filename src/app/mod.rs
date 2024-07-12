@@ -7,11 +7,11 @@
 pub mod packages;
 pub mod users;
 
-use cenotelie_lib_apierror::{error_forbidden, error_unauthorized, ApiError};
 use rand::distributions::Alphanumeric;
 use rand::{thread_rng, Rng};
 
-use crate::transaction::AppTransaction;
+use crate::utils::apierror::{error_forbidden, error_unauthorized, ApiError};
+use crate::utils::db::AppTransaction;
 
 /// Generates a token
 pub fn _generate_token(length: usize) -> String {

@@ -10,13 +10,13 @@ use std::str::FromStr;
 use axum::http::Uri;
 use base64::engine::general_purpose::STANDARD;
 use base64::Engine;
-use cenotelie_lib_apierror::ApiError;
 use cenotelie_lib_s3::S3Params;
 use serde_derive::{Deserialize, Serialize};
 use tokio::fs::File;
 use tokio::io::{AsyncWriteExt, BufWriter};
 
 use super::errors::MissingEnvVar;
+use crate::utils::apierror::ApiError;
 
 /// Gets the value for an environment variable
 pub fn get_var<T: AsRef<str>>(name: T) -> Result<String, MissingEnvVar> {

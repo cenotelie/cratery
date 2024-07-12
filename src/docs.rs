@@ -8,8 +8,6 @@ use std::path::{Path, PathBuf};
 use std::process::Stdio;
 use std::sync::Arc;
 
-use cenotelie_lib_apierror::{error_backend_failure, specialize, ApiError};
-use cenotelie_lib_async_utils::parallel_jobs::n_at_a_time;
 use flate2::bufread::GzDecoder;
 use futures::channel::mpsc::UnboundedSender;
 use futures::StreamExt;
@@ -24,7 +22,9 @@ use crate::model::config::Configuration;
 use crate::model::objects::DocsGenerationJob;
 use crate::storage;
 use crate::storage::Storage;
-use crate::transaction::in_transaction;
+use crate::utils::apierror::{error_backend_failure, specialize, ApiError};
+use crate::utils::concurrent::n_at_a_time;
+use crate::utils::db::in_transaction;
 
 /// Creates a worker for the generation of documentation
 pub fn create_docs_worker(

@@ -6,13 +6,11 @@
 
 use std::ops::DerefMut;
 
-use cenotelie_lib_apierror::ApiError;
-use cenotelie_lib_dbutils::migration::{Migration, MigrationContent, MigrationError, VersionNumber};
-use cenotelie_lib_dbutils::SCHEMA_METADATA_VERSION;
 use log::info;
 use sqlx::{Executor, SqliteConnection};
 
-use crate::transaction::in_transaction;
+use crate::utils::apierror::ApiError;
+use crate::utils::db::{in_transaction, Migration, MigrationContent, MigrationError, VersionNumber, SCHEMA_METADATA_VERSION};
 
 /// The migrations
 const MIGRATIONS: &[Migration<'static>] = &[
@@ -120,9 +118,6 @@ async fn migrate_db(connection: &mut SqliteConnection, migrations: &[Migration<'
                 MigrationContent::Sql(script) => {
                     let script = String::from_utf8_lossy(script);
                     transaction.borrow().await.execute(script.as_ref()).await?;
-                }
-                MigrationContent::Callback(_callback) => {
-                    panic!("cannot use callbacks for migrations");
                 }
             }
             set_schema_metadata(&mut *transaction.borrow().await, SCHEMA_METADATA_VERSION, migration.target).await?;

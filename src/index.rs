@@ -7,7 +7,6 @@
 use std::path::{Path, PathBuf};
 use std::process::Stdio;
 
-use cenotelie_lib_apierror::{error_backend_failure, error_not_found, specialize, ApiError};
 use log::info;
 use tokio::fs::{self, create_dir_all, File, OpenOptions};
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
@@ -15,6 +14,7 @@ use tokio::process::Command;
 
 use crate::model::config::IndexConfig;
 use crate::model::objects::CrateMetadataIndex;
+use crate::utils::apierror::{error_backend_failure, error_not_found, specialize, ApiError};
 
 /// Manages the index on git
 pub struct Index {

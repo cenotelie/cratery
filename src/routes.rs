@@ -6,29 +6,19 @@
 
 use std::borrow::Cow;
 use std::collections::HashMap;
-use std::ops::{Deref, DerefMut};
 use std::path::PathBuf;
 use std::sync::Arc;
 
 use axum::body::{Body, Bytes};
-use axum::extract::{FromRequestParts, Path, Query, State};
+use axum::extract::{Path, Query, State};
 use axum::http::header::{HeaderName, SET_COOKIE};
-use axum::http::request::Parts;
 use axum::http::{header, HeaderValue, Request, StatusCode};
-use axum::{async_trait, BoxError, Json};
-use cenotelie_lib_apierror::{
-    error_backend_failure, error_invalid_request, error_not_found, error_unauthorized, specialize, ApiError,
-};
-use cenotelie_lib_axum_utils::auth::{AuthData, AxumStateForCookies, Token};
-use cenotelie_lib_axum_utils::cookie::Key;
-use cenotelie_lib_axum_utils::embedded::Resources;
-use cenotelie_lib_axum_utils::extractors::Base64;
-use cenotelie_lib_axum_utils::{response, response_error, ApiResult};
+use axum::{BoxError, Json};
+use cookie::Key;
 use futures::channel::mpsc::UnboundedSender;
 use futures::lock::Mutex;
 use futures::{SinkExt, Stream};
 use serde::Deserialize;
-use sqlx::pool::PoolConnection;
 use sqlx::{Pool, Sqlite};
 use tokio::fs::File;
 use tokio_util::io::ReaderStream;
@@ -42,46 +32,13 @@ use crate::model::objects::{
 };
 use crate::model::AppVersion;
 use crate::storage::Storage;
-use crate::transaction::in_transaction;
-
-/// A pooled Postgresql connection
-#[derive(Debug)]
-pub struct DbConn(pub PoolConnection<Sqlite>);
-
-/// Trait for an axum state that is able to provide a pool
-pub trait AxumStateWithPool {
-    /// Gets the connection pool
-    fn get_pool(&self) -> &Pool<Sqlite>;
-}
-
-#[async_trait]
-impl<S> FromRequestParts<Arc<S>> for DbConn
-where
-    S: AxumStateWithPool + Send + Sync,
-{
-    type Rejection = (StatusCode, Json<ApiError>);
-
-    async fn from_request_parts(_parts: &mut Parts, state: &Arc<S>) -> Result<Self, Self::Rejection> {
-        match state.get_pool().acquire().await {
-            Ok(connection) => Ok(DbConn(connection)),
-            Err(_) => Err((StatusCode::INTERNAL_SERVER_ERROR, Json(error_backend_failure()))),
-        }
-    }
-}
-
-impl Deref for DbConn {
-    type Target = PoolConnection<Sqlite>;
-
-    fn deref(&self) -> &Self::Target {
-        &self.0
-    }
-}
-
-impl DerefMut for DbConn {
-    fn deref_mut(&mut self) -> &mut Self::Target {
-        &mut self.0
-    }
-}
+use crate::utils::apierror::{error_invalid_request, error_not_found, specialize, ApiError};
+use crate::utils::axum::auth::{AuthData, AxumStateForCookies, Token};
+use crate::utils::axum::db::{AxumStateWithPool, DbConn};
+use crate::utils::axum::embedded::Resources;
+use crate::utils::axum::extractors::Base64;
+use crate::utils::axum::{response, response_error, ApiResult};
+use crate::utils::db::in_transaction;
 
 #[derive(Deserialize)]
 pub struct PathInfoCrate {
@@ -96,20 +53,16 @@ pub struct PathInfoCrateVersion {
 
 /// Tries to authenticate using a token
 pub async fn authenticate(token: &Token, app: &Application<'_>, config: &Configuration) -> Result<AuthenticatedUser, ApiError> {
-    if let Token::Basic { id, secret } = token {
-        if id == &config.self_service_login && secret == &config.self_service_token {
-            // self authentication to read
-            return Ok(AuthenticatedUser {
-                principal: config.self_service_login.clone(),
-                can_write: false,
-                can_admin: false,
-            });
-        }
-        let user = app.check_token(id, secret).await?;
-        Ok(user)
-    } else {
-        Err(error_unauthorized())
+    if token.id == config.self_service_login && token.secret == config.self_service_token {
+        // self authentication to read
+        return Ok(AuthenticatedUser {
+            principal: config.self_service_login.clone(),
+            can_write: false,
+            can_admin: false,
+        });
     }
+    let user = app.check_token(&token.id, &token.secret).await?;
+    Ok(user)
 }
 
 /// Response for a GET on the root

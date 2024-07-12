@@ -8,11 +8,12 @@ use std::collections::HashMap;
 use std::io::Cursor;
 
 use byteorder::{LittleEndian, ReadBytesExt};
-use cenotelie_lib_apierror::{error_invalid_request, specialize, ApiError};
 use chrono::NaiveDateTime;
 use data_encoding::HEXLOWER;
 use ring::digest::{Context, SHA256};
 use serde_derive::{Deserialize, Serialize};
+
+use crate::utils::apierror::{error_invalid_request, specialize, ApiError};
 
 /// A user for the registry
 #[derive(Debug, Serialize, Deserialize, Clone)]

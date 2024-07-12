@@ -4,7 +4,6 @@
 
 //! Module for the application
 
-use cenotelie_lib_apierror::{error_forbidden, error_invalid_request, error_not_found, specialize, ApiError};
 use chrono::Local;
 
 use super::Application;
@@ -13,6 +12,7 @@ use crate::model::objects::{
     AuthenticatedUser, CrateInfoVersion, CrateUploadData, CrateUploadResult, DocsGenerationJob, OwnersQueryResult,
     RegistryUser, SearchResultCrate, SearchResults, SearchResultsMeta, YesNoMsgResult, YesNoResult,
 };
+use crate::utils::apierror::{error_forbidden, error_invalid_request, error_not_found, specialize, ApiError};
 
 impl<'c> Application<'c> {
     /// Search for crates

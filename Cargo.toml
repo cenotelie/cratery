@@ -19,6 +19,7 @@ serde_json = "1.0"
 chrono = { version = "0.4", features = ["serde"] }
 byteorder = "1.4"
 base64 = "0.22"
+cookie = { version = "0.18", features = ["secure", "percent-encode"] }
 mime = "0.3"
 rand = "0.8"
 data-encoding = "2.1"
@@ -32,9 +33,4 @@ tokio-util = {version = "0.7", features = ["io"]}
 sqlx = { version = "0.7", default-features = false, features = ["runtime-tokio-rustls", "sqlite", "macros", "chrono"] }
 axum = { version = "0.7", features = [] }
 reqwest = { version = "0.12", default-features = false, features = ["stream", "rustls-tls"] }
-cenotelie_lib_apierror = { version = "2", registry = "cenotelie" }
-cenotelie_lib_async_utils = { version = "1.20", registry = "cenotelie" }
-cenotelie_lib_dbutils = { version = "3.4", registry = "cenotelie" }
-cenotelie_lib_axum_utils = { version = "3.3", registry = "cenotelie" }
-cenotelie_lib_axum_static_files = { version = "1", registry = "cenotelie" }
 cenotelie_lib_s3 = { version = "3.2", registry = "cenotelie" }

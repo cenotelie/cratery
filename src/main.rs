@@ -16,11 +16,7 @@ use std::sync::Arc;
 use axum::extract::DefaultBodyLimit;
 use axum::routing::{delete, get, patch, post, put};
 use axum::Router;
-use cenotelie_lib_apierror::ApiError;
-use cenotelie_lib_async_utils::terminate::waiting_sigterm;
-use cenotelie_lib_axum_static_files::embed_dir;
-use cenotelie_lib_axum_utils::cookie::Key;
-use cenotelie_lib_axum_utils::logging::LogLayer;
+use cookie::Key;
 use futures::channel::mpsc::UnboundedSender;
 use futures::future::select;
 use futures::lock::Mutex;
@@ -34,6 +30,8 @@ use crate::index::Index;
 use crate::model::config::Configuration;
 use crate::model::objects::DocsGenerationJob;
 use crate::routes::AxumState;
+use crate::utils::apierror::ApiError;
+use crate::utils::sigterm::waiting_sigterm;
 
 mod app;
 mod docs;
@@ -42,7 +40,8 @@ mod migrations;
 mod model;
 mod routes;
 mod storage;
-mod transaction;
+mod utils;
+mod webapp;
 
 /// The name of this program
 pub const CRATE_NAME: &str = env!("CARGO_PKG_NAME");
@@ -60,7 +59,7 @@ async fn main_serve_app(
     docs_worker_sender: UnboundedSender<DocsGenerationJob>,
 ) -> Result<(), std::io::Error> {
     // web application
-    let webapp_resources = embed_dir!("src/webapp");
+    let webapp_resources = webapp::get_resources();
     let body_limit = configuration.web_body_limit;
     let socket_addr = SocketAddr::new(configuration.web_listenon_ip, configuration.web_listenon_port);
     let state = Arc::new(AxumState {
@@ -127,7 +126,6 @@ async fn main_serve_app(
         )
         // fall back to serving the index
         .fallback(crate::routes::index_serve)
-        .layer(LogLayer)
         .layer(DefaultBodyLimit::max(body_limit))
         .with_state(state);
     axum::serve(
@@ -205,7 +203,7 @@ async fn main() {
     {
         let mut docs_worker_sender = docs_worker_sender.clone();
         let mut connection = pool.acquire().await.unwrap();
-        crate::transaction::in_transaction(&mut connection, |transaction| async move {
+        crate::utils::db::in_transaction(&mut connection, |transaction| async move {
             let app = Application::new(transaction);
             let jobs = app.get_undocumented_packages().await?;
             for job in jobs {
