@@ -3,8 +3,6 @@ services:
   server:
     image: cenotelie/cratery:latest
     restart: unless-stopped
-    expose:
-      - "80"
     ports:
       - "80:80"
     volumes:

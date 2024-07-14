@@ -4,4 +4,4 @@
 # Other
 *.override.yml
 .env
-/data/
+/data/*
