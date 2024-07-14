@@ -30,7 +30,7 @@ use crate::model::objects::{
     AuthenticatedUser, CrateInfo, CrateUploadData, CrateUploadResult, DocsGenerationJob, OwnersAddQuery, OwnersQueryResult,
     RegistryUser, RegistryUserToken, RegistryUserTokenWithSecret, SearchResults, YesNoMsgResult, YesNoResult,
 };
-use crate::model::AppVersion;
+use crate::model::{generate_token, AppVersion};
 use crate::storage::Storage;
 use crate::utils::apierror::{error_invalid_request, error_not_found, specialize, ApiError};
 use crate::utils::axum::auth::{AuthData, AxumStateForCookies, Token};
@@ -91,6 +91,30 @@ pub async fn get_favicon(State(state): State<Arc<AxumState>>) -> (StatusCode, [(
     )
 }
 
+/// Gets the redirection response when not authenticated
+fn get_auth_redirect(state: &AxumState) -> (StatusCode, [(HeaderName, HeaderValue); 2]) {
+    // redirect to login
+    let nonce = generate_token(64);
+    let oauth_state = generate_token(32);
+    let target = format!(
+        "{}?response_type={}&redirect_uri={}&client_id={}&scope={}&nonce={}&state={}",
+        state.configuration.oauth_login_uri,
+        "code",
+        urlencoding::encode(&format!("{}/webapp/oauthcallback.html", state.configuration.web_public_uri)),
+        urlencoding::encode(&state.configuration.oauth_client_id),
+        urlencoding::encode(&state.configuration.oauth_client_scope),
+        nonce,
+        oauth_state
+    );
+    (
+        StatusCode::FOUND,
+        [
+            (header::LOCATION, HeaderValue::from_str(&target).unwrap()),
+            (header::CACHE_CONTROL, HeaderValue::from_static("no-cache")),
+        ],
+    )
+}
+
 /// Gets the favicon
 pub async fn get_webapp_resource(
     mut connection: DbConn,
@@ -111,24 +135,8 @@ pub async fn get_webapp_resource(
         .await
         .is_ok();
         if !is_authenticated {
-            // redirect to login
-            let target = format!(
-                "{}?response_type={}&redirect_uri={}&client_id={}&scope={}&state={}",
-                state.configuration.oauth_login_uri,
-                "code",
-                urlencoding::encode(&format!("{}/webapp/oauthcallback.html", state.configuration.web_public_uri)),
-                state.configuration.oauth_client_id,
-                state.configuration.oauth_client_scope,
-                ""
-            );
-            return Ok((
-                StatusCode::FOUND,
-                [
-                    (header::LOCATION, HeaderValue::from_str(&target).unwrap()),
-                    (header::CACHE_CONTROL, HeaderValue::from_static("no-cache")),
-                ],
-                &[],
-            ));
+            let (code, headers) = get_auth_redirect(&state);
+            return Ok((code, headers, &[]));
         }
     }
 
@@ -174,24 +182,8 @@ pub async fn get_docs_resource(
     .await
     .is_ok();
     if !is_authenticated {
-        // redirect to login
-        let target = format!(
-            "{}?response_type={}&redirect_uri={}&client_id={}&scope={}&state={}",
-            state.configuration.oauth_login_uri,
-            "code",
-            urlencoding::encode(&format!("{}/webapp/oauthcallback.html", state.configuration.web_public_uri)),
-            state.configuration.oauth_client_id,
-            state.configuration.oauth_client_scope,
-            ""
-        );
-        return Ok((
-            StatusCode::FOUND,
-            [
-                (header::LOCATION, HeaderValue::from_str(&target).unwrap()),
-                (header::CACHE_CONTROL, HeaderValue::from_static("no-cache")),
-            ],
-            Body::empty(),
-        ));
+        let (code, headers) = get_auth_redirect(&state);
+        return Ok((code, headers, Body::empty()));
     }
 
     let path = &request.uri().path()[1..]; // strip leading /

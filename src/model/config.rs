@@ -101,6 +101,12 @@ pub struct Configuration {
     /// The uri of the OAuth userinfo API endpoint
     #[serde(rename = "oauthUserInfoUri")]
     pub oauth_userinfo_uri: String,
+    /// Path to the email field in the JSON blob returned at the userinfo URI
+    #[serde(rename = "oauthUserInfoPathEmail")]
+    pub oauth_userinfo_path_email: String,
+    /// Path to the full name field in the JSON blob returned at the userinfo URI
+    #[serde(rename = "oauthUserInfoPathFullName")]
+    pub oauth_userinfo_path_fullname: String,
     /// The identifier of the client to use
     #[serde(rename = "oauthClientId")]
     pub oauth_client_id: String,
@@ -200,7 +206,7 @@ impl Configuration {
             ),
             web_listenon_port: get_var("REGISTRY_WEB_LISTENON_PORT")
                 .map(|s| s.parse().expect("invalid REGISTRY_WEB_LISTENON_PORT"))
-                .unwrap_or(8080),
+                .unwrap_or(80),
             web_domain,
             web_public_uri,
             web_body_limit: get_var("REGISTRY_WEB_BODY_LIMIT")
@@ -213,6 +219,9 @@ impl Configuration {
             oauth_token_uri: get_var("REGISTRY_OAUTH_TOKEN_URI")?,
             oauth_callback_uri: get_var("REGISTRY_OAUTH_CALLBACK_URI")?,
             oauth_userinfo_uri: get_var("REGISTRY_OAUTH_USERINFO_URI")?,
+            oauth_userinfo_path_email: get_var("REGISTRY_OAUTH_USERINFO_PATH_EMAIL").unwrap_or_else(|_| String::from("email")),
+            oauth_userinfo_path_fullname: get_var("REGISTRY_OAUTH_USERINFO_PATH_FULLNAME")
+                .unwrap_or_else(|_| String::from("name")),
             oauth_client_id: get_var("REGISTRY_OAUTH_CLIENT_ID")?,
             oauth_client_secret: get_var("REGISTRY_OAUTH_CLIENT_SECRET")?,
             oauth_client_scope: get_var("REGISTRY_OAUTH_CLIENT_SCOPE")?,

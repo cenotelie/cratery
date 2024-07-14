@@ -13,9 +13,9 @@ services:
       RUST_BACKTRACE: 1
       # REGISTRY_LOG_LEVEL: INFO
       # REGISTRY_LOG_DATE_TIME_FORMAT: "[%Y-%m-%d %H:%M:%S]"
-      # REGISTRY_WEB_LISTENON_IP: 0.0.0.0
-      # REGISTRY_WEB_LISTENON_PORT: 8080
-      REGISTRY_WEB_COOKIE_SECRET: this is a secret
+      # REGISTRY_WEB_LISTENON_IP: "0.0.0.0"
+      # REGISTRY_WEB_LISTENON_PORT: 80
+      REGISTRY_WEB_COOKIE_SECRET: this is the secret key for my yummy cookies, this is the secret key for my yummy cookies
       REGISTRY_WEB_PUBLIC_URI: http://localhost
       # REGISTRY_WEB_BODY_LIMIT: 10485760
       REGISTRY_DATA_DIR: /data
@@ -31,11 +31,13 @@ services:
       # REGISTRY_S3_ACCESS_KEY:
       # REGISTRY_S3_SECRET_KEY:
       # REGISTRY_S3_BUCKET:
-      REGISTRY_OAUTH_LOGIN_URI:
-      REGISTRY_OAUTH_TOKEN_URI:
-      REGISTRY_OAUTH_CALLBACK_URI:
-      REGISTRY_OAUTH_USERINFO_URI:
-      REGISTRY_OAUTH_CLIENT_ID:
-      REGISTRY_OAUTH_CLIENT_SECRET:
-      REGISTRY_OAUTH_CLIENT_SCOPE:
+      REGISTRY_OAUTH_LOGIN_URI: https://accounts.google.com/o/oauth2/v2/auth
+      REGISTRY_OAUTH_TOKEN_URI: https://oauth2.googleapis.com/token
+      REGISTRY_OAUTH_CALLBACK_URI: http://localhost/webapp/oauthcallback.html
+      REGISTRY_OAUTH_USERINFO_URI: https://openidconnect.googleapis.com/v1/userinfo
+      REGISTRY_OAUTH_USERINFO_PATH_EMAIL: email
+      REGISTRY_OAUTH_USERINFO_PATH_FULLNAME: name
+      REGISTRY_OAUTH_CLIENT_ID: 710376957465-81ohjssn6skq68ktblkicqr1f2jd33ai.apps.googleusercontent.com
+      REGISTRY_OAUTH_CLIENT_SECRET: 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
+      REGISTRY_OAUTH_CLIENT_SCOPE: openid profile email
       # REGISTRY_SELF_LOCAL_NAME: localhost

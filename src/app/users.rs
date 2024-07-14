@@ -9,7 +9,7 @@ use data_encoding::HEXLOWER;
 use ring::digest::{Context, SHA256};
 
 use super::Application;
-use crate::model::auth::OAuthToken;
+use crate::model::auth::{find_field_in_blob, OAuthToken};
 use crate::model::config::Configuration;
 use crate::model::generate_token;
 use crate::model::namegen::generate_name;
@@ -92,13 +92,7 @@ impl<'c> Application<'c> {
         }
         let body = response.bytes().await?;
         let user_info = serde_json::from_slice::<serde_json::Value>(&body)?;
-        let email = user_info
-            .as_object()
-            .ok_or_else(error_unauthorized)?
-            .get("email")
-            .ok_or_else(error_unauthorized)?
-            .as_str()
-            .ok_or_else(error_unauthorized)?;
+        let email = find_field_in_blob(&user_info, &configuration.oauth_userinfo_path_email).ok_or_else(error_unauthorized)?;
 
         // resolve the user
         let row = sqlx::query!(
@@ -135,11 +129,13 @@ impl<'c> Application<'c> {
         {
             login = generate_name();
         }
+        let full_name = find_field_in_blob(&user_info, &configuration.oauth_userinfo_path_fullname).unwrap_or(&login);
         let roles = if count == 0 { "admin" } else { "" };
         let id = sqlx::query!(
-            "INSERT INTO RegistryUser (isActive, email, login, name, roles) VALUES (TRUE, $1, $2, $2, $3) RETURNING id",
+            "INSERT INTO RegistryUser (isActive, email, login, name, roles) VALUES (TRUE, $1, $2, $3, $4) RETURNING id",
             email,
             login,
+            full_name,
             roles
         )
         .fetch_one(&mut *self.transaction.borrow().await)

@@ -1,6 +1,6 @@
 {
   "db_name": "SQLite",
-  "query": "INSERT INTO RegistryUser (isActive, email, login, name, roles) VALUES (TRUE, $1, $2, $2, $3) RETURNING id",
+  "query": "INSERT INTO RegistryUser (isActive, email, login, name, roles) VALUES (TRUE, $1, $2, $3, $4) RETURNING id",
   "describe": {
     "columns": [
       {
@@ -10,11 +10,11 @@
       }
     ],
     "parameters": {
-      "Right": 3
+      "Right": 4
     },
     "nullable": [
       false
     ]
   },
-  "hash": "bb6990e624b3ccbd40155e4a8fb2ed5755c6d46018353976adf8b1da93ad8f86"
+  "hash": "73da09c45a0d96927f0bce92fcd7b42c6c67629ecbaf2b7585351f948a59beaa"
 }
