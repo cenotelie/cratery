@@ -16,25 +16,51 @@
 
 ## Quickstart
 
-To launch an empty registry using a pre-built docker image, get the latest `docker-compose.yml` file and start it:
+To launch an empty registry using a pre-built docker image, you can use the following default `docker-compose.yml`:
 
-```bash
-git clone https://github.com/cenotelie/cratery
-cd cratery
-docker compose up -d
+```yaml
+version: '3'
+services:
+  cratery:
+    image: cenotelie/cratery:v1.5.1
+    restart: unless-stopped
+    ports:
+      - "80:80"
+    volumes:
+      - ./data:/data
+    environment:
+      RUST_BACKTRACE: 1
+      # REGISTRY_LOG_LEVEL: INFO
+      # REGISTRY_LOG_DATE_TIME_FORMAT: "[%Y-%m-%d %H:%M:%S]"
+      # REGISTRY_WEB_LISTENON_IP: "0.0.0.0"
+      # REGISTRY_WEB_LISTENON_PORT: 80
+      REGISTRY_WEB_COOKIE_SECRET: this is the secret key for my yummy cookies, this is the secret key for my yummy cookies
+      REGISTRY_WEB_PUBLIC_URI: http://localhost
+      # REGISTRY_WEB_BODY_LIMIT: 10485760
+      REGISTRY_DATA_DIR: /data
+      # REGISTRY_GIT_REMOTE:
+      # REGISTRY_GIT_REMOTE_SSH_KEY_FILENAME:
+      # REGISTRY_GIT_REMOTE_PUSH_CHANGES:
+      REGISTRY_GIT_USER_NAME: Cratery
+      REGISTRY_GIT_USER_EMAIL: cratery@acme.org
+      REGISTRY_STORAGE: "fs"
+      # REGISTRY_S3_URI:
+      # REGISTRY_S3_REGION:
+      # REGISTRY_S3_SERVICE:
+      # REGISTRY_S3_ACCESS_KEY:
+      # REGISTRY_S3_SECRET_KEY:
+      # REGISTRY_S3_BUCKET:
+      REGISTRY_OAUTH_LOGIN_URI: https://accounts.google.com/o/oauth2/v2/auth
+      REGISTRY_OAUTH_TOKEN_URI: https://oauth2.googleapis.com/token
+      REGISTRY_OAUTH_CALLBACK_URI: http://localhost/webapp/oauthcallback.html
+      REGISTRY_OAUTH_USERINFO_URI: https://openidconnect.googleapis.com/v1/userinfo
+      REGISTRY_OAUTH_USERINFO_PATH_EMAIL: email
+      REGISTRY_OAUTH_USERINFO_PATH_FULLNAME: name
+      REGISTRY_OAUTH_CLIENT_ID: 710376957465-81ohjssn6skq68ktblkicqr1f2jd33ai.apps.googleusercontent.com
+      REGISTRY_OAUTH_CLIENT_SECRET: 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
+      REGISTRY_OAUTH_CLIENT_SCOPE: openid profile email
+      # REGISTRY_SELF_LOCAL_NAME: localhost
 ```
-
-Then, connect to [http://localhost/](http://localhost/).
-In the default configuration, a Google account must be used.
-
-The first ever user to log in automatically obtains administration rights.
-He/she is then reponsible to setup an admin team.
-
-Once connected, a token for CLI usage in Cargo can be obtained by going to [http://localhost/webapp/account.html](http://localhost/webapp/account.html) and clicking on the `Create new token` button.
-Tokens can be restricted to read access, e.g. for CI purposes.
-For publishing crates, a token with write accesses must be obtained.
-The name of the token is just a convenience.
-On creation, a popup appear with information about how to register this token for Cargo.
 
 
 ## Features
@@ -47,7 +73,7 @@ On creation, a popup appear with information about how to register this token fo
 ## Configuration
 
 Configuration is passed through environment variables.
-See [docker-compose.yml](docker-compose.yml) for all values.
+See `docker-compose.yml` for all values.
 
 ### General
 
@@ -134,4 +160,4 @@ Open a ticket, ask a question or submit a pull request.
 
 ## License
 
-This project is licensed under the [MIT license](LICENSE).
+This project is licensed under the [MIT license](https://opensource.org/license/mit).
