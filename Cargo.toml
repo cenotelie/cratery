@@ -22,8 +22,8 @@ serde_json = "1.0"
 # basic dependencies
 base64 = "0.22"
 byteorder = "1.4"
-bytes = "1.5"
-chrono = { version = "0.4", features = ["serde"] }
+bytes = "1.6.1"
+chrono = { version = "0.4.38", features = ["serde"] }
 cookie = { version = "0.18", features = ["secure", "percent-encode"] }
 data-encoding = "2.1"
 flate2 ="1.0"
@@ -32,11 +32,11 @@ quick-xml = "0.36"
 rand = "0.8"
 ring = "0.17"
 urlencoding = "2.1"
-tar = "0.4"
+tar = "0.4.41"
 
 # async support
 futures = "0.3"
-tokio = { version = "1", features = ["full"] }
+tokio = { version = "1.38", features = ["full"] }
 tokio-util = {version = "0.7", features = ["io"]}
 
 # framework for the application

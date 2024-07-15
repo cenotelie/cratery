@@ -6,6 +6,10 @@
   <br>
 
 [![Build Status](https://dev.azure.com/cenotelie/cenotelie/_apis/build/status%2Fcenotelie.cratery?branchName=master)](https://dev.azure.com/cenotelie/cenotelie/_build/latest?definitionId=34&branchName=master)
+  [![Cratery Crates.io version](https://img.shields.io/crates/v/cratery?style=flat)](https://crates.io/crates/cratery)
+  [![Cratery Rust documentation](https://docs.rs/cratery/badge.svg)](https://docs.rs/cratery)
+  [![Cratery dependency status](https://deps.rs/repo/github/cenotelie/cratery/status.svg)](https://deps.rs/repo/github/cenotelie/cratery)
+
 </div>
 
 
