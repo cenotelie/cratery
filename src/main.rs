@@ -77,6 +77,7 @@ async fn main_serve_app(
         .route("/git-upload-pack", post(crate::routes::index_serve_git_upload_pack))
         // web resources
         .route("/favicon.png", get(crate::routes::get_favicon))
+        .route("/crates/:package", get(crate::routes::get_redirection_crate))
         .route("/webapp/*path", get(crate::routes::get_webapp_resource))
         // api version
         .route("/version", get(crate::routes::get_version))

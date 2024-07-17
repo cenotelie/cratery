@@ -26,6 +26,7 @@ pub fn get_resources() -> Resources {
     add!(resources, "index.html");
     add!(resources, "account.html");
     add!(resources, "admin.html");
+    add!(resources, "crate.html");
     add!(resources, "oauthcallback.html");
     // CSS
     add!(resources, "index.css");

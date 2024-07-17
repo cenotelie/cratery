@@ -29,7 +29,14 @@
 <body onload="doPageLoad()" class="bg-white dark:bg-gray-800">
   <section class="bg-white dark:bg-gray-900">
     <div class="py-8 lg:py-16 px-4 mx-auto max-w-screen-lg">
-      <h3 id="meta-name" class="mb-2 text-2xl font-bold tracking-tight text-gray-900 dark:text-white"></h3>
+      <h3 class="mb-2 text-2xl font-bold tracking-tight text-gray-900 dark:text-white">
+        <span id="meta-name"></span>
+        <a id="meta-name-link" style="display: inline-block;">
+          <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="size-6">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M13.19 8.688a4.5 4.5 0 0 1 1.242 7.244l-4.5 4.5a4.5 4.5 0 0 1-6.364-6.364l1.757-1.757m13.35-.622 1.757-1.757a4.5 4.5 0 0 0-6.364-6.364l-4.5 4.5a4.5 4.5 0 0 0 1.242 7.244" />
+          </svg>          
+        </a>
+      </h3>
       <p id="meta-version" class="mb-3 font-normal text-gray-700 dark:text-gray-400"></p>
       <p id="meta-description" class="mb-3 font-normal text-gray-700 dark:text-gray-400"></p>
       <ul class="flex flex-wrap text-sm font-medium text-center text-gray-500 border-b border-gray-200 dark:border-gray-700 dark:text-gray-400">
@@ -45,7 +52,7 @@
         <li class="me-2">
             <a id="header-dependencies" class="inline-block p-4 rounded-t-lg hover:text-gray-600 hover:bg-gray-50 dark:hover:bg-gray-800 dark:hover:text-gray-300" style="cursor: pointer;" onclick="onClickTab(3)">Dependencies</a>
         </li>
-        <li class="me-2" style="display: none;">
+        <li class="me-2">
             <a id="header-admin" class="inline-block p-4 rounded-t-lg hover:text-gray-600 hover:bg-gray-50 dark:hover:bg-gray-800 dark:hover:text-gray-300" style="cursor: pointer;" onclick="onClickTab(4)">Settings</a>
         </li>
       </ul>
@@ -79,12 +86,55 @@
       </div>
       <div id="tab-dependencies" class="m-4" style="display: none;">
       </div>
-      <div id="tab-admin" class="m-4"" style="display: none;">
-        <h5 class="text-xl font-bold tracking-tight text-gray-900 dark:text-white mt-8">Owners</h5>
-        </p>
+      <div id="tab-admin" class="m-4" style="display: none;">
+        <h5 class="text-xl font-bold tracking-tight text-gray-900 dark:text-white mt-8">Owners <button id="button-add-owner" type="button" class="text-white bg-blue-700 hover:bg-blue-800 focus:ring-4 focus:ring-blue-300 font-medium rounded-lg text-xs px-3 py-2 me-1 mb-2 dark:bg-blue-600 dark:hover:bg-blue-700 focus:outline-none dark:focus:ring-blue-800">add</button></h5>
       </div>
     </div>
   </section>
+  <div id="modal-add-owner" tabindex="-1" class="overflow-y-auto overflow-x-hidden fixed top-0 right-0 left-0 z-50 w-full md:inset-0 h-modal md:h-full" style="display: none;">
+    <div class="overflow-y-auto overflow-x-hidden fixed top-0 right-0 left-0 z-51 w-full md:inset-0 h-modal md:h-full" style="background-color: black; opacity: 0.75;"></div>
+    <div class="relative" style="margin: auto; margin-top: 20%; width: 800px;">
+        <div class="relative p-4 bg-white rounded-lg shadow dark:bg-gray-800 md:p-8">
+            <div class="mb-4 text-sm font-light text-gray-500 dark:text-gray-400">
+              <h3 class="mb-3 text-2xl font-bold text-gray-900 dark:text-white">Add new owner</h3>
+            </div>
+            <form class="mb-3 space-y-8">
+              <div>
+                <label for="add-owner-email" class="block mb-2 text-sm font-medium text-gray-900 dark:text-gray-300">User email</label>
+                <input type="text" id="add-owner-email" class="block p-3 w-full text-sm text-gray-900 bg-gray-50 rounded-lg border border-gray-300 shadow-sm focus:ring-primary-500 focus:border-primary-500 dark:bg-gray-700 dark:border-gray-600 dark:placeholder-gray-400 dark:text-white dark:focus:ring-primary-500 dark:focus:border-primary-500 dark:shadow-sm-light">
+              </div>
+            </form>
+            <div class="justify-between items-center pt-0 space-y-4 sm:flex sm:space-y-0">
+              <div class="items-center space-y-4 sm:space-x-4 sm:flex sm:space-y-0">
+                <button id="modal-add-owner-close" type="button"  class="py-2 px-4 w-full text-sm font-medium text-gray-500 bg-white rounded-lg border border-gray-200 sm:w-auto hover:bg-gray-100 focus:ring-4 focus:outline-none focus:ring-primary-300 hover:text-gray-900 focus:z-10 dark:bg-gray-700 dark:text-gray-300 dark:border-gray-500 dark:hover:text-white dark:hover:bg-gray-600 dark:focus:ring-gray-600">Cancel</button>
+                <button id="modal-add-owner-confirm" type="button" class="focus:outline-none text-white bg-green-700 hover:bg-green-800 focus:ring-4 focus:ring-green-300 font-medium rounded-lg text-sm px-5 py-2.5 me-2 mb-2 dark:bg-green-600 dark:hover:bg-green-700 dark:focus:ring-green-900">Add</button>
+              </div>
+            </div>
+        </div>
+    </div>
+  </div>
+  <div id="modal-remove-owner" tabindex="-1" class="overflow-y-auto overflow-x-hidden fixed top-0 right-0 left-0 z-50 w-full md:inset-0 h-modal md:h-full" style="display: none;">
+    <div class="overflow-y-auto overflow-x-hidden fixed top-0 right-0 left-0 z-51 w-full md:inset-0 h-modal md:h-full" style="background-color: black; opacity: 0.75;"></div>
+    <div class="relative" style="margin: auto; margin-top: 20%; width: 800px;">
+        <div class="relative p-4 bg-white rounded-lg shadow dark:bg-gray-800 md:p-8">
+            <div class="mb-4 text-sm font-light text-gray-500 dark:text-gray-400">
+              <h3 class="mb-3 text-2xl font-bold text-gray-900 dark:text-white">Remove this owner?</h3>
+            </div>
+            <form class="mb-3 space-y-8">
+              <div>
+                <label for="remove-owner-email" class="block mb-2 text-sm font-medium text-gray-900 dark:text-gray-300">User</label>
+                <input type="text" id="remove-owner-email" class="block p-3 w-full text-sm text-gray-900 bg-gray-50 rounded-lg border border-gray-300 shadow-sm focus:ring-primary-500 focus:border-primary-500 dark:bg-gray-700 dark:border-gray-600 dark:placeholder-gray-400 dark:text-white dark:focus:ring-primary-500 dark:focus:border-primary-500 dark:shadow-sm-light" disabled>
+              </div>
+            </form>
+            <div class="justify-between items-center pt-0 space-y-4 sm:flex sm:space-y-0">
+              <div class="items-center space-y-4 sm:space-x-4 sm:flex sm:space-y-0">
+                <button id="modal-remove-owner-close" type="button"  class="py-2 px-4 w-full text-sm font-medium text-gray-500 bg-white rounded-lg border border-gray-200 sm:w-auto hover:bg-gray-100 focus:ring-4 focus:outline-none focus:ring-primary-300 hover:text-gray-900 focus:z-10 dark:bg-gray-700 dark:text-gray-300 dark:border-gray-500 dark:hover:text-white dark:hover:bg-gray-600 dark:focus:ring-gray-600">Cancel</button>
+                <button id="modal-remove-owner-confirm" type="button" class="focus:outline-none text-white bg-red-700 hover:bg-red-800 focus:ring-4 focus:ring-red-300 font-medium rounded-lg text-sm px-5 py-2.5 me-2 mb-2 dark:bg-red-600 dark:hover:bg-red-700 dark:focus:ring-red-900">Remove</button>
+              </div>
+            </div>
+        </div>
+    </div>
+  </div>
 </body>
 <footer class="p-4 bg-white md:p-8 lg:p-10 dark:bg-gray-800">
   <div class="mx-auto max-w-screen-xl text-center">
@@ -117,6 +167,7 @@
     const regName = domainParts.length >= 2 ? domainParts[domainParts.length - 2] : domainParts[0];
     const currentVersion = version === undefined ? crate.versions[crate.versions.length - 1] : crate.versions.find(meta => meta.index.vers === version);
     document.getElementById("meta-name").appendChild(document.createTextNode(currentVersion.index.name));
+    document.getElementById("meta-name-link").setAttribute("href", `/crates/${currentVersion.index.name}`);
     document.getElementById("meta-version").appendChild(document.createTextNode(`v${currentVersion.index.vers}`));
     document.getElementById("meta-description").appendChild(document.createTextNode(crate.metadata?.description));
     document.getElementById("meta-uploaded-on").appendChild(document.createTextNode(serializeDate(currentVersion.upload)));
@@ -159,9 +210,28 @@
     const canAdmin = currentUser.roles.includes("admin") || owners.users.find(u => u.id === currentUser.id) !== undefined;
     if (canAdmin) {
       document.getElementById("header-admin").parentElement.style.display = null;
+      const tabAdminEl = document.getElementById("tab-admin");
+      for (const owner of owners.users) {
+        tabAdminEl.appendChild(renderAdminOwnerRow(currentVersion.index.name, owner));
+      }
+      const buttonAddOwnerEl = document.getElementById("button-add-owner");
+      buttonAddOwnerEl.addEventListener("click", () => openAddOwner(currentVersion.index.name));
     }
 
     hljs.highlightAll();
+  }
+
+  function renderAdminOwnerRow(crateName, owner) {
+    const ownerRendering = renderOwner(owner);
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "focus:outline-none text-white bg-red-700 hover:bg-red-800 focus:ring-4 focus:ring-red-300 font-medium rounded-lg text-xs px-3 py-1 me-2 mb-1 dark:bg-red-600 dark:hover:bg-red-700 dark:focus:ring-red-900";
+    button.appendChild(document.createTextNode("-"));
+    button.addEventListener("click", () => openRemoveOwner(crateName, owner));
+    const wrapper = document.createElement("div");
+    wrapper.appendChild(button);
+    wrapper.appendChild(ownerRendering);
+    return wrapper;
   }
 
   function renderOwner(owner) {
@@ -346,6 +416,49 @@
     for (let i = 0; i != node.children.length; i++) {
       applyStyle(node.children.item(i));
     }
+  }
+
+  function openAddOwner(crateName) {
+    const modalEl = document.getElementById('modal-add-owner');
+    modalEl.style.display = "unset";
+    const userEmailEl = document.getElementById("add-owner-email");
+    const closeEl = document.getElementById('modal-add-owner-close');
+    closeEl.addEventListener('click', function() {
+      modalEl.style.display = "none";
+    });
+    const confirmEl = document.getElementById('modal-add-owner-confirm');
+    confirmEl.addEventListener('click', function() {
+      closeEl.disabled = true;
+      confirmEl.disabled = true;
+      apiAddCrateOwner(crateName, userEmailEl.value).then((_) => {
+        window.location.reload();
+      }).finally(() => {
+        closeEl.disabled = false;
+        confirmEl.disabled = false;
+      });
+    });
+  }
+
+  function openRemoveOwner(crateName, user) {
+    const modalEl = document.getElementById('modal-remove-owner');
+    modalEl.style.display = "unset";
+    const userEmailEl = document.getElementById("remove-owner-email");
+    userEmailEl.value = user.email;
+    const closeEl = document.getElementById('modal-remove-owner-close');
+    closeEl.addEventListener('click', function() {
+      modalEl.style.display = "none";
+    });
+    const confirmEl = document.getElementById('modal-remove-owner-confirm');
+    confirmEl.addEventListener('click', function() {
+      closeEl.disabled = true;
+      confirmEl.disabled = true;
+      apiRemoveCrateOwners(crateName, user.email).then((_) => {
+        window.location.reload();
+      }).finally(() => {
+        closeEl.disabled = false;
+        confirmEl.disabled = false;
+      });
+    });
   }
 </script>
 </html>

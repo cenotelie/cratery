@@ -115,6 +115,20 @@ fn get_auth_redirect(state: &AxumState) -> (StatusCode, [(HeaderName, HeaderValu
     )
 }
 
+/// Gets the redirection for a crates shortcut
+pub async fn get_redirection_crate(
+    Path(PathInfoCrate { package }): Path<PathInfoCrate>,
+) -> (StatusCode, [(HeaderName, HeaderValue); 2]) {
+    let target = format!("/webapp/crate.html?crate={package}");
+    (
+        StatusCode::FOUND,
+        [
+            (header::LOCATION, HeaderValue::from_str(&target).unwrap()),
+            (header::CACHE_CONTROL, HeaderValue::from_static("max-age=3600")),
+        ],
+    )
+}
+
 /// Gets the favicon
 pub async fn get_webapp_resource(
     mut connection: DbConn,
@@ -124,6 +138,19 @@ pub async fn get_webapp_resource(
 ) -> Result<(StatusCode, [(HeaderName, HeaderValue); 2], &'static [u8]), StatusCode> {
     let path = request.uri().path();
     let path = &path["/webapp/".len()..];
+
+    if let Some(crate_name) = path.strip_prefix("crates/") {
+        // URL shortcut for crates
+        let target = format!("/webapp/crate.html?crate={crate_name}");
+        return Ok((
+            StatusCode::FOUND,
+            [
+                (header::LOCATION, HeaderValue::from_str(&target).unwrap()),
+                (header::CACHE_CONTROL, HeaderValue::from_static("max-age=3600")),
+            ],
+            &[],
+        ));
+    }
 
     if path == "index.html" {
         let is_authenticated = in_transaction(&mut connection, |transaction| async {
