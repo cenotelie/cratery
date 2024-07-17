@@ -4,6 +4,8 @@
 
 //! Module for signing S3 queries
 
+use std::borrow::Cow;
+
 use chrono::{Local, NaiveDateTime};
 use data_encoding::HEXLOWER;
 use reqwest::header::{HeaderMap, HeaderValue};
@@ -88,15 +90,15 @@ fn signing_get_canonical_request_hash(
         .collect::<Vec<_>>();
     headers.sort_unstable_by(|(n1, _), (n2, _)| n1.cmp(n2));
 
-    let mut parts = vec![method.to_string(), path.to_string()];
+    let mut parts = vec![method.to_string(), encode_uri(path).to_string()];
     if query.is_empty() {
         parts.push(String::default());
     } else {
         let mut vars: Vec<String> = query
             .iter()
             .map(|(k, v)| {
-                let k = urlencoding::encode(k);
-                let v = urlencoding::encode(v);
+                let k = encode_uri(k);
+                let v = encode_uri(v);
                 format!("{k}={v}")
             })
             .collect();
@@ -112,6 +114,37 @@ fn signing_get_canonical_request_hash(
     parts.push(payload_hash.to_string());
     let canonical_request = parts.join("\n");
     sha256(canonical_request.as_bytes())
+}
+
+/// Encodes a string as an URI
+/// Escapes all characters except:
+/// ```text
+/// A-Z a-z 0-9 / - _ . ~
+/// ```
+fn encode_uri(input: &str) -> Cow<str> {
+    let must_encode = input.chars().map(|c| usize::from(!encode_uri_passthrough(c))).sum::<usize>();
+    if must_encode == 0 {
+        return Cow::Borrowed(input);
+    }
+    let mut buffer = String::with_capacity(input.len() + must_encode * 3);
+    for c in input.chars() {
+        if encode_uri_passthrough(c) {
+            buffer.push(c);
+        } else {
+            let value = u32::from(c);
+            if value <= 255 {
+                buffer.push_str(&format!("%{value:02X}"));
+            } else {
+                panic!("non ASCII character");
+            }
+        }
+    }
+    Cow::Owned(buffer)
+}
+
+/// Checks whether a character must be encoded
+fn encode_uri_passthrough(c: char) -> bool {
+    c.is_ascii_alphanumeric() || "/-_.~".contains(c)
 }
 
 /// Builds the string to be signed
