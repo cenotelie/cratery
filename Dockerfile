@@ -1,6 +1,10 @@
-FROM buildpack-deps:22.04-curl AS base
-LABEL maintainer="Laurent Wouters <lwouters@cenotelie.fr>" vendor="Cénotélie Opérations SAS"  description="Cratery -- a private cargo registry"
+ARG BUILD_FLAGS=
+ARG BUILD_TARGET=debug
 
+
+## Base image with Rust toolchain and dependencies
+FROM buildpack-deps:24.04-curl AS base
+LABEL maintainer="Laurent Wouters <lwouters@cenotelie.fr>" vendor="Cénotélie Opérations SAS"  description="Cratery -- a private cargo registry"
 # add packages
 RUN apt-get update && apt-get install -y --no-install-recommends \
 		build-essential \
@@ -16,7 +20,6 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 # add custom user
 RUN adduser cratery
 USER cratery
-
 # Add support for Rust
 ENV PATH="/home/cratery/.cargo/bin:${PATH}"
 RUN curl https://sh.rustup.rs -sSf | sh -s -- -y \
@@ -24,15 +27,22 @@ RUN curl https://sh.rustup.rs -sSf | sh -s -- -y \
 	&& rustup default nightly \
 	&& rm -rf /home/cratery/.cargo/registry \
 	&& mkdir /home/cratery/.cargo/registry
-
 # add ssh host key for github.com
 RUN mkdir /home/cratery/.ssh && ssh-keyscan -t rsa github.com >> /home/cratery/.ssh/known_hosts
 RUN chmod -R go-rwx /home/cratery/.ssh
 
-FROM base AS builder
-COPY --chown=cratery . /home/cratery/src
-RUN cd /home/cratery/src && cargo +stable build --release
 
+
+## Builder to build the application
+FROM base AS builder
+ARG BUILD_FLAGS
+COPY --chown=cratery . /home/cratery/src
+RUN cd /home/cratery/src && cargo +stable build ${BUILD_FLAGS}
+
+
+
+## Final target from the base with the application's binary
 FROM base
-COPY --from=builder /home/cratery/src/target/release/cratery /
+ARG BUILD_TARGET
+COPY --from=builder /home/cratery/src/target/${BUILD_TARGET}/cratery /
 ENTRYPOINT ["/cratery"]

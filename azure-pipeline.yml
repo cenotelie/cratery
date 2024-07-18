@@ -21,4 +21,4 @@ stages:
       vmImage: 'ubuntu-latest'
     steps:
     - script: |
-        bash ./build.sh
+        bash ./build.sh --release
