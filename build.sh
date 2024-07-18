@@ -28,7 +28,12 @@ do
 done
 
 
-docker build --tag "cenotelie/cratery:$DOCKER_TAG" --rm \
+docker build --tag "cenotelie/cratery:latest" --rm \
     --build-arg="BUILD_FLAGS=$BUILD_FLAGS" \
     --build-arg="BUILD_TARGET=$BUILD_TARGET" \
     "$ROOT"
+
+if [[ "$DOCKER_TAG" != "latest" ]]; then
+    # specific tag for release
+    docker tag "cenotelie/cratery:latest" "cenotelie/cratery:$DOCKER_TAG"
+fi

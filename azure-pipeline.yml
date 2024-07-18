@@ -22,3 +22,17 @@ stages:
     steps:
     - script: |
         bash ./build.sh --release
+    - task: Docker@2
+      condition: startsWith(variables['Build.SourceBranch'], 'refs/tags/')
+      displayName: Login to Docker Hub
+      inputs:
+        containerRegistry: dockerHub
+        command: login
+    - task: Docker@2
+      condition: startsWith(variables['Build.SourceBranch'], 'refs/tags/')
+      displayName: Push to Docker Hub
+      inputs:
+        containerRegistry: dockerHub
+        command: push
+        repository: cenotelie/cratery
+        tags: 'latest,$(Build.SourceBranchName)'
