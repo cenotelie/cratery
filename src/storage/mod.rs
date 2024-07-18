@@ -7,16 +7,17 @@
 pub mod fs;
 pub mod s3;
 
+use std::future::Future;
 use std::io::Read;
 use std::path::Path;
+use std::time::Duration;
 
 use flate2::bufread::GzDecoder;
-use futures::Future;
 use tar::Archive;
 
 use crate::model::config::{Configuration, StorageConfig};
 use crate::model::objects::CrateMetadata;
-use crate::utils::apierror::ApiError;
+use crate::utils::apierror::{error_backend_failure, specialize, ApiError};
 
 /// Backing storage implementations
 pub trait Storage {
@@ -66,24 +67,45 @@ struct StorageImpl<'config> {
     config: &'config Configuration,
 }
 
+impl<'config> StorageImpl<'config> {
+    /// Runs a future with a timeout
+    async fn with_timeout<R, FUT>(&self, future: FUT) -> Result<R, ApiError>
+    where
+        FUT: Future<Output = Result<R, ApiError>>,
+    {
+        tokio::time::timeout(Duration::from_millis(self.config.storage_timeout), future)
+            .await
+            .map_err(|_| {
+                specialize(
+                    error_backend_failure(),
+                    String::from("Timeout when interacting with the storage layer"),
+                )
+            })?
+    }
+}
+
 impl<'config> Storage for StorageImpl<'config> {
     async fn store_crate(&self, metadata: &CrateMetadata, content: Vec<u8>) -> Result<(), ApiError> {
         match &self.config.storage {
-            StorageConfig::FileSystem => fs::FsStorage::new(&self.config.data_dir).store_crate(metadata, content).await,
-            StorageConfig::S3 { params, bucket } => s3::S3Storage::new(params, bucket).store_crate(metadata, content).await,
+            StorageConfig::FileSystem => {
+                self.with_timeout(fs::FsStorage::new(&self.config.data_dir).store_crate(metadata, content))
+                    .await
+            }
+            StorageConfig::S3 { params, bucket } => {
+                self.with_timeout(s3::S3Storage::new(params, bucket).store_crate(metadata, content))
+                    .await
+            }
         }
     }
 
     async fn store_crate_readme(&self, name: &str, version: &str, content: Vec<u8>) -> Result<(), ApiError> {
         match &self.config.storage {
             StorageConfig::FileSystem => {
-                fs::FsStorage::new(&self.config.data_dir)
-                    .store_crate_readme(name, version, content)
+                self.with_timeout(fs::FsStorage::new(&self.config.data_dir).store_crate_readme(name, version, content))
                     .await
             }
             StorageConfig::S3 { params, bucket } => {
-                s3::S3Storage::new(params, bucket)
-                    .store_crate_readme(name, version, content)
+                self.with_timeout(s3::S3Storage::new(params, bucket).store_crate_readme(name, version, content))
                     .await
             }
         }
@@ -91,21 +113,25 @@ impl<'config> Storage for StorageImpl<'config> {
 
     async fn download_crate(&self, name: &str, version: &str) -> Result<Vec<u8>, ApiError> {
         match &self.config.storage {
-            StorageConfig::FileSystem => fs::FsStorage::new(&self.config.data_dir).download_crate(name, version).await,
-            StorageConfig::S3 { params, bucket } => s3::S3Storage::new(params, bucket).download_crate(name, version).await,
+            StorageConfig::FileSystem => {
+                self.with_timeout(fs::FsStorage::new(&self.config.data_dir).download_crate(name, version))
+                    .await
+            }
+            StorageConfig::S3 { params, bucket } => {
+                self.with_timeout(s3::S3Storage::new(params, bucket).download_crate(name, version))
+                    .await
+            }
         }
     }
 
     async fn download_crate_metadata(&self, name: &str, version: &str) -> Result<Option<CrateMetadata>, ApiError> {
         match &self.config.storage {
             StorageConfig::FileSystem => {
-                fs::FsStorage::new(&self.config.data_dir)
-                    .download_crate_metadata(name, version)
+                self.with_timeout(fs::FsStorage::new(&self.config.data_dir).download_crate_metadata(name, version))
                     .await
             }
             StorageConfig::S3 { params, bucket } => {
-                s3::S3Storage::new(params, bucket)
-                    .download_crate_metadata(name, version)
+                self.with_timeout(s3::S3Storage::new(params, bucket).download_crate_metadata(name, version))
                     .await
             }
         }
@@ -114,12 +140,12 @@ impl<'config> Storage for StorageImpl<'config> {
     async fn download_crate_readme(&self, name: &str, version: &str) -> Result<Vec<u8>, ApiError> {
         match &self.config.storage {
             StorageConfig::FileSystem => {
-                fs::FsStorage::new(&self.config.data_dir)
-                    .download_crate_readme(name, version)
+                self.with_timeout(fs::FsStorage::new(&self.config.data_dir).download_crate_readme(name, version))
                     .await
             }
             StorageConfig::S3 { params, bucket } => {
-                s3::S3Storage::new(params, bucket).download_crate_readme(name, version).await
+                self.with_timeout(s3::S3Storage::new(params, bucket).download_crate_readme(name, version))
+                    .await
             }
         }
     }
@@ -127,24 +153,42 @@ impl<'config> Storage for StorageImpl<'config> {
     /// Stores a documentation file
     async fn store_doc_file(&self, path: &str, file: &Path) -> Result<(), ApiError> {
         match &self.config.storage {
-            StorageConfig::FileSystem => fs::FsStorage::new(&self.config.data_dir).store_doc_file(path, file).await,
-            StorageConfig::S3 { params, bucket } => s3::S3Storage::new(params, bucket).store_doc_file(path, file).await,
+            StorageConfig::FileSystem => {
+                self.with_timeout(fs::FsStorage::new(&self.config.data_dir).store_doc_file(path, file))
+                    .await
+            }
+            StorageConfig::S3 { params, bucket } => {
+                self.with_timeout(s3::S3Storage::new(params, bucket).store_doc_file(path, file))
+                    .await
+            }
         }
     }
 
     /// Stores a documentation file
     async fn store_doc_data(&self, path: &str, content: Vec<u8>) -> Result<(), ApiError> {
         match &self.config.storage {
-            StorageConfig::FileSystem => fs::FsStorage::new(&self.config.data_dir).store_doc_data(path, content).await,
-            StorageConfig::S3 { params, bucket } => s3::S3Storage::new(params, bucket).store_doc_data(path, content).await,
+            StorageConfig::FileSystem => {
+                self.with_timeout(fs::FsStorage::new(&self.config.data_dir).store_doc_data(path, content))
+                    .await
+            }
+            StorageConfig::S3 { params, bucket } => {
+                self.with_timeout(s3::S3Storage::new(params, bucket).store_doc_data(path, content))
+                    .await
+            }
         }
     }
 
     /// Gets the content of a documentation file
     async fn download_doc_file(&self, path: &str) -> Result<Vec<u8>, ApiError> {
         match &self.config.storage {
-            StorageConfig::FileSystem => fs::FsStorage::new(&self.config.data_dir).download_doc_file(path).await,
-            StorageConfig::S3 { params, bucket } => s3::S3Storage::new(params, bucket).download_doc_file(path).await,
+            StorageConfig::FileSystem => {
+                self.with_timeout(fs::FsStorage::new(&self.config.data_dir).download_doc_file(path))
+                    .await
+            }
+            StorageConfig::S3 { params, bucket } => {
+                self.with_timeout(s3::S3Storage::new(params, bucket).download_doc_file(path))
+                    .await
+            }
         }
     }
 }

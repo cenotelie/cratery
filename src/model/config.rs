@@ -89,6 +89,9 @@ pub struct Configuration {
     pub index: IndexConfig,
     /// The configuration for the storage
     pub storage: StorageConfig,
+    /// Timeout (in milli-seconds) to use when interacting with the storage
+    #[serde(rename = "storageTimeout")]
+    pub storage_timeout: u64,
     /// The uri of the OAuth login page
     #[serde(rename = "oauthLoginUri")]
     pub oauth_login_uri: String,
@@ -215,6 +218,9 @@ impl Configuration {
             data_dir,
             index,
             storage,
+            storage_timeout: get_var("REGISTRY_STORAGE_TIMEOUT")
+                .map(|s| s.parse().expect("invalid REGISTRY_STORAGE_TIMEOUT"))
+                .unwrap_or(3000),
             oauth_login_uri: get_var("REGISTRY_OAUTH_LOGIN_URI")?,
             oauth_token_uri: get_var("REGISTRY_OAUTH_TOKEN_URI")?,
             oauth_callback_uri: get_var("REGISTRY_OAUTH_CALLBACK_URI")?,

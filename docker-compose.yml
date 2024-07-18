@@ -25,6 +25,7 @@ services:
       REGISTRY_GIT_USER_NAME: Cratery
       REGISTRY_GIT_USER_EMAIL: cratery@acme.org
       REGISTRY_STORAGE: "fs"
+      # REGISTRY_STORAGE_TIMEOUT: 3000
       # REGISTRY_S3_URI:
       # REGISTRY_S3_REGION:
       # REGISTRY_S3_SERVICE:

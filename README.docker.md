@@ -44,6 +44,7 @@ services:
       REGISTRY_GIT_USER_NAME: Cratery
       REGISTRY_GIT_USER_EMAIL: cratery@acme.org
       REGISTRY_STORAGE: "fs"
+      # REGISTRY_STORAGE_TIMEOUT: 3000
       # REGISTRY_S3_URI:
       # REGISTRY_S3_REGION:
       # REGISTRY_S3_SERVICE:
@@ -111,6 +112,7 @@ The default value is a `/data` folder, expected to be mounted into the docker co
 The crates data and their generated documentation can be stored on S3 instead.
 This is controlled by the following configuration :
 * `REGISTRY_STORAGE`: Either `fs` (default) to store in the `REGISTRY_DATA_DIR` folder or `s3` to store on an S3 bucket.
+* `REGISTRY_STORAGE_TIMEOUT`: Timeout (in milli-seconds) to use when interacting with the storage, defaults to 3000
 * `REGISTRY_S3_URI`: Top-level domain for the S3 service.
 * `REGISTRY_S3_REGION`: Sub-domain for the region.
 * `REGISTRY_S3_SERVICE`: Can be left empty ; the sub-domain for the S3 service, if any
