@@ -22,7 +22,7 @@ To launch an empty registry using a pre-built docker image, you can use the foll
 version: '3'
 services:
   cratery:
-    image: cenotelie/cratery:v1.5.1
+    image: cenotelie/cratery:latest
     restart: unless-stopped
     ports:
       - "80:80"
