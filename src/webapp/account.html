@@ -296,7 +296,7 @@
       const cargoCredEl = document.getElementById("modal-token-created-cargo-cred");
       cargoCredEl.value = `[registries.${regName}]\ntoken = "Basic ${btoa(`${user.login}:${secret}`)}"`;
       const cargoRegEl = document.getElementById("modal-token-created-cargo-reg");
-      cargoRegEl.value = `[registries]\n${regName} = { index = "${window.location.protocol}//${window.location.hostname}" }\n\n[registry]\nglobal-credential-providers = ["cargo:token"]`;
+      cargoRegEl.value = `[registries]\n${regName} = { index = "sparse+${window.location.protocol}//${window.location.hostname}/" }\n\n[registry]\nglobal-credential-providers = ["cargo:token"]`;
       const modalEl = document.getElementById('modal-token-created');
       modalEl.style.display = "unset";
 
