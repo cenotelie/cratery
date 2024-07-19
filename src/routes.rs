@@ -15,14 +15,13 @@ use axum::http::header::{HeaderName, SET_COOKIE};
 use axum::http::{header, HeaderValue, Request, StatusCode};
 use axum::{BoxError, Json};
 use cookie::Key;
-use futures::channel::mpsc::UnboundedSender;
-use futures::lock::Mutex;
 use futures::{SinkExt, Stream};
 use serde::Deserialize;
 use sqlx::{Pool, Sqlite};
 use tokio::fs::File;
 use tokio_util::io::ReaderStream;
 
+use crate::application::Application;
 use crate::model::config::Configuration;
 use crate::model::objects::{
     AuthenticatedUser, CrateInfo, CrateUploadData, CrateUploadResult, DocsGenerationJob, OwnersAddQuery, OwnersQueryResult,
@@ -39,6 +38,36 @@ use crate::utils::axum::embedded::Resources;
 use crate::utils::axum::extractors::Base64;
 use crate::utils::axum::{response, response_error, ApiResult};
 use crate::utils::db::in_transaction;
+
+/// The state of this application for axum
+pub struct AxumState {
+    /// The main application
+    pub application: Arc<Application>,
+    /// Key to access private cookies
+    pub cookie_key: Key,
+    /// The static resources for the web app
+    pub webapp_resources: Resources,
+}
+
+impl AxumStateForCookies for AxumState {
+    fn get_domain(&self) -> Cow<'static, str> {
+        Cow::Owned(self.application.configuration.web_domain.clone())
+    }
+
+    fn get_id_cookie_name(&self) -> Cow<'static, str> {
+        Cow::Borrowed("cratery-user")
+    }
+
+    fn get_cookie_key(&self) -> &Key {
+        &self.cookie_key
+    }
+}
+
+impl AxumStateWithPool for AxumState {
+    fn get_pool(&self) -> &Pool<Sqlite> {
+        &self.application.db_pool
+    }
+}
 
 #[derive(Deserialize)]
 pub struct PathInfoCrate {
@@ -68,7 +97,7 @@ pub async fn authenticate(token: &Token, app: &Database<'_>, config: &Configurat
 /// Response for a GET on the root
 /// Redirect to the web app
 pub async fn get_root(State(state): State<Arc<AxumState>>) -> (StatusCode, [(HeaderName, HeaderValue); 2]) {
-    let target = format!("{}/webapp/index.html", state.configuration.web_public_uri);
+    let target = format!("{}/webapp/index.html", state.application.configuration.web_public_uri);
     (
         StatusCode::FOUND,
         [
@@ -98,11 +127,14 @@ fn get_auth_redirect(state: &AxumState) -> (StatusCode, [(HeaderName, HeaderValu
     let oauth_state = generate_token(32);
     let target = format!(
         "{}?response_type={}&redirect_uri={}&client_id={}&scope={}&nonce={}&state={}",
-        state.configuration.oauth_login_uri,
+        state.application.configuration.oauth_login_uri,
         "code",
-        urlencoding::encode(&format!("{}/webapp/oauthcallback.html", state.configuration.web_public_uri)),
-        urlencoding::encode(&state.configuration.oauth_client_id),
-        urlencoding::encode(&state.configuration.oauth_client_scope),
+        urlencoding::encode(&format!(
+            "{}/webapp/oauthcallback.html",
+            state.application.configuration.web_public_uri
+        )),
+        urlencoding::encode(&state.application.configuration.oauth_client_id),
+        urlencoding::encode(&state.application.configuration.oauth_client_scope),
         nonce,
         oauth_state
     );
@@ -156,7 +188,7 @@ pub async fn get_webapp_resource(
         let is_authenticated = in_transaction(&mut connection, |transaction| async {
             let app = Database::new(transaction);
             auth_data
-                .authenticate(|token| authenticate(token, &app, &state.configuration))
+                .authenticate(|token| authenticate(token, &app, &state.application.configuration))
                 .await
         })
         .await
@@ -183,7 +215,7 @@ pub async fn get_webapp_resource(
 
 /// Redirects to the login page
 pub async fn webapp_me(State(state): State<Arc<AxumState>>) -> (StatusCode, [(HeaderName, HeaderValue); 2]) {
-    let target = format!("{}/webapp/index.html", state.configuration.web_public_uri);
+    let target = format!("{}/webapp/index.html", state.application.configuration.web_public_uri);
     (
         StatusCode::FOUND,
         [
@@ -203,7 +235,7 @@ pub async fn get_docs_resource(
     let is_authenticated = in_transaction(&mut connection, |transaction| async {
         let app = Database::new(transaction);
         auth_data
-            .authenticate(|token| authenticate(token, &app, &state.configuration))
+            .authenticate(|token| authenticate(token, &app, &state.application.configuration))
             .await
     })
     .await
@@ -216,7 +248,7 @@ pub async fn get_docs_resource(
     let path = &request.uri().path()[1..]; // strip leading /
     assert!(path.starts_with("docs/"));
     let extension = get_content_type(path);
-    match crate::services::storage::get_storage(&state.configuration)
+    match crate::services::storage::get_storage(&state.application.configuration)
         .download_doc_file(&path[5..])
         .await
     {
@@ -266,7 +298,7 @@ pub async fn api_get_current_user(
         in_transaction(&mut connection, |transaction| async {
             let app = Database::new(transaction);
             let authenticated_user = auth_data
-                .authenticate(|token| authenticate(token, &app, &state.configuration))
+                .authenticate(|token| authenticate(token, &app, &state.application.configuration))
                 .await?;
             app.get_current_user(&authenticated_user).await
         })
@@ -284,7 +316,9 @@ pub async fn api_login_with_oauth_code(
     let code = String::from_utf8_lossy(&body);
     let registry_user = in_transaction(&mut connection, |transaction| async {
         let application = Database::new(transaction);
-        application.login_with_oauth_code(&state.configuration, &code).await
+        application
+            .login_with_oauth_code(&state.application.configuration, &code)
+            .await
     })
     .await
     .map_err(response_error)?;
@@ -320,7 +354,7 @@ pub async fn api_get_users(
         in_transaction(&mut connection, |transaction| async {
             let app = Database::new(transaction);
             let authenticated_user = auth_data
-                .authenticate(|token| authenticate(token, &app, &state.configuration))
+                .authenticate(|token| authenticate(token, &app, &state.application.configuration))
                 .await?;
             app.get_users(&authenticated_user).await
         })
@@ -346,7 +380,7 @@ pub async fn api_update_user(
         in_transaction(&mut connection, |transaction| async {
             let app = Database::new(transaction);
             let authenticated_user = auth_data
-                .authenticate(|token| authenticate(token, &app, &state.configuration))
+                .authenticate(|token| authenticate(token, &app, &state.application.configuration))
                 .await?;
             app.update_user(&authenticated_user, &target).await
         })
@@ -365,7 +399,7 @@ pub async fn api_deactivate_user(
         in_transaction(&mut connection, |transaction| async {
             let app = Database::new(transaction);
             let authenticated_user = auth_data
-                .authenticate(|token| authenticate(token, &app, &state.configuration))
+                .authenticate(|token| authenticate(token, &app, &state.application.configuration))
                 .await?;
             app.deactivate_user(&authenticated_user, &email).await
         })
@@ -384,7 +418,7 @@ pub async fn api_reactivate_user(
         in_transaction(&mut connection, |transaction| async {
             let app = Database::new(transaction);
             let authenticated_user = auth_data
-                .authenticate(|token| authenticate(token, &app, &state.configuration))
+                .authenticate(|token| authenticate(token, &app, &state.application.configuration))
                 .await?;
             app.reactivate_user(&authenticated_user, &email).await
         })
@@ -403,7 +437,7 @@ pub async fn api_delete_user(
         in_transaction(&mut connection, |transaction| async {
             let app = Database::new(transaction);
             let authenticated_user = auth_data
-                .authenticate(|token| authenticate(token, &app, &state.configuration))
+                .authenticate(|token| authenticate(token, &app, &state.application.configuration))
                 .await?;
             app.delete_user(&authenticated_user, &email).await
         })
@@ -421,7 +455,7 @@ pub async fn api_get_tokens(
         in_transaction(&mut connection, |transaction| async {
             let app = Database::new(transaction);
             let authenticated_user = auth_data
-                .authenticate(|token| authenticate(token, &app, &state.configuration))
+                .authenticate(|token| authenticate(token, &app, &state.application.configuration))
                 .await?;
             app.get_tokens(&authenticated_user).await
         })
@@ -449,7 +483,7 @@ pub async fn api_create_token(
         in_transaction(&mut connection, |transaction| async {
             let app = Database::new(transaction);
             let authenticated_user = auth_data
-                .authenticate(|token| authenticate(token, &app, &state.configuration))
+                .authenticate(|token| authenticate(token, &app, &state.application.configuration))
                 .await?;
             app.create_token(&authenticated_user, &name, can_write, can_admin).await
         })
@@ -468,7 +502,7 @@ pub async fn api_revoke_token(
         in_transaction(&mut connection, |transaction| async {
             let app = Database::new(transaction);
             let authenticated_user = auth_data
-                .authenticate(|token| authenticate(token, &app, &state.configuration))
+                .authenticate(|token| authenticate(token, &app, &state.application.configuration))
                 .await?;
             app.revoke_token(&authenticated_user, token_id).await
         })
@@ -487,20 +521,21 @@ pub async fn api_v1_publish(
         in_transaction(&mut connection, |transaction| async move {
             let app = Database::new(transaction);
             let authenticated_user = auth_data
-                .authenticate(|token| authenticate(token, &app, &state.configuration))
+                .authenticate(|token| authenticate(token, &app, &state.application.configuration))
                 .await?;
             // deserialize payload
             let package = CrateUploadData::new(&body)?;
             let index_data = package.build_index_data();
             // publish
-            let index = state.index.lock().await;
+            let index = state.application.index.lock().await;
             let r = app.publish(&authenticated_user, &package).await?;
-            crate::services::storage::get_storage(&state.configuration)
+            crate::services::storage::get_storage(&state.application.configuration)
                 .store_crate(&package.metadata, package.content)
                 .await?;
             index.publish_crate_version(&index_data).await?;
             // generate the doc
             state
+                .application
                 .docs_worker_sender
                 .clone()
                 .send(DocsGenerationJob {
@@ -524,11 +559,11 @@ pub async fn api_v1_get_package(
         in_transaction(&mut connection, |transaction| async move {
             let app = Database::new(transaction);
             let _principal = auth_data
-                .authenticate(|token| authenticate(token, &app, &state.configuration))
+                .authenticate(|token| authenticate(token, &app, &state.application.configuration))
                 .await?;
-            let index = state.index.lock().await;
+            let index = state.application.index.lock().await;
             let versions = app.get_package_versions(&package, &index).await?;
-            let metadata = crate::services::storage::get_storage(&state.configuration)
+            let metadata = crate::services::storage::get_storage(&state.application.configuration)
                 .download_crate_metadata(&package, &versions.last().unwrap().index.vers)
                 .await?;
             Ok(CrateInfo { metadata, versions })
@@ -546,10 +581,10 @@ pub async fn api_v1_get_package_readme_last(
     let data = in_transaction(&mut connection, |transaction| async move {
         let app = Database::new(transaction);
         let _principal = auth_data
-            .authenticate(|token| authenticate(token, &app, &state.configuration))
+            .authenticate(|token| authenticate(token, &app, &state.application.configuration))
             .await?;
         let version = app.get_package_last_version(&package).await?;
-        let readme = crate::services::storage::get_storage(&state.configuration)
+        let readme = crate::services::storage::get_storage(&state.application.configuration)
             .download_crate_readme(&package, &version)
             .await?;
         Ok(readme)
@@ -573,9 +608,9 @@ pub async fn api_v1_get_package_readme(
     let data = in_transaction(&mut connection, |transaction| async move {
         let app = Database::new(transaction);
         let _principal = auth_data
-            .authenticate(|token| authenticate(token, &app, &state.configuration))
+            .authenticate(|token| authenticate(token, &app, &state.application.configuration))
             .await?;
-        let readme = crate::services::storage::get_storage(&state.configuration)
+        let readme = crate::services::storage::get_storage(&state.application.configuration)
             .download_crate_readme(&package, &version)
             .await?;
         Ok(readme)
@@ -600,10 +635,10 @@ pub async fn api_v1_download(
     match in_transaction(&mut connection, |transaction| async move {
         let app = Database::new(transaction);
         let _principal = auth_data
-            .authenticate(|token| authenticate(token, &app, &state.configuration))
+            .authenticate(|token| authenticate(token, &app, &state.application.configuration))
             .await?;
         app.check_package_exists(&package, &version).await?;
-        let data = crate::services::storage::get_storage(&state.configuration)
+        let data = crate::services::storage::get_storage(&state.application.configuration)
             .download_crate(&package, &version)
             .await?;
         Ok::<_, ApiError>(data)
@@ -636,7 +671,7 @@ pub async fn api_v1_yank(
         in_transaction(&mut connection, |transaction| async move {
             let app = Database::new(transaction);
             let authenticated_user = auth_data
-                .authenticate(|token| authenticate(token, &app, &state.configuration))
+                .authenticate(|token| authenticate(token, &app, &state.application.configuration))
                 .await?;
             let r = app.yank(&authenticated_user, &package, &version).await?;
             Ok(r)
@@ -656,7 +691,7 @@ pub async fn api_v1_unyank(
         in_transaction(&mut connection, |transaction| async move {
             let app = Database::new(transaction);
             let authenticated_user = auth_data
-                .authenticate(|token| authenticate(token, &app, &state.configuration))
+                .authenticate(|token| authenticate(token, &app, &state.application.configuration))
                 .await?;
             let r = app.unyank(&authenticated_user, &package, &version).await?;
             Ok(r)
@@ -676,10 +711,11 @@ pub async fn api_v1_docs_regen(
         in_transaction(&mut connection, |transaction| async move {
             let app = Database::new(transaction);
             let authenticated_user = auth_data
-                .authenticate(|token| authenticate(token, &app, &state.configuration))
+                .authenticate(|token| authenticate(token, &app, &state.application.configuration))
                 .await?;
             app.regenerate_documentation(&authenticated_user, &package, &version).await?;
             state
+                .application
                 .docs_worker_sender
                 .clone()
                 .send(DocsGenerationJob {
@@ -704,7 +740,7 @@ pub async fn api_v1_get_owners(
         in_transaction(&mut connection, |transaction| async move {
             let app = Database::new(transaction);
             let authenticated_user = auth_data
-                .authenticate(|token| authenticate(token, &app, &state.configuration))
+                .authenticate(|token| authenticate(token, &app, &state.application.configuration))
                 .await?;
             let r = app.get_owners(&authenticated_user, &package).await?;
             Ok(r)
@@ -725,7 +761,7 @@ pub async fn api_v1_add_owners(
         in_transaction(&mut connection, |transaction| async move {
             let app = Database::new(transaction);
             let authenticated_user = auth_data
-                .authenticate(|token| authenticate(token, &app, &state.configuration))
+                .authenticate(|token| authenticate(token, &app, &state.application.configuration))
                 .await?;
             let r = app.add_owners(&authenticated_user, &package, &input.users).await?;
             Ok(r)
@@ -746,7 +782,7 @@ pub async fn api_v1_remove_owners(
         in_transaction(&mut connection, |transaction| async move {
             let app = Database::new(transaction);
             let authenticated_user = auth_data
-                .authenticate(|token| authenticate(token, &app, &state.configuration))
+                .authenticate(|token| authenticate(token, &app, &state.application.configuration))
                 .await?;
             let r = app.remove_owners(&authenticated_user, &package, &input.users).await?;
             Ok(r)
@@ -772,7 +808,7 @@ pub async fn api_v1_search(
         in_transaction(&mut connection, |transaction| async move {
             let app = Database::new(transaction);
             let _principal = auth_data
-                .authenticate(|token| authenticate(token, &app, &state.configuration))
+                .authenticate(|token| authenticate(token, &app, &state.application.configuration))
                 .await?;
             app.search(&form.q, form.per_page).await
         })
@@ -836,14 +872,14 @@ pub async fn index_serve(
     State(state): State<Arc<AxumState>>,
     request: Request<Body>,
 ) -> Result<(StatusCode, [(HeaderName, HeaderValue); 2], Body), (StatusCode, [(HeaderName, HeaderValue); 2], Json<ApiError>)> {
-    let map_err = |e| index_serve_map_err(e, &state.configuration.web_domain);
+    let map_err = |e| index_serve_map_err(e, &state.application.configuration.web_domain);
     let path = request.uri().path();
-    if path != "/config.json" && !state.configuration.index.allow_protocol_sparse {
+    if path != "/config.json" && !state.application.configuration.index.allow_protocol_sparse {
         // config.json is always allowed because it is always checked first by cargo
         return Err(map_err(error_not_found()));
     }
-    index_serve_check_auth(connection, &auth_data, &state.configuration).await?;
-    let index = state.index.lock().await;
+    index_serve_check_auth(connection, &auth_data, &state.application.configuration).await?;
+    let index = state.application.index.lock().await;
     let (stream, content_type) = index_serve_inner(&index, path).await.map_err(map_err)?;
     let body = Body::from_stream(stream);
     Ok((
@@ -862,12 +898,12 @@ pub async fn index_serve_info_refs(
     State(state): State<Arc<AxumState>>,
     Query(query): Query<HashMap<String, String>>,
 ) -> Result<(StatusCode, [(HeaderName, HeaderValue); 2], Body), (StatusCode, [(HeaderName, HeaderValue); 2], Json<ApiError>)> {
-    let map_err = |e| index_serve_map_err(e, &state.configuration.web_domain);
-    if !state.configuration.index.allow_protocol_git {
+    let map_err = |e| index_serve_map_err(e, &state.application.configuration.web_domain);
+    if !state.application.configuration.index.allow_protocol_git {
         return Err(map_err(error_not_found()));
     }
-    index_serve_check_auth(connection, &auth_data, &state.configuration).await?;
-    let index = state.index.lock().await;
+    index_serve_check_auth(connection, &auth_data, &state.application.configuration).await?;
+    let index = state.application.index.lock().await;
 
     if query.get("service").map(std::string::String::as_str) == Some("git-upload-pack") {
         // smart server response
@@ -895,12 +931,12 @@ pub async fn index_serve_git_upload_pack(
     State(state): State<Arc<AxumState>>,
     body: Bytes,
 ) -> Result<(StatusCode, [(HeaderName, HeaderValue); 2], Body), (StatusCode, [(HeaderName, HeaderValue); 2], Json<ApiError>)> {
-    let map_err = |e| index_serve_map_err(e, &state.configuration.web_domain);
-    if !state.configuration.index.allow_protocol_git {
+    let map_err = |e| index_serve_map_err(e, &state.application.configuration.web_domain);
+    if !state.application.configuration.index.allow_protocol_git {
         return Err(map_err(error_not_found()));
     }
-    index_serve_check_auth(connection, &auth_data, &state.configuration).await?;
-    let index = state.index.lock().await;
+    index_serve_check_auth(connection, &auth_data, &state.application.configuration).await?;
+    let index = state.application.index.lock().await;
     let data = index.get_upload_pack_for(&body).await.map_err(map_err)?;
     Ok((
         StatusCode::OK,
@@ -913,42 +949,6 @@ pub async fn index_serve_git_upload_pack(
         ],
         Body::from(data),
     ))
-}
-
-/// The state of this application for axum
-pub struct AxumState {
-    /// The configuration
-    pub configuration: Arc<Configuration>,
-    /// A mutex for synchronisation on git commands
-    pub index: Mutex<Index>,
-    /// The database connection
-    pub pool: Pool<Sqlite>,
-    /// Key to access private cookies
-    pub cookie_key: Key,
-    /// Sender of documentation generation jobs
-    pub docs_worker_sender: UnboundedSender<DocsGenerationJob>,
-    /// The static resources for the web app
-    pub webapp_resources: Resources,
-}
-
-impl AxumStateForCookies for AxumState {
-    fn get_domain(&self) -> Cow<'static, str> {
-        Cow::Owned(self.configuration.web_domain.clone())
-    }
-
-    fn get_id_cookie_name(&self) -> Cow<'static, str> {
-        Cow::Borrowed("cratery-user")
-    }
-
-    fn get_cookie_key(&self) -> &Key {
-        &self.cookie_key
-    }
-}
-
-impl AxumStateWithPool for AxumState {
-    fn get_pool(&self) -> &Pool<Sqlite> {
-        &self.pool
-    }
 }
 
 /// Gets the version data for the application

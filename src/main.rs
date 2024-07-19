@@ -17,22 +17,14 @@ use axum::extract::DefaultBodyLimit;
 use axum::routing::{delete, get, patch, post, put};
 use axum::Router;
 use cookie::Key;
-use futures::channel::mpsc::UnboundedSender;
 use futures::future::select;
-use futures::lock::Mutex;
-use futures::SinkExt;
-use log::{error, info};
-use sqlx::sqlite::SqlitePoolOptions;
-use sqlx::{Pool, Sqlite};
+use log::info;
 
-use crate::model::config::Configuration;
-use crate::model::objects::DocsGenerationJob;
+use crate::application::Application;
 use crate::routes::AxumState;
-use crate::services::database::Database;
-use crate::services::index::Index;
-use crate::utils::apierror::ApiError;
 use crate::utils::sigterm::waiting_sigterm;
 
+mod application;
 mod migrations;
 mod model;
 mod routes;
@@ -48,23 +40,17 @@ pub const GIT_HASH: &str = env!("GIT_HASH");
 pub const GIT_TAG: &str = env!("GIT_TAG");
 
 /// Main payload for serving the application
-async fn main_serve_app(
-    configuration: Arc<Configuration>,
-    cookie_key: Key,
-    index: Index,
-    pool: Pool<Sqlite>,
-    docs_worker_sender: UnboundedSender<DocsGenerationJob>,
-) -> Result<(), std::io::Error> {
+async fn main_serve_app(application: Arc<Application>, cookie_key: Key) -> Result<(), std::io::Error> {
     // web application
     let webapp_resources = webapp::get_resources();
-    let body_limit = configuration.web_body_limit;
-    let socket_addr = SocketAddr::new(configuration.web_listenon_ip, configuration.web_listenon_port);
+    let body_limit = application.configuration.web_body_limit;
+    let socket_addr = SocketAddr::new(
+        application.configuration.web_listenon_ip,
+        application.configuration.web_listenon_port,
+    );
     let state = Arc::new(AxumState {
-        configuration,
-        index: Mutex::new(index),
+        application,
         cookie_key,
-        pool,
-        docs_worker_sender,
         webapp_resources,
     });
     let app = Router::new()
@@ -160,75 +146,22 @@ fn setup_log() {
         .expect("log configuration failed");
 }
 
-/// The empty database
-const DB_EMPTY: &[u8] = include_bytes!("empty.db");
-
 /// Main entry point
 #[tokio::main]
 async fn main() {
     setup_log();
     info!("{} commit={} tag={}", CRATE_NAME, GIT_HASH, GIT_TAG);
 
-    // load configuration
-    let configuration = match Configuration::from_env() {
-        Ok(c) => c,
-        Err(e) => {
-            error!("{e}");
-            return;
-        }
-    };
-    let configuration = Arc::new(configuration);
+    let (application, worker) = crate::application::Application::launch().await.unwrap();
+
     let cookie_key = Key::from(
         std::env::var("REGISTRY_WEB_COOKIE_SECRET")
             .expect("REGISTRY_WEB_COOKIE_SECRET must be set")
             .as_bytes(),
     );
 
-    // write the auth data
-    configuration.write_auth_config().await.unwrap();
+    let server = pin!(main_serve_app(application, cookie_key,));
 
-    // connection pool to the database
-    let db_filename = configuration.get_database_filename();
-    if tokio::fs::metadata(&db_filename).await.is_err() {
-        // write the file
-        info!("db file is inaccessible => attempt to create an empty one");
-        tokio::fs::write(&db_filename, DB_EMPTY).await.unwrap();
-    }
-    let pool = SqlitePoolOptions::new()
-        .max_connections(1)
-        .connect_lazy(&configuration.get_database_url())
-        .unwrap();
-    // migrate the database, if appropriate
-    migrations::migrate_to_last(&mut pool.acquire().await.unwrap()).await.unwrap();
-
-    // prepare the index
-    let index = Index::on_launch(configuration.get_index_git_config()).await.unwrap();
-
-    // docs worker
-    let (docs_worker_sender, docs_worker) = crate::services::docs::create_docs_worker(configuration.clone(), pool.clone());
-    // check undocumented packages
-    {
-        let mut docs_worker_sender = docs_worker_sender.clone();
-        let mut connection = pool.acquire().await.unwrap();
-        crate::utils::db::in_transaction(&mut connection, |transaction| async move {
-            let app = Database::new(transaction);
-            let jobs = app.get_undocumented_packages().await?;
-            for job in jobs {
-                docs_worker_sender.send(job).await?;
-            }
-            Ok::<_, ApiError>(())
-        })
-        .await
-        .unwrap();
-    }
-
-    let server = pin!(main_serve_app(
-        configuration.clone(),
-        cookie_key,
-        index,
-        pool,
-        docs_worker_sender
-    ));
-    let program = select(docs_worker, server);
+    let program = select(server, worker);
     let _ = waiting_sigterm(program).await;
 }
