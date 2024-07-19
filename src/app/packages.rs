@@ -7,11 +7,11 @@
 use chrono::Local;
 
 use super::Application;
-use crate::index::Index;
 use crate::model::objects::{
     AuthenticatedUser, CrateInfoVersion, CrateUploadData, CrateUploadResult, DocsGenerationJob, OwnersQueryResult,
     RegistryUser, SearchResultCrate, SearchResults, SearchResultsMeta, YesNoMsgResult, YesNoResult,
 };
+use crate::services::index::Index;
 use crate::utils::apierror::{error_forbidden, error_invalid_request, error_not_found, specialize, ApiError};
 
 impl<'c> Application<'c> {

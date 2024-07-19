@@ -26,19 +26,18 @@ use sqlx::sqlite::SqlitePoolOptions;
 use sqlx::{Pool, Sqlite};
 
 use crate::app::Application;
-use crate::index::Index;
 use crate::model::config::Configuration;
 use crate::model::objects::DocsGenerationJob;
 use crate::routes::AxumState;
+use crate::services::index::Index;
 use crate::utils::apierror::ApiError;
 use crate::utils::sigterm::waiting_sigterm;
 
 mod app;
-mod docs;
-mod index;
 mod migrations;
 mod model;
 mod routes;
+mod services;
 mod storage;
 mod utils;
 mod webapp;
@@ -208,7 +207,7 @@ async fn main() {
     let index = Index::on_launch(configuration.get_index_git_config()).await.unwrap();
 
     // docs worker
-    let (docs_worker_sender, docs_worker) = docs::create_docs_worker(configuration.clone(), pool.clone());
+    let (docs_worker_sender, docs_worker) = crate::services::docs::create_docs_worker(configuration.clone(), pool.clone());
     // check undocumented packages
     {
         let mut docs_worker_sender = docs_worker_sender.clone();

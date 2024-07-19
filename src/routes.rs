@@ -24,13 +24,13 @@ use tokio::fs::File;
 use tokio_util::io::ReaderStream;
 
 use crate::app::Application;
-use crate::index::Index;
 use crate::model::config::Configuration;
 use crate::model::objects::{
     AuthenticatedUser, CrateInfo, CrateUploadData, CrateUploadResult, DocsGenerationJob, OwnersAddQuery, OwnersQueryResult,
     RegistryUser, RegistryUserToken, RegistryUserTokenWithSecret, SearchResults, YesNoMsgResult, YesNoResult,
 };
 use crate::model::{generate_token, AppVersion};
+use crate::services::index::Index;
 use crate::storage::Storage;
 use crate::utils::apierror::{error_invalid_request, error_not_found, specialize, ApiError};
 use crate::utils::axum::auth::{AuthData, AxumStateForCookies, Token};
