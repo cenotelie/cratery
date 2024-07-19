@@ -108,27 +108,11 @@ impl Index {
 
     /// Gets the full path to a file in the bare git repository
     pub fn get_index_file(&self, file_path: &Path) -> Option<PathBuf> {
-        self.get_index_file_base(file_path)
-            .or_else(|| self.get_index_file_git(file_path))
-    }
-
-    /// Gets the full path to a file in the checked out git repository
-    fn get_index_file_base(&self, file_path: &Path) -> Option<PathBuf> {
         let mut full_path = PathBuf::from(&self.config.location);
-        for elem in file_path.iter().skip(1) {
-            full_path.push(elem);
+        if file_path.iter().nth(1).is_some_and(|elem| elem == ".git") {
+            // exclude .git folder
+            return None;
         }
-        if full_path.exists() {
-            Some(full_path)
-        } else {
-            None
-        }
-    }
-
-    /// Gets the full path to a file in the bare git repository
-    fn get_index_file_git(&self, file_path: &Path) -> Option<PathBuf> {
-        let mut full_path = PathBuf::from(&self.config.location);
-        full_path.push(".git");
         for elem in file_path.iter().skip(1) {
             full_path.push(elem);
         }

@@ -785,9 +785,8 @@ pub async fn index_serve_inner(
     path: &str,
 ) -> Result<(impl Stream<Item = Result<impl Into<Bytes>, impl Into<BoxError>>>, HeaderValue), ApiError> {
     let file_path: PathBuf = path.parse()?;
-    let file = File::open(&index.get_index_file(&file_path).ok_or_else(error_not_found)?)
-        .await
-        .map_err(|_e| error_not_found())?;
+    let file_path = index.get_index_file(&file_path).ok_or_else(error_not_found)?;
+    let file = File::open(file_path).await.map_err(|_e| error_not_found())?;
     let stream = ReaderStream::new(file);
     if std::path::Path::new(path)
         .extension()
@@ -837,11 +836,15 @@ pub async fn index_serve(
     State(state): State<Arc<AxumState>>,
     request: Request<Body>,
 ) -> Result<(StatusCode, [(HeaderName, HeaderValue); 2], Body), (StatusCode, [(HeaderName, HeaderValue); 2], Json<ApiError>)> {
+    let map_err = |e| index_serve_map_err(e, &state.configuration.web_domain);
+    let path = request.uri().path();
+    if path != "/config.json" && !state.configuration.index.allow_protocol_sparse {
+        // config.json is always allowed because it is always checked first by cargo
+        return Err(map_err(error_not_found()));
+    }
     index_serve_check_auth(connection, &auth_data, &state.configuration).await?;
     let index = state.index.lock().await;
-    let (stream, content_type) = index_serve_inner(&index, request.uri().path())
-        .await
-        .map_err(|e| index_serve_map_err(e, &state.configuration.web_domain))?;
+    let (stream, content_type) = index_serve_inner(&index, path).await.map_err(map_err)?;
     let body = Body::from_stream(stream);
     Ok((
         StatusCode::OK,
@@ -860,8 +863,12 @@ pub async fn index_serve_info_refs(
     Query(query): Query<HashMap<String, String>>,
 ) -> Result<(StatusCode, [(HeaderName, HeaderValue); 2], Body), (StatusCode, [(HeaderName, HeaderValue); 2], Json<ApiError>)> {
     let map_err = |e| index_serve_map_err(e, &state.configuration.web_domain);
+    if !state.configuration.index.allow_protocol_git {
+        return Err(map_err(error_not_found()));
+    }
     index_serve_check_auth(connection, &auth_data, &state.configuration).await?;
     let index = state.index.lock().await;
+
     if query.get("service").map(std::string::String::as_str) == Some("git-upload-pack") {
         // smart server response
         let data = index.get_upload_pack_info_refs().await.map_err(map_err)?;
@@ -877,19 +884,8 @@ pub async fn index_serve_info_refs(
             Body::from(data),
         ))
     } else {
-        // dumb server response
-        let (stream, content_type) = index_serve_inner(&index, "/info/refs")
-            .await
-            .map_err(|e| index_serve_map_err(e, &state.configuration.web_domain))?;
-        let body = Body::from_stream(stream);
-        Ok((
-            StatusCode::OK,
-            [
-                (header::CONTENT_TYPE, content_type),
-                (header::CACHE_CONTROL, HeaderValue::from_static("no-cache")),
-            ],
-            body,
-        ))
+        // dumb server response is disabled
+        Err(map_err(error_not_found()))
     }
 }
 
@@ -900,6 +896,9 @@ pub async fn index_serve_git_upload_pack(
     body: Bytes,
 ) -> Result<(StatusCode, [(HeaderName, HeaderValue); 2], Body), (StatusCode, [(HeaderName, HeaderValue); 2], Json<ApiError>)> {
     let map_err = |e| index_serve_map_err(e, &state.configuration.web_domain);
+    if !state.configuration.index.allow_protocol_git {
+        return Err(map_err(error_not_found()));
+    }
     index_serve_check_auth(connection, &auth_data, &state.configuration).await?;
     let index = state.index.lock().await;
     let data = index.get_upload_pack_for(&body).await.map_err(map_err)?;

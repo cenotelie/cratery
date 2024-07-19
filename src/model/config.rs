@@ -156,6 +156,8 @@ impl Configuration {
         };
         let index = IndexConfig {
             location: format!("{data_dir}/index"),
+            allow_protocol_git: get_var("REGISTRY_INDEX_PROTOCOL_GIT").map(|v| v == "true").unwrap_or(true),
+            allow_protocol_sparse: get_var("REGISTRY_INDEX_PROTOCOL_SPARSE").map(|v| v == "true").unwrap_or(true),
             remote_origin: get_var("REGISTRY_GIT_REMOTE").ok(),
             remote_ssh_key_file_name: get_var("REGISTRY_GIT_REMOTE_SSH_KEY_FILENAME").ok(),
             remote_push_changes: get_var("REGISTRY_GIT_REMOTE_PUSH_CHANGES")
@@ -357,6 +359,12 @@ impl Configuration {
 pub struct IndexConfig {
     /// The location in the file system
     pub location: String,
+    /// Whether to allow the git protocol for clients fetching the index
+    #[serde(rename = "allowProtocolGit")]
+    pub allow_protocol_git: bool,
+    /// Whether to allow the sparse protocol for clients fetching the index
+    #[serde(rename = "allowProtocolSparse")]
+    pub allow_protocol_sparse: bool,
     /// URI for the origin git remote to sync with
     #[serde(rename = "remoteOrigin")]
     pub remote_origin: Option<String>,

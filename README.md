@@ -98,6 +98,13 @@ The domain for the S3 bucket is interpolated as follow (`REGISTRY_S3_SERVICE` ca
 
 ### Index
 
+The index can be served using both the `git` and `sparse` protocols.
+Both are activated by default, but can be activated / deactivated as required:
+* `REGISTRY_INDEX_PROTOCOL_GIT`, defaults to `true` to activate the `git` "smart" protocol. Any other value deactivates it.
+* `REGISTRY_INDEX_PROTOCOL_SPARSE`, defaults to `true` to activate the `sparse` protocol. Any other value deactivates it.
+
+Fetching the index always requires authentication, regardless of the used protocol.
+
 The index for the registry is managed as a git repository.
 When `cratery` commits to this repository as an author:
 * `REGISTRY_GIT_USER_NAME` is the username to use,
