@@ -2,33 +2,24 @@
  * Copyright (c) 2024 Cénotélie Opérations SAS (cenotelie.fr)
  ******************************************************************************/
 
-//! Module for the application
+//! Service for persisting information in the database
 
 pub mod packages;
 pub mod users;
 
-use rand::distributions::Alphanumeric;
-use rand::{thread_rng, Rng};
-
 use crate::utils::apierror::{error_forbidden, error_unauthorized, ApiError};
 use crate::utils::db::AppTransaction;
 
-/// Generates a token
-pub fn _generate_token(length: usize) -> String {
-    let rng = thread_rng();
-    String::from_utf8(rng.sample_iter(&Alphanumeric).take(length).collect()).unwrap()
-}
-
 /// Represents the application
-pub struct Application<'c> {
+pub struct Database<'c> {
     /// The connection
     pub(crate) transaction: AppTransaction<'c>,
 }
 
-impl<'c> Application<'c> {
+impl<'c> Database<'c> {
     /// Creates a new instance
-    pub fn new(transaction: AppTransaction<'c>) -> Application<'c> {
-        Application { transaction }
+    pub fn new(transaction: AppTransaction<'c>) -> Database<'c> {
+        Database { transaction }
     }
 
     /// Checks the security for an operation and returns the identifier of the target user (login)

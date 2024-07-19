@@ -2,13 +2,14 @@
  * Copyright (c) 2024 Cénotélie Opérations SAS (cenotelie.fr)
  ******************************************************************************/
 
-//! Module for the application
+//! Service for persisting information in the database
+//! API related to the management of users and authentication
 
 use chrono::Local;
 use data_encoding::HEXLOWER;
 use ring::digest::{Context, SHA256};
 
-use super::Application;
+use super::Database;
 use crate::model::auth::{find_field_in_blob, OAuthToken};
 use crate::model::config::Configuration;
 use crate::model::generate_token;
@@ -41,7 +42,7 @@ pub fn check_hash(token: &str, hashed: &str) -> Result<(), ApiError> {
     }
 }
 
-impl<'c> Application<'c> {
+impl<'c> Database<'c> {
     /// Gets the data about the current user
     pub async fn get_current_user(&self, authenticated_user: &AuthenticatedUser) -> Result<RegistryUser, ApiError> {
         let uid = self.check_is_user(&authenticated_user.principal).await?;

@@ -17,11 +17,11 @@ use tar::Archive;
 use tokio::process::Command;
 use tokio::task::JoinHandle;
 
-use crate::app::Application;
 use crate::model::config::Configuration;
 use crate::model::objects::DocsGenerationJob;
-use crate::storage;
-use crate::storage::Storage;
+use crate::services::database::Database;
+use crate::services::storage;
+use crate::services::storage::Storage;
 use crate::utils::apierror::{error_backend_failure, specialize, ApiError};
 use crate::utils::concurrent::n_at_a_time;
 use crate::utils::db::in_transaction;
@@ -76,8 +76,8 @@ async fn docs_worker_job(
     };
     let mut connection = pool.acquire().await?;
     in_transaction(&mut connection, |transaction| async move {
-        let app = Application::new(transaction);
-        app.set_package_documention(&job.crate_name, &job.crate_version, gen_is_ok)
+        let database = Database::new(transaction);
+        database.set_package_documention(&job.crate_name, &job.crate_version, gen_is_ok)
             .await
     })
     .await?;

@@ -2,11 +2,12 @@
  * Copyright (c) 2024 Cénotélie Opérations SAS (cenotelie.fr)
  ******************************************************************************/
 
-//! Module for the application
+//! Service for persisting information in the database
+//! API related to the management of packages (crates)
 
 use chrono::Local;
 
-use super::Application;
+use super::Database;
 use crate::model::objects::{
     AuthenticatedUser, CrateInfoVersion, CrateUploadData, CrateUploadResult, DocsGenerationJob, OwnersQueryResult,
     RegistryUser, SearchResultCrate, SearchResults, SearchResultsMeta, YesNoMsgResult, YesNoResult,
@@ -14,7 +15,7 @@ use crate::model::objects::{
 use crate::services::index::Index;
 use crate::utils::apierror::{error_forbidden, error_invalid_request, error_not_found, specialize, ApiError};
 
-impl<'c> Application<'c> {
+impl<'c> Database<'c> {
     /// Search for crates
     pub async fn search(&self, query: &str, per_page: Option<usize>) -> Result<SearchResults, ApiError> {
         let per_page = match per_page {

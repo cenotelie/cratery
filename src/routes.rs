@@ -23,15 +23,15 @@ use sqlx::{Pool, Sqlite};
 use tokio::fs::File;
 use tokio_util::io::ReaderStream;
 
-use crate::app::Application;
 use crate::model::config::Configuration;
 use crate::model::objects::{
     AuthenticatedUser, CrateInfo, CrateUploadData, CrateUploadResult, DocsGenerationJob, OwnersAddQuery, OwnersQueryResult,
     RegistryUser, RegistryUserToken, RegistryUserTokenWithSecret, SearchResults, YesNoMsgResult, YesNoResult,
 };
 use crate::model::{generate_token, AppVersion};
+use crate::services::database::Database;
 use crate::services::index::Index;
-use crate::storage::Storage;
+use crate::services::storage::Storage;
 use crate::utils::apierror::{error_invalid_request, error_not_found, specialize, ApiError};
 use crate::utils::axum::auth::{AuthData, AxumStateForCookies, Token};
 use crate::utils::axum::db::{AxumStateWithPool, DbConn};
@@ -52,7 +52,7 @@ pub struct PathInfoCrateVersion {
 }
 
 /// Tries to authenticate using a token
-pub async fn authenticate(token: &Token, app: &Application<'_>, config: &Configuration) -> Result<AuthenticatedUser, ApiError> {
+pub async fn authenticate(token: &Token, app: &Database<'_>, config: &Configuration) -> Result<AuthenticatedUser, ApiError> {
     if token.id == config.self_service_login && token.secret == config.self_service_token {
         // self authentication to read
         return Ok(AuthenticatedUser {
@@ -154,7 +154,7 @@ pub async fn get_webapp_resource(
 
     if path == "index.html" {
         let is_authenticated = in_transaction(&mut connection, |transaction| async {
-            let app = Application::new(transaction);
+            let app = Database::new(transaction);
             auth_data
                 .authenticate(|token| authenticate(token, &app, &state.configuration))
                 .await
@@ -201,7 +201,7 @@ pub async fn get_docs_resource(
     request: Request<Body>,
 ) -> Result<(StatusCode, [(HeaderName, HeaderValue); 2], Body), (StatusCode, [(HeaderName, HeaderValue); 1], Body)> {
     let is_authenticated = in_transaction(&mut connection, |transaction| async {
-        let app = Application::new(transaction);
+        let app = Database::new(transaction);
         auth_data
             .authenticate(|token| authenticate(token, &app, &state.configuration))
             .await
@@ -216,7 +216,7 @@ pub async fn get_docs_resource(
     let path = &request.uri().path()[1..]; // strip leading /
     assert!(path.starts_with("docs/"));
     let extension = get_content_type(path);
-    match crate::storage::get_storage(&state.configuration)
+    match crate::services::storage::get_storage(&state.configuration)
         .download_doc_file(&path[5..])
         .await
     {
@@ -264,7 +264,7 @@ pub async fn api_get_current_user(
 ) -> ApiResult<RegistryUser> {
     response(
         in_transaction(&mut connection, |transaction| async {
-            let app = Application::new(transaction);
+            let app = Database::new(transaction);
             let authenticated_user = auth_data
                 .authenticate(|token| authenticate(token, &app, &state.configuration))
                 .await?;
@@ -283,7 +283,7 @@ pub async fn api_login_with_oauth_code(
 ) -> Result<(StatusCode, [(HeaderName, HeaderValue); 1], Json<RegistryUser>), (StatusCode, Json<ApiError>)> {
     let code = String::from_utf8_lossy(&body);
     let registry_user = in_transaction(&mut connection, |transaction| async {
-        let application = Application::new(transaction);
+        let application = Database::new(transaction);
         application.login_with_oauth_code(&state.configuration, &code).await
     })
     .await
@@ -318,7 +318,7 @@ pub async fn api_get_users(
 ) -> ApiResult<Vec<RegistryUser>> {
     response(
         in_transaction(&mut connection, |transaction| async {
-            let app = Application::new(transaction);
+            let app = Database::new(transaction);
             let authenticated_user = auth_data
                 .authenticate(|token| authenticate(token, &app, &state.configuration))
                 .await?;
@@ -344,7 +344,7 @@ pub async fn api_update_user(
     }
     response(
         in_transaction(&mut connection, |transaction| async {
-            let app = Application::new(transaction);
+            let app = Database::new(transaction);
             let authenticated_user = auth_data
                 .authenticate(|token| authenticate(token, &app, &state.configuration))
                 .await?;
@@ -363,7 +363,7 @@ pub async fn api_deactivate_user(
 ) -> ApiResult<()> {
     response(
         in_transaction(&mut connection, |transaction| async {
-            let app = Application::new(transaction);
+            let app = Database::new(transaction);
             let authenticated_user = auth_data
                 .authenticate(|token| authenticate(token, &app, &state.configuration))
                 .await?;
@@ -382,7 +382,7 @@ pub async fn api_reactivate_user(
 ) -> ApiResult<()> {
     response(
         in_transaction(&mut connection, |transaction| async {
-            let app = Application::new(transaction);
+            let app = Database::new(transaction);
             let authenticated_user = auth_data
                 .authenticate(|token| authenticate(token, &app, &state.configuration))
                 .await?;
@@ -401,7 +401,7 @@ pub async fn api_delete_user(
 ) -> ApiResult<()> {
     response(
         in_transaction(&mut connection, |transaction| async {
-            let app = Application::new(transaction);
+            let app = Database::new(transaction);
             let authenticated_user = auth_data
                 .authenticate(|token| authenticate(token, &app, &state.configuration))
                 .await?;
@@ -419,7 +419,7 @@ pub async fn api_get_tokens(
 ) -> ApiResult<Vec<RegistryUserToken>> {
     response(
         in_transaction(&mut connection, |transaction| async {
-            let app = Application::new(transaction);
+            let app = Database::new(transaction);
             let authenticated_user = auth_data
                 .authenticate(|token| authenticate(token, &app, &state.configuration))
                 .await?;
@@ -447,7 +447,7 @@ pub async fn api_create_token(
 ) -> ApiResult<RegistryUserTokenWithSecret> {
     response(
         in_transaction(&mut connection, |transaction| async {
-            let app = Application::new(transaction);
+            let app = Database::new(transaction);
             let authenticated_user = auth_data
                 .authenticate(|token| authenticate(token, &app, &state.configuration))
                 .await?;
@@ -466,7 +466,7 @@ pub async fn api_revoke_token(
 ) -> ApiResult<()> {
     response(
         in_transaction(&mut connection, |transaction| async {
-            let app = Application::new(transaction);
+            let app = Database::new(transaction);
             let authenticated_user = auth_data
                 .authenticate(|token| authenticate(token, &app, &state.configuration))
                 .await?;
@@ -485,7 +485,7 @@ pub async fn api_v1_publish(
 ) -> ApiResult<CrateUploadResult> {
     response(
         in_transaction(&mut connection, |transaction| async move {
-            let app = Application::new(transaction);
+            let app = Database::new(transaction);
             let authenticated_user = auth_data
                 .authenticate(|token| authenticate(token, &app, &state.configuration))
                 .await?;
@@ -495,7 +495,7 @@ pub async fn api_v1_publish(
             // publish
             let index = state.index.lock().await;
             let r = app.publish(&authenticated_user, &package).await?;
-            crate::storage::get_storage(&state.configuration)
+            crate::services::storage::get_storage(&state.configuration)
                 .store_crate(&package.metadata, package.content)
                 .await?;
             index.publish_crate_version(&index_data).await?;
@@ -522,13 +522,13 @@ pub async fn api_v1_get_package(
 ) -> ApiResult<CrateInfo> {
     response(
         in_transaction(&mut connection, |transaction| async move {
-            let app = Application::new(transaction);
+            let app = Database::new(transaction);
             let _principal = auth_data
                 .authenticate(|token| authenticate(token, &app, &state.configuration))
                 .await?;
             let index = state.index.lock().await;
             let versions = app.get_package_versions(&package, &index).await?;
-            let metadata = crate::storage::get_storage(&state.configuration)
+            let metadata = crate::services::storage::get_storage(&state.configuration)
                 .download_crate_metadata(&package, &versions.last().unwrap().index.vers)
                 .await?;
             Ok(CrateInfo { metadata, versions })
@@ -544,12 +544,12 @@ pub async fn api_v1_get_package_readme_last(
     Path(PathInfoCrate { package }): Path<PathInfoCrate>,
 ) -> Result<(StatusCode, [(HeaderName, HeaderValue); 1], Vec<u8>), (StatusCode, Json<ApiError>)> {
     let data = in_transaction(&mut connection, |transaction| async move {
-        let app = Application::new(transaction);
+        let app = Database::new(transaction);
         let _principal = auth_data
             .authenticate(|token| authenticate(token, &app, &state.configuration))
             .await?;
         let version = app.get_package_last_version(&package).await?;
-        let readme = crate::storage::get_storage(&state.configuration)
+        let readme = crate::services::storage::get_storage(&state.configuration)
             .download_crate_readme(&package, &version)
             .await?;
         Ok(readme)
@@ -571,11 +571,11 @@ pub async fn api_v1_get_package_readme(
     Path(PathInfoCrateVersion { package, version }): Path<PathInfoCrateVersion>,
 ) -> Result<(StatusCode, [(HeaderName, HeaderValue); 1], Vec<u8>), (StatusCode, Json<ApiError>)> {
     let data = in_transaction(&mut connection, |transaction| async move {
-        let app = Application::new(transaction);
+        let app = Database::new(transaction);
         let _principal = auth_data
             .authenticate(|token| authenticate(token, &app, &state.configuration))
             .await?;
-        let readme = crate::storage::get_storage(&state.configuration)
+        let readme = crate::services::storage::get_storage(&state.configuration)
             .download_crate_readme(&package, &version)
             .await?;
         Ok(readme)
@@ -598,12 +598,12 @@ pub async fn api_v1_download(
     Path(PathInfoCrateVersion { package, version }): Path<PathInfoCrateVersion>,
 ) -> Result<(StatusCode, [(HeaderName, HeaderValue); 1], Vec<u8>), (StatusCode, Json<ApiError>)> {
     match in_transaction(&mut connection, |transaction| async move {
-        let app = Application::new(transaction);
+        let app = Database::new(transaction);
         let _principal = auth_data
             .authenticate(|token| authenticate(token, &app, &state.configuration))
             .await?;
         app.check_package_exists(&package, &version).await?;
-        let data = crate::storage::get_storage(&state.configuration)
+        let data = crate::services::storage::get_storage(&state.configuration)
             .download_crate(&package, &version)
             .await?;
         Ok::<_, ApiError>(data)
@@ -634,7 +634,7 @@ pub async fn api_v1_yank(
 ) -> ApiResult<YesNoResult> {
     response(
         in_transaction(&mut connection, |transaction| async move {
-            let app = Application::new(transaction);
+            let app = Database::new(transaction);
             let authenticated_user = auth_data
                 .authenticate(|token| authenticate(token, &app, &state.configuration))
                 .await?;
@@ -654,7 +654,7 @@ pub async fn api_v1_unyank(
 ) -> ApiResult<YesNoResult> {
     response(
         in_transaction(&mut connection, |transaction| async move {
-            let app = Application::new(transaction);
+            let app = Database::new(transaction);
             let authenticated_user = auth_data
                 .authenticate(|token| authenticate(token, &app, &state.configuration))
                 .await?;
@@ -674,7 +674,7 @@ pub async fn api_v1_docs_regen(
 ) -> ApiResult<()> {
     response(
         in_transaction(&mut connection, |transaction| async move {
-            let app = Application::new(transaction);
+            let app = Database::new(transaction);
             let authenticated_user = auth_data
                 .authenticate(|token| authenticate(token, &app, &state.configuration))
                 .await?;
@@ -702,7 +702,7 @@ pub async fn api_v1_get_owners(
 ) -> ApiResult<OwnersQueryResult> {
     response(
         in_transaction(&mut connection, |transaction| async move {
-            let app = Application::new(transaction);
+            let app = Database::new(transaction);
             let authenticated_user = auth_data
                 .authenticate(|token| authenticate(token, &app, &state.configuration))
                 .await?;
@@ -723,7 +723,7 @@ pub async fn api_v1_add_owners(
 ) -> ApiResult<YesNoMsgResult> {
     response(
         in_transaction(&mut connection, |transaction| async move {
-            let app = Application::new(transaction);
+            let app = Database::new(transaction);
             let authenticated_user = auth_data
                 .authenticate(|token| authenticate(token, &app, &state.configuration))
                 .await?;
@@ -744,7 +744,7 @@ pub async fn api_v1_remove_owners(
 ) -> ApiResult<YesNoResult> {
     response(
         in_transaction(&mut connection, |transaction| async move {
-            let app = Application::new(transaction);
+            let app = Database::new(transaction);
             let authenticated_user = auth_data
                 .authenticate(|token| authenticate(token, &app, &state.configuration))
                 .await?;
@@ -770,7 +770,7 @@ pub async fn api_v1_search(
 ) -> ApiResult<SearchResults> {
     response(
         in_transaction(&mut connection, |transaction| async move {
-            let app = Application::new(transaction);
+            let app = Database::new(transaction);
             let _principal = auth_data
                 .authenticate(|token| authenticate(token, &app, &state.configuration))
                 .await?;
@@ -821,7 +821,7 @@ pub async fn index_serve_check_auth(
     config: &Configuration,
 ) -> Result<(), (StatusCode, [(HeaderName, HeaderValue); 2], Json<ApiError>)> {
     in_transaction(&mut connection, |transaction| async move {
-        let app = Application::new(transaction);
+        let app = Database::new(transaction);
         let _principal = auth_data.authenticate(|token| authenticate(token, &app, config)).await?;
         Ok(())
     })

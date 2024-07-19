@@ -2,7 +2,7 @@
  * Copyright (c) 2024 Cénotélie Opérations SAS (cenotelie.fr)
  ******************************************************************************/
 
-//! Storage implementations
+//! Storage implementations for crates data and documentation
 
 pub mod fs;
 pub mod s3;

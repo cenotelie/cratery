@@ -25,20 +25,18 @@ use log::{error, info};
 use sqlx::sqlite::SqlitePoolOptions;
 use sqlx::{Pool, Sqlite};
 
-use crate::app::Application;
 use crate::model::config::Configuration;
 use crate::model::objects::DocsGenerationJob;
 use crate::routes::AxumState;
+use crate::services::database::Database;
 use crate::services::index::Index;
 use crate::utils::apierror::ApiError;
 use crate::utils::sigterm::waiting_sigterm;
 
-mod app;
 mod migrations;
 mod model;
 mod routes;
 mod services;
-mod storage;
 mod utils;
 mod webapp;
 
@@ -213,7 +211,7 @@ async fn main() {
         let mut docs_worker_sender = docs_worker_sender.clone();
         let mut connection = pool.acquire().await.unwrap();
         crate::utils::db::in_transaction(&mut connection, |transaction| async move {
-            let app = Application::new(transaction);
+            let app = Database::new(transaction);
             let jobs = app.get_undocumented_packages().await?;
             for job in jobs {
                 docs_worker_sender.send(job).await?;
