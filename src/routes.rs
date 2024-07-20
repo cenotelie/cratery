@@ -15,29 +15,24 @@ use axum::http::header::{HeaderName, SET_COOKIE};
 use axum::http::{header, HeaderValue, Request, StatusCode};
 use axum::{BoxError, Json};
 use cookie::Key;
-use futures::{SinkExt, Stream};
+use futures::Stream;
 use serde::Deserialize;
-use sqlx::{Pool, Sqlite};
 use tokio::fs::File;
 use tokio_util::io::ReaderStream;
 
 use crate::application::Application;
-use crate::model::config::Configuration;
 use crate::model::objects::{
-    AuthenticatedUser, CrateInfo, CrateUploadData, CrateUploadResult, DocsGenerationJob, OwnersAddQuery, OwnersQueryResult,
-    RegistryUser, RegistryUserToken, RegistryUserTokenWithSecret, SearchResults, YesNoMsgResult, YesNoResult,
+    AuthenticatedUser, CrateInfo, CrateUploadResult, OwnersAddQuery, OwnersQueryResult, RegistryUser, RegistryUserToken,
+    RegistryUserTokenWithSecret, SearchResults, YesNoMsgResult, YesNoResult,
 };
 use crate::model::{generate_token, AppVersion};
-use crate::services::database::Database;
 use crate::services::index::Index;
 use crate::services::storage::Storage;
 use crate::utils::apierror::{error_invalid_request, error_not_found, specialize, ApiError};
-use crate::utils::axum::auth::{AuthData, AxumStateForCookies, Token};
-use crate::utils::axum::db::{AxumStateWithPool, DbConn};
+use crate::utils::axum::auth::{AuthData, AxumStateForCookies};
 use crate::utils::axum::embedded::Resources;
 use crate::utils::axum::extractors::Base64;
 use crate::utils::axum::{response, response_error, ApiResult};
-use crate::utils::db::in_transaction;
 
 /// The state of this application for axum
 pub struct AxumState {
@@ -63,12 +58,6 @@ impl AxumStateForCookies for AxumState {
     }
 }
 
-impl AxumStateWithPool for AxumState {
-    fn get_pool(&self) -> &Pool<Sqlite> {
-        &self.application.db_pool
-    }
-}
-
 #[derive(Deserialize)]
 pub struct PathInfoCrate {
     package: String,
@@ -78,20 +67,6 @@ pub struct PathInfoCrate {
 pub struct PathInfoCrateVersion {
     package: String,
     version: String,
-}
-
-/// Tries to authenticate using a token
-pub async fn authenticate(token: &Token, app: &Database<'_>, config: &Configuration) -> Result<AuthenticatedUser, ApiError> {
-    if token.id == config.self_service_login && token.secret == config.self_service_token {
-        // self authentication to read
-        return Ok(AuthenticatedUser {
-            principal: config.self_service_login.clone(),
-            can_write: false,
-            can_admin: false,
-        });
-    }
-    let user = app.check_token(&token.id, &token.secret).await?;
-    Ok(user)
 }
 
 /// Response for a GET on the root
@@ -163,7 +138,6 @@ pub async fn get_redirection_crate(
 
 /// Gets the favicon
 pub async fn get_webapp_resource(
-    mut connection: DbConn,
     auth_data: AuthData,
     State(state): State<Arc<AxumState>>,
     request: Request<Body>,
@@ -185,14 +159,7 @@ pub async fn get_webapp_resource(
     }
 
     if path == "index.html" {
-        let is_authenticated = in_transaction(&mut connection, |transaction| async {
-            let app = Database::new(transaction);
-            auth_data
-                .authenticate(|token| authenticate(token, &app, &state.application.configuration))
-                .await
-        })
-        .await
-        .is_ok();
+        let is_authenticated = state.application.authenticate(&auth_data).await.is_ok();
         if !is_authenticated {
             let (code, headers) = get_auth_redirect(&state);
             return Ok((code, headers, &[]));
@@ -227,19 +194,11 @@ pub async fn webapp_me(State(state): State<Arc<AxumState>>) -> (StatusCode, [(He
 
 /// Gets a file from the documentation
 pub async fn get_docs_resource(
-    mut connection: DbConn,
     auth_data: AuthData,
     State(state): State<Arc<AxumState>>,
     request: Request<Body>,
 ) -> Result<(StatusCode, [(HeaderName, HeaderValue); 2], Body), (StatusCode, [(HeaderName, HeaderValue); 1], Body)> {
-    let is_authenticated = in_transaction(&mut connection, |transaction| async {
-        let app = Database::new(transaction);
-        auth_data
-            .authenticate(|token| authenticate(token, &app, &state.application.configuration))
-            .await
-    })
-    .await
-    .is_ok();
+    let is_authenticated = state.application.authenticate(&auth_data).await.is_ok();
     if !is_authenticated {
         let (code, headers) = get_auth_redirect(&state);
         return Ok((code, headers, Body::empty()));
@@ -248,10 +207,7 @@ pub async fn get_docs_resource(
     let path = &request.uri().path()[1..]; // strip leading /
     assert!(path.starts_with("docs/"));
     let extension = get_content_type(path);
-    match crate::services::storage::get_storage(&state.application.configuration)
-        .download_doc_file(&path[5..])
-        .await
-    {
+    match state.application.get_storage().download_doc_file(&path[5..]).await {
         Ok(content) => Ok((
             StatusCode::OK,
             [
@@ -289,39 +245,18 @@ fn get_content_type(name: &str) -> &'static str {
 }
 
 /// Get the current user
-pub async fn api_get_current_user(
-    mut connection: DbConn,
-    auth_data: AuthData,
-    State(state): State<Arc<AxumState>>,
-) -> ApiResult<RegistryUser> {
-    response(
-        in_transaction(&mut connection, |transaction| async {
-            let app = Database::new(transaction);
-            let authenticated_user = auth_data
-                .authenticate(|token| authenticate(token, &app, &state.application.configuration))
-                .await?;
-            app.get_current_user(&authenticated_user).await
-        })
-        .await,
-    )
+pub async fn api_get_current_user(auth_data: AuthData, State(state): State<Arc<AxumState>>) -> ApiResult<RegistryUser> {
+    response(state.application.get_current_user(&auth_data).await)
 }
 
 /// Attemps to login using an OAuth code
 pub async fn api_login_with_oauth_code(
-    mut connection: DbConn,
     mut auth_data: AuthData,
     State(state): State<Arc<AxumState>>,
     body: Bytes,
 ) -> Result<(StatusCode, [(HeaderName, HeaderValue); 1], Json<RegistryUser>), (StatusCode, Json<ApiError>)> {
     let code = String::from_utf8_lossy(&body);
-    let registry_user = in_transaction(&mut connection, |transaction| async {
-        let application = Database::new(transaction);
-        application
-            .login_with_oauth_code(&state.application.configuration, &code)
-            .await
-    })
-    .await
-    .map_err(response_error)?;
+    let registry_user = state.application.login_with_oauth_code(&code).await.map_err(response_error)?;
     let cookie = auth_data.create_id_cookie(&AuthenticatedUser {
         principal: registry_user.email.clone(),
         // when authenticated via cookies, can do everything
@@ -345,26 +280,12 @@ pub async fn api_logout(mut auth_data: AuthData) -> (StatusCode, [(HeaderName, H
 }
 
 /// Gets the known users
-pub async fn api_get_users(
-    mut connection: DbConn,
-    auth_data: AuthData,
-    State(state): State<Arc<AxumState>>,
-) -> ApiResult<Vec<RegistryUser>> {
-    response(
-        in_transaction(&mut connection, |transaction| async {
-            let app = Database::new(transaction);
-            let authenticated_user = auth_data
-                .authenticate(|token| authenticate(token, &app, &state.application.configuration))
-                .await?;
-            app.get_users(&authenticated_user).await
-        })
-        .await,
-    )
+pub async fn api_get_users(auth_data: AuthData, State(state): State<Arc<AxumState>>) -> ApiResult<Vec<RegistryUser>> {
+    response(state.application.get_users(&auth_data).await)
 }
 
 /// Updates the information of a user
 pub async fn api_update_user(
-    mut connection: DbConn,
     auth_data: AuthData,
     State(state): State<Arc<AxumState>>,
     Path(Base64(email)): Path<Base64>,
@@ -376,91 +297,39 @@ pub async fn api_update_user(
             String::from("email in path and body are different"),
         )));
     }
-    response(
-        in_transaction(&mut connection, |transaction| async {
-            let app = Database::new(transaction);
-            let authenticated_user = auth_data
-                .authenticate(|token| authenticate(token, &app, &state.application.configuration))
-                .await?;
-            app.update_user(&authenticated_user, &target).await
-        })
-        .await,
-    )
+    response(state.application.update_user(&auth_data, &target).await)
 }
 
 /// Attempts to deactivate a user
 pub async fn api_deactivate_user(
-    mut connection: DbConn,
     auth_data: AuthData,
     State(state): State<Arc<AxumState>>,
     Path(Base64(email)): Path<Base64>,
 ) -> ApiResult<()> {
-    response(
-        in_transaction(&mut connection, |transaction| async {
-            let app = Database::new(transaction);
-            let authenticated_user = auth_data
-                .authenticate(|token| authenticate(token, &app, &state.application.configuration))
-                .await?;
-            app.deactivate_user(&authenticated_user, &email).await
-        })
-        .await,
-    )
+    response(state.application.deactivate_user(&auth_data, &email).await)
 }
 
 /// Attempts to deactivate a user
 pub async fn api_reactivate_user(
-    mut connection: DbConn,
     auth_data: AuthData,
     State(state): State<Arc<AxumState>>,
     Path(Base64(email)): Path<Base64>,
 ) -> ApiResult<()> {
-    response(
-        in_transaction(&mut connection, |transaction| async {
-            let app = Database::new(transaction);
-            let authenticated_user = auth_data
-                .authenticate(|token| authenticate(token, &app, &state.application.configuration))
-                .await?;
-            app.reactivate_user(&authenticated_user, &email).await
-        })
-        .await,
-    )
+    response(state.application.reactivate_user(&auth_data, &email).await)
 }
 
 /// Attempts to delete a user
 pub async fn api_delete_user(
-    mut connection: DbConn,
     auth_data: AuthData,
     State(state): State<Arc<AxumState>>,
     Path(Base64(email)): Path<Base64>,
 ) -> ApiResult<()> {
-    response(
-        in_transaction(&mut connection, |transaction| async {
-            let app = Database::new(transaction);
-            let authenticated_user = auth_data
-                .authenticate(|token| authenticate(token, &app, &state.application.configuration))
-                .await?;
-            app.delete_user(&authenticated_user, &email).await
-        })
-        .await,
-    )
+    response(state.application.delete_user(&auth_data, &email).await)
 }
 
 /// Gets the tokens for a user
-pub async fn api_get_tokens(
-    mut connection: DbConn,
-    auth_data: AuthData,
-    State(state): State<Arc<AxumState>>,
-) -> ApiResult<Vec<RegistryUserToken>> {
-    response(
-        in_transaction(&mut connection, |transaction| async {
-            let app = Database::new(transaction);
-            let authenticated_user = auth_data
-                .authenticate(|token| authenticate(token, &app, &state.application.configuration))
-                .await?;
-            app.get_tokens(&authenticated_user).await
-        })
-        .await,
-    )
+pub async fn api_get_tokens(auth_data: AuthData, State(state): State<Arc<AxumState>>) -> ApiResult<Vec<RegistryUserToken>> {
+    response(state.application.get_tokens(&auth_data).await)
 }
 
 #[derive(Deserialize)]
@@ -473,124 +342,50 @@ pub struct CreateTokenQuery {
 
 /// Creates a token for the current user
 pub async fn api_create_token(
-    mut connection: DbConn,
     auth_data: AuthData,
     State(state): State<Arc<AxumState>>,
     Query(CreateTokenQuery { can_write, can_admin }): Query<CreateTokenQuery>,
     name: String,
 ) -> ApiResult<RegistryUserTokenWithSecret> {
-    response(
-        in_transaction(&mut connection, |transaction| async {
-            let app = Database::new(transaction);
-            let authenticated_user = auth_data
-                .authenticate(|token| authenticate(token, &app, &state.application.configuration))
-                .await?;
-            app.create_token(&authenticated_user, &name, can_write, can_admin).await
-        })
-        .await,
-    )
+    response(state.application.create_token(&auth_data, &name, can_write, can_admin).await)
 }
 
 /// Revoke a previous token
 pub async fn api_revoke_token(
-    mut connection: DbConn,
     auth_data: AuthData,
     State(state): State<Arc<AxumState>>,
     Path(token_id): Path<i64>,
 ) -> ApiResult<()> {
-    response(
-        in_transaction(&mut connection, |transaction| async {
-            let app = Database::new(transaction);
-            let authenticated_user = auth_data
-                .authenticate(|token| authenticate(token, &app, &state.application.configuration))
-                .await?;
-            app.revoke_token(&authenticated_user, token_id).await
-        })
-        .await,
-    )
+    response(state.application.revoke_token(&auth_data, token_id).await)
 }
 
 // #[put("/crates/new")]
-pub async fn api_v1_publish(
-    mut connection: DbConn,
+pub async fn api_v1_publish_crate_version(
     auth_data: AuthData,
     State(state): State<Arc<AxumState>>,
     body: Bytes,
 ) -> ApiResult<CrateUploadResult> {
-    response(
-        in_transaction(&mut connection, |transaction| async move {
-            let app = Database::new(transaction);
-            let authenticated_user = auth_data
-                .authenticate(|token| authenticate(token, &app, &state.application.configuration))
-                .await?;
-            // deserialize payload
-            let package = CrateUploadData::new(&body)?;
-            let index_data = package.build_index_data();
-            // publish
-            let index = state.application.index.lock().await;
-            let r = app.publish(&authenticated_user, &package).await?;
-            crate::services::storage::get_storage(&state.application.configuration)
-                .store_crate(&package.metadata, package.content)
-                .await?;
-            index.publish_crate_version(&index_data).await?;
-            // generate the doc
-            state
-                .application
-                .docs_worker_sender
-                .clone()
-                .send(DocsGenerationJob {
-                    crate_name: package.metadata.name.clone(),
-                    crate_version: package.metadata.vers.clone(),
-                })
-                .await?;
-            Ok(r)
-        })
-        .await,
-    )
+    response(state.application.publish_crate_version(&auth_data, &body).await)
 }
 
-pub async fn api_v1_get_package(
-    mut connection: DbConn,
+pub async fn api_v1_get_crate_info(
     auth_data: AuthData,
     State(state): State<Arc<AxumState>>,
     Path(PathInfoCrate { package }): Path<PathInfoCrate>,
 ) -> ApiResult<CrateInfo> {
-    response(
-        in_transaction(&mut connection, |transaction| async move {
-            let app = Database::new(transaction);
-            let _principal = auth_data
-                .authenticate(|token| authenticate(token, &app, &state.application.configuration))
-                .await?;
-            let index = state.application.index.lock().await;
-            let versions = app.get_package_versions(&package, &index).await?;
-            let metadata = crate::services::storage::get_storage(&state.application.configuration)
-                .download_crate_metadata(&package, &versions.last().unwrap().index.vers)
-                .await?;
-            Ok(CrateInfo { metadata, versions })
-        })
-        .await,
-    )
+    response(state.application.get_crate_info(&auth_data, &package).await)
 }
 
-pub async fn api_v1_get_package_readme_last(
-    mut connection: DbConn,
+pub async fn api_v1_get_crate_last_readme(
     auth_data: AuthData,
     State(state): State<Arc<AxumState>>,
     Path(PathInfoCrate { package }): Path<PathInfoCrate>,
 ) -> Result<(StatusCode, [(HeaderName, HeaderValue); 1], Vec<u8>), (StatusCode, Json<ApiError>)> {
-    let data = in_transaction(&mut connection, |transaction| async move {
-        let app = Database::new(transaction);
-        let _principal = auth_data
-            .authenticate(|token| authenticate(token, &app, &state.application.configuration))
-            .await?;
-        let version = app.get_package_last_version(&package).await?;
-        let readme = crate::services::storage::get_storage(&state.application.configuration)
-            .download_crate_readme(&package, &version)
-            .await?;
-        Ok(readme)
-    })
-    .await
-    .map_err(response_error)?;
+    let data = state
+        .application
+        .get_crate_last_readme(&auth_data, &package)
+        .await
+        .map_err(response_error)?;
 
     Ok((
         StatusCode::OK,
@@ -599,24 +394,16 @@ pub async fn api_v1_get_package_readme_last(
     ))
 }
 
-pub async fn api_v1_get_package_readme(
-    mut connection: DbConn,
+pub async fn api_v1_get_crate_readme(
     auth_data: AuthData,
     State(state): State<Arc<AxumState>>,
     Path(PathInfoCrateVersion { package, version }): Path<PathInfoCrateVersion>,
 ) -> Result<(StatusCode, [(HeaderName, HeaderValue); 1], Vec<u8>), (StatusCode, Json<ApiError>)> {
-    let data = in_transaction(&mut connection, |transaction| async move {
-        let app = Database::new(transaction);
-        let _principal = auth_data
-            .authenticate(|token| authenticate(token, &app, &state.application.configuration))
-            .await?;
-        let readme = crate::services::storage::get_storage(&state.application.configuration)
-            .download_crate_readme(&package, &version)
-            .await?;
-        Ok(readme)
-    })
-    .await
-    .map_err(response_error)?;
+    let data = state
+        .application
+        .get_crate_readme(&auth_data, &package, &version)
+        .await
+        .map_err(response_error)?;
 
     Ok((
         StatusCode::OK,
@@ -626,25 +413,12 @@ pub async fn api_v1_get_package_readme(
 }
 
 // #[get("/crates/{package}/{version}/download")]
-pub async fn api_v1_download(
-    mut connection: DbConn,
+pub async fn api_v1_download_crate(
     auth_data: AuthData,
     State(state): State<Arc<AxumState>>,
     Path(PathInfoCrateVersion { package, version }): Path<PathInfoCrateVersion>,
 ) -> Result<(StatusCode, [(HeaderName, HeaderValue); 1], Vec<u8>), (StatusCode, Json<ApiError>)> {
-    match in_transaction(&mut connection, |transaction| async move {
-        let app = Database::new(transaction);
-        let _principal = auth_data
-            .authenticate(|token| authenticate(token, &app, &state.application.configuration))
-            .await?;
-        app.check_package_exists(&package, &version).await?;
-        let data = crate::services::storage::get_storage(&state.application.configuration)
-            .download_crate(&package, &version)
-            .await?;
-        Ok::<_, ApiError>(data)
-    })
-    .await
-    {
+    match state.application.get_crate_content(&auth_data, &package, &version).await {
         Ok(data) => Ok((
             StatusCode::OK,
             [(header::CONTENT_TYPE, HeaderValue::from_static("application/octet-stream"))],
@@ -662,132 +436,67 @@ pub async fn api_v1_download(
 
 // #[delete("/crates/{package}/{version}/yank")]
 pub async fn api_v1_yank(
-    mut connection: DbConn,
     auth_data: AuthData,
     State(state): State<Arc<AxumState>>,
     Path(PathInfoCrateVersion { package, version }): Path<PathInfoCrateVersion>,
 ) -> ApiResult<YesNoResult> {
-    response(
-        in_transaction(&mut connection, |transaction| async move {
-            let app = Database::new(transaction);
-            let authenticated_user = auth_data
-                .authenticate(|token| authenticate(token, &app, &state.application.configuration))
-                .await?;
-            let r = app.yank(&authenticated_user, &package, &version).await?;
-            Ok(r)
-        })
-        .await,
-    )
+    response(state.application.yank_crate_version(&auth_data, &package, &version).await)
 }
 
 // #[put("/crates/{package}/{version}/unyank")]
 pub async fn api_v1_unyank(
-    mut connection: DbConn,
     auth_data: AuthData,
     State(state): State<Arc<AxumState>>,
     Path(PathInfoCrateVersion { package, version }): Path<PathInfoCrateVersion>,
 ) -> ApiResult<YesNoResult> {
-    response(
-        in_transaction(&mut connection, |transaction| async move {
-            let app = Database::new(transaction);
-            let authenticated_user = auth_data
-                .authenticate(|token| authenticate(token, &app, &state.application.configuration))
-                .await?;
-            let r = app.unyank(&authenticated_user, &package, &version).await?;
-            Ok(r)
-        })
-        .await,
-    )
+    response(state.application.unyank_crate_version(&auth_data, &package, &version).await)
 }
 
 // #[post("/crates/{package}/{version}/docsregen")]
-pub async fn api_v1_docs_regen(
-    mut connection: DbConn,
+pub async fn api_v1_regen_crate_version_doc(
     auth_data: AuthData,
     State(state): State<Arc<AxumState>>,
     Path(PathInfoCrateVersion { package, version }): Path<PathInfoCrateVersion>,
 ) -> ApiResult<()> {
     response(
-        in_transaction(&mut connection, |transaction| async move {
-            let app = Database::new(transaction);
-            let authenticated_user = auth_data
-                .authenticate(|token| authenticate(token, &app, &state.application.configuration))
-                .await?;
-            app.regenerate_documentation(&authenticated_user, &package, &version).await?;
-            state
-                .application
-                .docs_worker_sender
-                .clone()
-                .send(DocsGenerationJob {
-                    crate_name: package.clone(),
-                    crate_version: version.clone(),
-                })
-                .await?;
-            Ok(())
-        })
-        .await,
+        state
+            .application
+            .regen_crate_version_doc(&auth_data, &package, &version)
+            .await,
     )
 }
 
 // #[get("/crates/{package}/owners")]
-pub async fn api_v1_get_owners(
-    mut connection: DbConn,
+pub async fn api_v1_get_crate_owners(
     auth_data: AuthData,
     State(state): State<Arc<AxumState>>,
     Path(PathInfoCrate { package }): Path<PathInfoCrate>,
 ) -> ApiResult<OwnersQueryResult> {
-    response(
-        in_transaction(&mut connection, |transaction| async move {
-            let app = Database::new(transaction);
-            let authenticated_user = auth_data
-                .authenticate(|token| authenticate(token, &app, &state.application.configuration))
-                .await?;
-            let r = app.get_owners(&authenticated_user, &package).await?;
-            Ok(r)
-        })
-        .await,
-    )
+    response(state.application.get_crate_owners(&auth_data, &package).await)
 }
 
 // #[put("/crates/{package}/owners")]
-pub async fn api_v1_add_owners(
-    mut connection: DbConn,
+pub async fn api_v1_add_crate_owners(
     auth_data: AuthData,
     State(state): State<Arc<AxumState>>,
     Path(PathInfoCrate { package }): Path<PathInfoCrate>,
     input: Json<OwnersAddQuery>,
 ) -> ApiResult<YesNoMsgResult> {
-    response(
-        in_transaction(&mut connection, |transaction| async move {
-            let app = Database::new(transaction);
-            let authenticated_user = auth_data
-                .authenticate(|token| authenticate(token, &app, &state.application.configuration))
-                .await?;
-            let r = app.add_owners(&authenticated_user, &package, &input.users).await?;
-            Ok(r)
-        })
-        .await,
-    )
+    response(state.application.add_crate_owners(&auth_data, &package, &input.users).await)
 }
 
 // #[delete("/crates/{package}/owners")]
-pub async fn api_v1_remove_owners(
-    mut connection: DbConn,
+pub async fn api_v1_remove_crate_owners(
     auth_data: AuthData,
     State(state): State<Arc<AxumState>>,
     Path(PathInfoCrate { package }): Path<PathInfoCrate>,
     input: Json<OwnersAddQuery>,
 ) -> ApiResult<YesNoResult> {
     response(
-        in_transaction(&mut connection, |transaction| async move {
-            let app = Database::new(transaction);
-            let authenticated_user = auth_data
-                .authenticate(|token| authenticate(token, &app, &state.application.configuration))
-                .await?;
-            let r = app.remove_owners(&authenticated_user, &package, &input.users).await?;
-            Ok(r)
-        })
-        .await,
+        state
+            .application
+            .remove_crate_owners(&auth_data, &package, &input.users)
+            .await,
     )
 }
 
@@ -799,21 +508,11 @@ pub struct SearchForm {
 
 // #[get("/crates")]
 pub async fn api_v1_search(
-    mut connection: DbConn,
     auth_data: AuthData,
     State(state): State<Arc<AxumState>>,
     form: Query<SearchForm>,
 ) -> ApiResult<SearchResults> {
-    response(
-        in_transaction(&mut connection, |transaction| async move {
-            let app = Database::new(transaction);
-            let _principal = auth_data
-                .authenticate(|token| authenticate(token, &app, &state.application.configuration))
-                .await?;
-            app.search(&form.q, form.per_page).await
-        })
-        .await,
-    )
+    response(state.application.search_crates(&auth_data, &form.q, form.per_page).await)
 }
 
 pub async fn index_serve_inner(
@@ -852,22 +551,17 @@ fn index_serve_map_err(e: ApiError, domain: &str) -> (StatusCode, [(HeaderName, 
 }
 
 pub async fn index_serve_check_auth(
-    mut connection: DbConn,
+    application: &Application,
     auth_data: &AuthData,
-    config: &Configuration,
 ) -> Result<(), (StatusCode, [(HeaderName, HeaderValue); 2], Json<ApiError>)> {
-    in_transaction(&mut connection, |transaction| async move {
-        let app = Database::new(transaction);
-        let _principal = auth_data.authenticate(|token| authenticate(token, &app, config)).await?;
-        Ok(())
-    })
-    .await
-    .map_err(|e| index_serve_map_err(e, &config.web_domain))?;
+    application
+        .authenticate(auth_data)
+        .await
+        .map_err(|e| index_serve_map_err(e, &application.configuration.web_domain))?;
     Ok(())
 }
 
 pub async fn index_serve(
-    connection: DbConn,
     auth_data: AuthData,
     State(state): State<Arc<AxumState>>,
     request: Request<Body>,
@@ -878,7 +572,7 @@ pub async fn index_serve(
         // config.json is always allowed because it is always checked first by cargo
         return Err(map_err(error_not_found()));
     }
-    index_serve_check_auth(connection, &auth_data, &state.application.configuration).await?;
+    index_serve_check_auth(&state.application, &auth_data).await?;
     let index = state.application.index.lock().await;
     let (stream, content_type) = index_serve_inner(&index, path).await.map_err(map_err)?;
     let body = Body::from_stream(stream);
@@ -893,7 +587,6 @@ pub async fn index_serve(
 }
 
 pub async fn index_serve_info_refs(
-    connection: DbConn,
     auth_data: AuthData,
     State(state): State<Arc<AxumState>>,
     Query(query): Query<HashMap<String, String>>,
@@ -902,7 +595,7 @@ pub async fn index_serve_info_refs(
     if !state.application.configuration.index.allow_protocol_git {
         return Err(map_err(error_not_found()));
     }
-    index_serve_check_auth(connection, &auth_data, &state.application.configuration).await?;
+    index_serve_check_auth(&state.application, &auth_data).await?;
     let index = state.application.index.lock().await;
 
     if query.get("service").map(std::string::String::as_str) == Some("git-upload-pack") {
@@ -926,7 +619,6 @@ pub async fn index_serve_info_refs(
 }
 
 pub async fn index_serve_git_upload_pack(
-    connection: DbConn,
     auth_data: AuthData,
     State(state): State<Arc<AxumState>>,
     body: Bytes,
@@ -935,7 +627,7 @@ pub async fn index_serve_git_upload_pack(
     if !state.application.configuration.index.allow_protocol_git {
         return Err(map_err(error_not_found()));
     }
-    index_serve_check_auth(connection, &auth_data, &state.application.configuration).await?;
+    index_serve_check_auth(&state.application, &auth_data).await?;
     let index = state.application.index.lock().await;
     let data = index.get_upload_pack_for(&body).await.map_err(map_err)?;
     Ok((

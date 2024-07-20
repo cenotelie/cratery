@@ -95,17 +95,20 @@ async fn main_serve_app(application: Arc<Application>, cookie_key: Key) -> Resul
                     "/crates",
                     Router::new()
                         .route("/", get(crate::routes::api_v1_search))
-                        .route("/new", put(crate::routes::api_v1_publish))
-                        .route("/:package", get(crate::routes::api_v1_get_package))
-                        .route("/:package/readme", get(crate::routes::api_v1_get_package_readme_last))
-                        .route("/:package/:version/readme", get(crate::routes::api_v1_get_package_readme))
-                        .route("/:package/:version/download", get(crate::routes::api_v1_download))
+                        .route("/new", put(crate::routes::api_v1_publish_crate_version))
+                        .route("/:package", get(crate::routes::api_v1_get_crate_info))
+                        .route("/:package/readme", get(crate::routes::api_v1_get_crate_last_readme))
+                        .route("/:package/:version/readme", get(crate::routes::api_v1_get_crate_readme))
+                        .route("/:package/:version/download", get(crate::routes::api_v1_download_crate))
                         .route("/:package/:version/yank", delete(crate::routes::api_v1_yank))
                         .route("/:package/:version/unyank", put(crate::routes::api_v1_unyank))
-                        .route("/:package/:version/docsregen", post(crate::routes::api_v1_docs_regen))
-                        .route("/:package/owners", get(crate::routes::api_v1_get_owners))
-                        .route("/:package/owners", put(crate::routes::api_v1_add_owners))
-                        .route("/:package/owners", delete(crate::routes::api_v1_remove_owners)),
+                        .route(
+                            "/:package/:version/docsregen",
+                            post(crate::routes::api_v1_regen_crate_version_doc),
+                        )
+                        .route("/:package/owners", get(crate::routes::api_v1_get_crate_owners))
+                        .route("/:package/owners", put(crate::routes::api_v1_add_crate_owners))
+                        .route("/:package/owners", delete(crate::routes::api_v1_remove_crate_owners)),
                 ),
         )
         // fall back to serving the index

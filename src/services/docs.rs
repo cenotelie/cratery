@@ -78,7 +78,7 @@ async fn docs_worker_job(
     in_transaction(&mut connection, |transaction| async move {
         let database = Database::new(transaction);
         database
-            .set_package_documention(&job.crate_name, &job.crate_version, gen_is_ok)
+            .set_crate_documention(&job.crate_name, &job.crate_version, gen_is_ok)
             .await
     })
     .await?;

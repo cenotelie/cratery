@@ -5,7 +5,6 @@
 //! Authentication management
 
 use std::borrow::Cow;
-use std::future::Future;
 use std::sync::Arc;
 
 use axum::extract::FromRequestParts;
@@ -15,11 +14,10 @@ use base64::prelude::BASE64_STANDARD;
 use base64::Engine;
 use cookie::time::OffsetDateTime;
 use cookie::{Cookie, CookieJar, Expiration, Key, SameSite};
-use serde::de::DeserializeOwned;
-use serde::Serialize;
 
 use super::extractors::Cookies;
-use crate::utils::apierror::{error_unauthorized, ApiError};
+use crate::model::objects::AuthenticatedUser;
+use crate::utils::apierror::ApiError;
 
 /// An authentication token
 #[derive(Debug, Clone)]
@@ -162,10 +160,7 @@ impl AuthData {
     /// # Panics
     ///
     /// Panic when the value cannot be serialized to JSON
-    pub fn create_id_cookie<U>(&mut self, value: &U) -> Cookie<'static>
-    where
-        U: Serialize,
-    {
+    pub fn create_id_cookie(&mut self, value: &AuthenticatedUser) -> Cookie<'static> {
         self.create_cookie(&self.cookie_id_name.clone(), &serde_json::to_string(value).unwrap(), true)
     }
 
@@ -179,17 +174,7 @@ impl AuthData {
     /// # Errors
     ///
     /// Propagates the error from the `check_token` callback.
-    pub async fn try_authenticate<'a, U, F, FUT>(&'a self, check_token: F) -> Result<Option<U>, ApiError>
-    where
-        U: DeserializeOwned,
-        F: FnOnce(&'a Token) -> FUT,
-        FUT: Future<Output = Result<U, ApiError>> + 'a,
-    {
-        if let Some(token) = &self.token {
-            // try with the token
-            let principal = check_token(token).await?;
-            return Ok(Some(principal));
-        }
+    pub fn try_authenticate_cookie(&self) -> Result<Option<AuthenticatedUser>, ApiError> {
         // try the cookie
         Ok(self
             .cookie_jar
@@ -197,23 +182,5 @@ impl AuthData {
             .get(&self.cookie_id_name)
             .map(|cookie| serde_json::from_str(cookie.value()))
             .transpose()?)
-    }
-
-    /// Try to authenticate this request
-    ///
-    /// # Errors
-    ///
-    /// Propagate the error from the `check_token` callback,
-    /// and return an HTTP Unauthorized error when authentication failed.
-    pub async fn authenticate<'a, U, F, FUT>(&'a self, check_token: F) -> Result<U, ApiError>
-    where
-        U: DeserializeOwned,
-        F: FnOnce(&'a Token) -> FUT,
-        FUT: Future<Output = Result<U, ApiError>> + 'a,
-    {
-        match self.try_authenticate(check_token).await? {
-            Some(principal) => Ok(principal),
-            None => Err(error_unauthorized()),
-        }
     }
 }

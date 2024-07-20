@@ -5,7 +5,6 @@
 //! Utility APIs for axum
 
 pub mod auth;
-pub mod db;
 pub mod embedded;
 pub mod extractors;
 

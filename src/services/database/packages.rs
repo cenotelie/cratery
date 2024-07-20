@@ -9,15 +9,14 @@ use chrono::Local;
 
 use super::Database;
 use crate::model::objects::{
-    AuthenticatedUser, CrateInfoVersion, CrateUploadData, CrateUploadResult, DocsGenerationJob, OwnersQueryResult,
-    RegistryUser, SearchResultCrate, SearchResults, SearchResultsMeta, YesNoMsgResult, YesNoResult,
+    AuthenticatedUser, CrateInfoVersion, CrateMetadataIndex, CrateUploadData, CrateUploadResult, DocsGenerationJob,
+    OwnersQueryResult, RegistryUser, SearchResultCrate, SearchResults, SearchResultsMeta, YesNoMsgResult, YesNoResult,
 };
-use crate::services::index::Index;
 use crate::utils::apierror::{error_forbidden, error_invalid_request, error_not_found, specialize, ApiError};
 
 impl<'c> Database<'c> {
     /// Search for crates
-    pub async fn search(&self, query: &str, per_page: Option<usize>) -> Result<SearchResults, ApiError> {
+    pub async fn search_crates(&self, query: &str, per_page: Option<usize>) -> Result<SearchResults, ApiError> {
         let per_page = match per_page {
             None => 10,
             Some(value) if value > 100 => 100,
@@ -50,7 +49,7 @@ impl<'c> Database<'c> {
     }
 
     /// Gets the last version number for a package
-    pub async fn get_package_last_version(&self, package: &str) -> Result<String, ApiError> {
+    pub async fn get_crate_last_version(&self, package: &str) -> Result<String, ApiError> {
         let row = sqlx::query!(
             "SELECT version, description FROM PackageVersion WHERE package = $1 AND yanked = FALSE ORDER BY id DESC LIMIT 1",
             package
@@ -62,8 +61,11 @@ impl<'c> Database<'c> {
     }
 
     /// Gets all the data about versions of a crate
-    pub async fn get_package_versions(&self, package: &str, index: &Index) -> Result<Vec<CrateInfoVersion>, ApiError> {
-        let versions_index = index.get_crate_data(package).await?;
+    pub async fn get_crate_versions(
+        &self,
+        package: &str,
+        versions_in_index: Vec<CrateMetadataIndex>,
+    ) -> Result<Vec<CrateInfoVersion>, ApiError> {
         let rows = sqlx::query!(
             "SELECT version, upload, uploadedBy AS uploaded_by, hasDocs AS has_docs, docGenAttempted AS doc_gen_attempted FROM PackageVersion WHERE package = $1 ORDER BY id",
             package
@@ -71,7 +73,7 @@ impl<'c> Database<'c> {
         .fetch_all(&mut *self.transaction.borrow().await)
         .await?;
         let mut result = Vec::new();
-        for index_data in versions_index {
+        for index_data in versions_in_index {
             if let Some(row) = rows.iter().find(|row| row.version == index_data.vers) {
                 let uploaded_by = self.get_user_profile(row.uploaded_by).await?;
                 result.push(CrateInfoVersion {
@@ -88,7 +90,7 @@ impl<'c> Database<'c> {
 
     /// Publish a crate
     #[allow(clippy::similar_names)]
-    pub async fn publish(
+    pub async fn publish_crate_version(
         &self,
         authenticated_user: &AuthenticatedUser,
         package: &CrateUploadData,
@@ -175,7 +177,7 @@ impl<'c> Database<'c> {
     }
 
     /// Checks that a package exists
-    pub async fn check_package_exists(&self, package: &str, version: &str) -> Result<(), ApiError> {
+    pub async fn check_crate_exists(&self, package: &str, version: &str) -> Result<(), ApiError> {
         let row = sqlx::query!(
             "SELECT id FROM PackageVersion WHERE package = $1 AND version = $2 LIMIT 1",
             package,
@@ -191,7 +193,7 @@ impl<'c> Database<'c> {
     }
 
     /// Checks the ownership of a package
-    async fn check_package_ownership(&self, authenticated_user: &AuthenticatedUser, package: &str) -> Result<i64, ApiError> {
+    async fn check_crate_ownership(&self, authenticated_user: &AuthenticatedUser, package: &str) -> Result<i64, ApiError> {
         let uid = self.check_is_user(&authenticated_user.principal).await?;
         if self.check_is_admin(uid).await.is_ok() {
             return Ok(uid);
@@ -213,7 +215,7 @@ impl<'c> Database<'c> {
     }
 
     /// Yank a crate version
-    pub async fn yank(
+    pub async fn yank_crate_version(
         &self,
         authenticated_user: &AuthenticatedUser,
         package: &str,
@@ -225,7 +227,7 @@ impl<'c> Database<'c> {
                 String::from("writing is forbidden for this authentication"),
             ));
         }
-        self.check_package_ownership(authenticated_user, package).await?;
+        self.check_crate_ownership(authenticated_user, package).await?;
         let row = sqlx::query!(
             "SELECT yanked FROM PackageVersion WHERE package = $1 AND version = $2 LIMIT 1",
             package,
@@ -259,7 +261,7 @@ impl<'c> Database<'c> {
     }
 
     /// Unyank a crate version
-    pub async fn unyank(
+    pub async fn unyank_crate_version(
         &self,
         authenticated_user: &AuthenticatedUser,
         package: &str,
@@ -271,7 +273,7 @@ impl<'c> Database<'c> {
                 String::from("writing is forbidden for this authentication"),
             ));
         }
-        self.check_package_ownership(authenticated_user, package).await?;
+        self.check_crate_ownership(authenticated_user, package).await?;
         let row = sqlx::query!(
             "SELECT yanked FROM PackageVersion WHERE package = $1 AND version = $2 LIMIT 1",
             package,
@@ -305,7 +307,7 @@ impl<'c> Database<'c> {
     }
 
     /// Gets the packages that need documentation generation
-    pub async fn get_undocumented_packages(&self) -> Result<Vec<DocsGenerationJob>, ApiError> {
+    pub async fn get_undocumented_crates(&self) -> Result<Vec<DocsGenerationJob>, ApiError> {
         let rows = sqlx::query!(
             "SELECT package, version FROM PackageVersion WHERE hasDocs = FALSE AND docGenAttempted = FALSE ORDER BY id"
         )
@@ -321,7 +323,7 @@ impl<'c> Database<'c> {
     }
 
     /// Sets a package as having documentation
-    pub async fn set_package_documention(&self, package: &str, version: &str, has_docs: bool) -> Result<(), ApiError> {
+    pub async fn set_crate_documention(&self, package: &str, version: &str, has_docs: bool) -> Result<(), ApiError> {
         sqlx::query!(
             "UPDATE PackageVersion SET docGenAttempted = TRUE, hasDocs = $3 WHERE package = $1 AND version = $2",
             package,
@@ -334,7 +336,7 @@ impl<'c> Database<'c> {
     }
 
     /// Force the re-generation for the documentation of a package
-    pub async fn regenerate_documentation(
+    pub async fn regen_crate_version_doc(
         &self,
         authenticated_user: &AuthenticatedUser,
         package: &str,
@@ -346,7 +348,7 @@ impl<'c> Database<'c> {
                 String::from("writing is forbidden for this authentication"),
             ));
         }
-        self.check_package_ownership(authenticated_user, package).await?;
+        self.check_crate_ownership(authenticated_user, package).await?;
         let row = sqlx::query!(
             "SELECT yanked FROM PackageVersion WHERE package = $1 AND version = $2 LIMIT 1",
             package,
@@ -374,7 +376,7 @@ impl<'c> Database<'c> {
     }
 
     /// Gets the list of owners for a package
-    pub async fn get_owners(
+    pub async fn get_crate_owners(
         &self,
         authenticated_user: &AuthenticatedUser,
         package: &str,
@@ -386,7 +388,7 @@ impl<'c> Database<'c> {
     }
 
     /// Add owners to a package
-    pub async fn add_owners(
+    pub async fn add_crate_owners(
         &self,
         authenticated_user: &AuthenticatedUser,
         package: &str,
@@ -399,7 +401,7 @@ impl<'c> Database<'c> {
             ));
         }
         // check access
-        self.check_package_ownership(authenticated_user, package).await?;
+        self.check_crate_ownership(authenticated_user, package).await?;
         // get all current owners
         let rows = sqlx::query!("SELECT owner FROM PackageOwner WHERE package = $1", package,)
             .fetch_all(&mut *self.transaction.borrow().await)
@@ -425,7 +427,7 @@ impl<'c> Database<'c> {
     }
 
     /// Remove owners from a package
-    pub async fn remove_owners(
+    pub async fn remove_crate_owners(
         &self,
         authenticated_user: &AuthenticatedUser,
         package: &str,
@@ -438,7 +440,7 @@ impl<'c> Database<'c> {
             ));
         }
         // check access
-        self.check_package_ownership(authenticated_user, package).await?;
+        self.check_crate_ownership(authenticated_user, package).await?;
         // get all current owners
         let rows = sqlx::query!("SELECT owner FROM PackageOwner WHERE package = $1", package,)
             .fetch_all(&mut *self.transaction.borrow().await)
