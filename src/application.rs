@@ -308,6 +308,7 @@ impl Application {
             let app = self.with_transaction(transaction);
             let _principal = app.authenticate(auth_data).await?;
             app.database.check_crate_exists(package, version).await?;
+            app.database.increment_crate_version_dl_count(package, version).await?;
             let content = self.get_storage().download_crate(package, version).await?;
             Ok(content)
         })

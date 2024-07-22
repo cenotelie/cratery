@@ -1,0 +1,2 @@
+ALTER TABLE PackageVersion
+    ADD COLUMN downloadCount INTEGER NOT NULL DEFAULT 0;

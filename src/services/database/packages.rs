@@ -67,7 +67,7 @@ impl<'c> Database<'c> {
         versions_in_index: Vec<CrateMetadataIndex>,
     ) -> Result<Vec<CrateInfoVersion>, ApiError> {
         let rows = sqlx::query!(
-            "SELECT version, upload, uploadedBy AS uploaded_by, hasDocs AS has_docs, docGenAttempted AS doc_gen_attempted FROM PackageVersion WHERE package = $1 ORDER BY id",
+            "SELECT version, upload, uploadedBy AS uploaded_by, hasDocs AS has_docs, docGenAttempted AS doc_gen_attempted, downloadCount AS download_count FROM PackageVersion WHERE package = $1 ORDER BY id",
             package
         )
         .fetch_all(&mut *self.transaction.borrow().await)
@@ -82,6 +82,7 @@ impl<'c> Database<'c> {
                     uploaded_by,
                     has_docs: row.has_docs,
                     doc_gen_attempted: row.doc_gen_attempted,
+                    download_count: row.download_count,
                 });
             }
         }
@@ -164,7 +165,7 @@ impl<'c> Database<'c> {
         // create the version
         let description = package.metadata.description.as_ref().map_or("", std::string::String::as_str);
         sqlx::query!(
-            "INSERT INTO PackageVersion (package, version, description, upload, uploadedBy, yanked, hasDocs, docGenAttempted) VALUES ($1, $2, $3, $4, $5, false, false, false)",
+            "INSERT INTO PackageVersion (package, version, description, upload, uploadedBy, yanked, hasDocs, docGenAttempted, downloadCount) VALUES ($1, $2, $3, $4, $5, false, false, false, 0)",
             package.metadata.name,
             package.metadata.vers,
             description,
@@ -178,18 +179,15 @@ impl<'c> Database<'c> {
 
     /// Checks that a package exists
     pub async fn check_crate_exists(&self, package: &str, version: &str) -> Result<(), ApiError> {
-        let row = sqlx::query!(
+        let _row = sqlx::query!(
             "SELECT id FROM PackageVersion WHERE package = $1 AND version = $2 LIMIT 1",
             package,
             version
         )
         .fetch_optional(&mut *self.transaction.borrow().await)
-        .await?;
-        if row.is_none() {
-            Err(error_not_found())
-        } else {
-            Ok(())
-        }
+        .await?
+        .ok_or_else(error_not_found)?;
+        Ok(())
     }
 
     /// Checks the ownership of a package
@@ -373,6 +371,18 @@ impl<'c> Database<'c> {
                 Ok(())
             }
         }
+    }
+
+    /// Increments the counter of downloads for a crate version
+    pub async fn increment_crate_version_dl_count(&self, package: &str, version: &str) -> Result<(), ApiError> {
+        sqlx::query!(
+            "UPDATE PackageVersion SET downloadCount = downloadCount + 1 WHERE package = $1 AND version = $2",
+            package,
+            version
+        )
+        .execute(&mut *self.transaction.borrow().await)
+        .await?;
+        Ok(())
     }
 
     /// Gets the list of owners for a package

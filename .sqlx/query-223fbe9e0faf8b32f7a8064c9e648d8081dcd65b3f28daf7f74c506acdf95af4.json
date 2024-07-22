@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "UPDATE PackageVersion SET downloadCount = downloadCount + 1 WHERE package = $1 AND version = $2",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 2
+    },
+    "nullable": []
+  },
+  "hash": "223fbe9e0faf8b32f7a8064c9e648d8081dcd65b3f28daf7f74c506acdf95af4"
+}

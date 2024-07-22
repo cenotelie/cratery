@@ -365,6 +365,9 @@ pub struct CrateInfoVersion {
     /// Whether the documentation generation was attempted
     #[serde(rename = "docGenAttempted")]
     pub doc_gen_attempted: bool,
+    /// The number of times this version was downloaded
+    #[serde(rename = "downloadCount")]
+    pub download_count: i64,
 }
 
 /// The upload data for publishing a crate
