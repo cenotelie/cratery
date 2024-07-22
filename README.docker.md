@@ -62,6 +62,7 @@ services:
       REGISTRY_OAUTH_CLIENT_ID: 710376957465-81ohjssn6skq68ktblkicqr1f2jd33ai.apps.googleusercontent.com
       REGISTRY_OAUTH_CLIENT_SECRET: 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
       REGISTRY_OAUTH_CLIENT_SCOPE: openid profile email
+      # REGISTRY_DEPS_ANALYSIS_STALE_PERIOD: 60000
       # REGISTRY_SELF_LOCAL_NAME: localhost
 ```
 

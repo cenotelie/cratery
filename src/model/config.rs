@@ -27,6 +27,15 @@ pub fn get_var<T: AsRef<str>>(name: T) -> Result<String, MissingEnvVar> {
     })
 }
 
+/// The protocol to use for an external registry
+#[derive(Debug, Serialize, Deserialize, Copy, Clone, PartialEq, Eq)]
+pub enum ExternalRegistryProtocol {
+    /// The git protocol
+    Git,
+    /// The sparse protcol
+    Sparse,
+}
+
 /// The configuration for an external registry
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct ExternalRegistry {
@@ -34,6 +43,8 @@ pub struct ExternalRegistry {
     pub name: String,
     /// The URI to the registry's index
     pub index: String,
+    /// The protocol to use
+    pub protocol: ExternalRegistryProtocol,
     /// The root uri to docs for packages in this registry
     #[serde(rename = "docsRoot")]
     pub docs_root: String,
@@ -41,6 +52,34 @@ pub struct ExternalRegistry {
     pub login: String,
     /// The token for authentication
     pub token: String,
+}
+
+impl ExternalRegistry {
+    /// Loads the configuration for a registry from the environment
+    fn from_env(reg_index: usize) -> Result<Option<ExternalRegistry>, MissingEnvVar> {
+        if let Ok(name) = get_var(format!("REGISTRY_EXTERNAL_{reg_index}_NAME")) {
+            let mut index = get_var(format!("REGISTRY_EXTERNAL_{reg_index}_INDEX"))?;
+            let protocol = if let Some(rest) = index.strip_prefix("sparse+") {
+                index = rest.to_string();
+                ExternalRegistryProtocol::Sparse
+            } else {
+                ExternalRegistryProtocol::Git
+            };
+            let docs_root = get_var(format!("REGISTRY_EXTERNAL_{reg_index}_DOCS"))?;
+            let login = get_var(format!("REGISTRY_EXTERNAL_{reg_index}_LOGIN"))?;
+            let token = get_var(format!("REGISTRY_EXTERNAL_{reg_index}_TOKEN"))?;
+            Ok(Some(ExternalRegistry {
+                name,
+                index,
+                protocol,
+                docs_root,
+                login,
+                token,
+            }))
+        } else {
+            Ok(None)
+        }
+    }
 }
 
 /// The specification of the storage system to use
@@ -55,6 +94,91 @@ pub enum StorageConfig {
         /// The name of the s3 bucket to use
         bucket: String,
     },
+}
+
+impl StorageConfig {
+    /// Loads the configuration for a registry from the environment
+    fn from_env() -> Result<StorageConfig, MissingEnvVar> {
+        let storage_kind = get_var("REGISTRY_STORAGE")?;
+        Ok(match storage_kind.as_str() {
+            "s3" | "S3" => StorageConfig::S3 {
+                params: S3Params {
+                    uri: get_var("REGISTRY_S3_URI")?,
+                    region: get_var("REGISTRY_S3_REGION")?,
+                    service: get_var("REGISTRY_S3_SERVICE").ok(),
+                    access_key: get_var("REGISTRY_S3_ACCESS_KEY")?,
+                    secret_key: get_var("REGISTRY_S3_SECRET_KEY")?,
+                },
+                bucket: get_var("REGISTRY_S3_BUCKET")?,
+            },
+            "" | "fs" | "FS" | "filesystem" | "FileSystem" => StorageConfig::FileSystem,
+            _ => panic!("invalid REGISTRY_STORAGE"),
+        })
+    }
+}
+
+/// The configuration in the index
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct IndexConfig {
+    /// The location in the file system
+    pub location: String,
+    /// Whether to allow the git protocol for clients fetching the index
+    #[serde(rename = "allowProtocolGit")]
+    pub allow_protocol_git: bool,
+    /// Whether to allow the sparse protocol for clients fetching the index
+    #[serde(rename = "allowProtocolSparse")]
+    pub allow_protocol_sparse: bool,
+    /// URI for the origin git remote to sync with
+    #[serde(rename = "remoteOrigin")]
+    pub remote_origin: Option<String>,
+    /// The name of the file for the SSH key for the remote
+    #[serde(rename = "remoteSshKeyFileName")]
+    pub remote_ssh_key_file_name: Option<String>,
+    /// Do automatically push index changes to the remote
+    #[serde(rename = "remotePushChanges")]
+    pub remote_push_changes: bool,
+    /// The user name to use for commits
+    #[serde(rename = "userName")]
+    pub user_name: String,
+    /// The user email to use for commits
+    #[serde(rename = "userEmail")]
+    pub user_email: String,
+    /// The public configuration
+    pub public: IndexPublicConfig,
+}
+
+impl IndexConfig {
+    /// Loads the configuration for a registry from the environment
+    fn from_env(data_dir: &str, web_public_uri: &str) -> Result<IndexConfig, MissingEnvVar> {
+        Ok(IndexConfig {
+            location: format!("{data_dir}/index"),
+            allow_protocol_git: get_var("REGISTRY_INDEX_PROTOCOL_GIT").map(|v| v == "true").unwrap_or(true),
+            allow_protocol_sparse: get_var("REGISTRY_INDEX_PROTOCOL_SPARSE").map(|v| v == "true").unwrap_or(true),
+            remote_origin: get_var("REGISTRY_GIT_REMOTE").ok(),
+            remote_ssh_key_file_name: get_var("REGISTRY_GIT_REMOTE_SSH_KEY_FILENAME").ok(),
+            remote_push_changes: get_var("REGISTRY_GIT_REMOTE_PUSH_CHANGES")
+                .is_ok_and(|value| value == "1" || value.eq_ignore_ascii_case("true")),
+            user_name: get_var("REGISTRY_GIT_USER_NAME")?,
+            user_email: get_var("REGISTRY_GIT_USER_EMAIL")?,
+            public: IndexPublicConfig {
+                dl: format!("{web_public_uri}/api/v1/crates"),
+                api: web_public_uri.to_string(),
+                auth_required: true,
+            },
+        })
+    }
+}
+
+/// The configuration in the index
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct IndexPublicConfig {
+    /// The root URI to download crates
+    pub dl: String,
+    /// The API root URI
+    pub api: String,
+    /// Whether authentication is always required
+    #[serde(rename = "auth-required")]
+    pub auth_required: bool,
 }
 
 /// A configuration for the registry
@@ -122,6 +246,9 @@ pub struct Configuration {
     /// The known external registries that require authentication
     #[serde(rename = "externalRegistries")]
     pub external_registries: Vec<ExternalRegistry>,
+    /// Number of milliseconds after which the local data about an external registry are deemed stale and must be pulled again
+    #[serde(rename = "depsAnalysisStalePeriod")]
+    pub deps_analysis_stale_period: u64,
     /// The name to use for the local registry in cargo and git config
     #[serde(rename = "selfLocalName")]
     pub self_local_name: String,
@@ -154,51 +281,12 @@ impl Configuration {
                 None => web_domain.clone(),
             },
         };
-        let index = IndexConfig {
-            location: format!("{data_dir}/index"),
-            allow_protocol_git: get_var("REGISTRY_INDEX_PROTOCOL_GIT").map(|v| v == "true").unwrap_or(true),
-            allow_protocol_sparse: get_var("REGISTRY_INDEX_PROTOCOL_SPARSE").map(|v| v == "true").unwrap_or(true),
-            remote_origin: get_var("REGISTRY_GIT_REMOTE").ok(),
-            remote_ssh_key_file_name: get_var("REGISTRY_GIT_REMOTE_SSH_KEY_FILENAME").ok(),
-            remote_push_changes: get_var("REGISTRY_GIT_REMOTE_PUSH_CHANGES")
-                .is_ok_and(|value| value == "1" || value.eq_ignore_ascii_case("true")),
-            user_name: get_var("REGISTRY_GIT_USER_NAME")?,
-            user_email: get_var("REGISTRY_GIT_USER_EMAIL")?,
-            public: IndexPublicConfig {
-                dl: format!("{web_public_uri}/api/v1/crates"),
-                api: web_public_uri.clone(),
-                auth_required: true,
-            },
-        };
-        let storage_kind = get_var("REGISTRY_STORAGE")?;
-        let storage = match storage_kind.as_str() {
-            "s3" | "S3" => StorageConfig::S3 {
-                params: S3Params {
-                    uri: get_var("REGISTRY_S3_URI")?,
-                    region: get_var("REGISTRY_S3_REGION")?,
-                    service: get_var("REGISTRY_S3_SERVICE").ok(),
-                    access_key: get_var("REGISTRY_S3_ACCESS_KEY")?,
-                    secret_key: get_var("REGISTRY_S3_SECRET_KEY")?,
-                },
-                bucket: get_var("REGISTRY_S3_BUCKET")?,
-            },
-            "" | "fs" | "FS" | "filesystem" | "FileSystem" => StorageConfig::FileSystem,
-            _ => panic!("invalid REGISTRY_STORAGE"),
-        };
+        let index = IndexConfig::from_env(&data_dir, &web_public_uri)?;
+        let storage = StorageConfig::from_env()?;
         let mut external_registries = Vec::new();
         let mut external_registry_index = 1;
-        while let Ok(name) = get_var(format!("REGISTRY_EXTERNAL_{external_registry_index}_NAME")) {
-            let index = get_var(format!("REGISTRY_EXTERNAL_{external_registry_index}_INDEX"))?;
-            let docs_root = get_var(format!("REGISTRY_EXTERNAL_{external_registry_index}_DOCS"))?;
-            let login = get_var(format!("REGISTRY_EXTERNAL_{external_registry_index}_LOGIN"))?;
-            let token = get_var(format!("REGISTRY_EXTERNAL_{external_registry_index}_TOKEN"))?;
-            external_registries.push(ExternalRegistry {
-                name,
-                index,
-                docs_root,
-                login,
-                token,
-            });
+        while let Some(registry) = ExternalRegistry::from_env(external_registry_index)? {
+            external_registries.push(registry);
             external_registry_index += 1;
         }
         Ok(Self {
@@ -233,6 +321,9 @@ impl Configuration {
             oauth_client_id: get_var("REGISTRY_OAUTH_CLIENT_ID")?,
             oauth_client_secret: get_var("REGISTRY_OAUTH_CLIENT_SECRET")?,
             oauth_client_scope: get_var("REGISTRY_OAUTH_CLIENT_SCOPE")?,
+            deps_analysis_stale_period: get_var("REGISTRY_DEPS_ANALYSIS_STALE_PERIOD")
+                .map(|s| s.parse().expect("invalid REGISTRY_DEPS_ANALYSIS_STALE_PERIOD"))
+                .unwrap_or(60 * 1000),
             self_local_name,
             self_service_login: super::generate_token(16),
             self_service_token: super::generate_token(64),
@@ -352,46 +443,4 @@ impl Configuration {
         }
         Ok(())
     }
-}
-
-/// The configuration in the index
-#[derive(Debug, Serialize, Deserialize, Clone)]
-pub struct IndexConfig {
-    /// The location in the file system
-    pub location: String,
-    /// Whether to allow the git protocol for clients fetching the index
-    #[serde(rename = "allowProtocolGit")]
-    pub allow_protocol_git: bool,
-    /// Whether to allow the sparse protocol for clients fetching the index
-    #[serde(rename = "allowProtocolSparse")]
-    pub allow_protocol_sparse: bool,
-    /// URI for the origin git remote to sync with
-    #[serde(rename = "remoteOrigin")]
-    pub remote_origin: Option<String>,
-    /// The name of the file for the SSH key for the remote
-    #[serde(rename = "remoteSshKeyFileName")]
-    pub remote_ssh_key_file_name: Option<String>,
-    /// Do automatically push index changes to the remote
-    #[serde(rename = "remotePushChanges")]
-    pub remote_push_changes: bool,
-    /// The user name to use for commits
-    #[serde(rename = "userName")]
-    pub user_name: String,
-    /// The user email to use for commits
-    #[serde(rename = "userEmail")]
-    pub user_email: String,
-    /// The public configuration
-    pub public: IndexPublicConfig,
-}
-
-/// The configuration in the index
-#[derive(Debug, Serialize, Deserialize, Clone)]
-pub struct IndexPublicConfig {
-    /// The root URI to download crates
-    pub dl: String,
-    /// The API root URI
-    pub api: String,
-    /// Whether authentication is always required
-    #[serde(rename = "auth-required")]
-    pub auth_required: bool,
 }

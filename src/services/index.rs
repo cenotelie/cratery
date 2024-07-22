@@ -141,7 +141,7 @@ impl Index {
 
     /// Publish a new version for a crate
     pub async fn publish_crate_version(&self, metadata: &CrateMetadataIndex) -> Result<(), ApiError> {
-        let file_name = self.file_for_package(&metadata.name);
+        let file_name = build_package_file_path(PathBuf::from(&self.config.location), &metadata.name);
         create_dir_all(file_name.parent().unwrap()).await?;
         let buffer = serde_json::to_vec(metadata)?;
         // write to package file
@@ -166,7 +166,7 @@ impl Index {
 
     ///  Gets the data for a crate
     pub async fn get_crate_data(&self, package: &str) -> Result<Vec<CrateMetadataIndex>, ApiError> {
-        let file_name = self.file_for_package(package);
+        let file_name = build_package_file_path(PathBuf::from(&self.config.location), package);
         if !file_name.exists() {
             return Err(error_not_found());
         }
@@ -179,34 +179,10 @@ impl Index {
         }
         Ok(results)
     }
-
-    /// Produce the path that contains the metadata for the crate
-    fn file_for_package(&self, name: &str) -> PathBuf {
-        let lowercase = name.to_ascii_lowercase();
-        let mut result = PathBuf::from(&self.config.location);
-        match lowercase.len() {
-            0 => panic!("Empty name is not possible"),
-            1 | 2 => {
-                result.push("1");
-            }
-            3 => {
-                result.push("3");
-                // safe because this should be ASCII
-                result.push(&lowercase[0..1]);
-            }
-            _ => {
-                // safe because this should be ASCII
-                result.push(&lowercase[0..2]);
-                result.push(&lowercase[2..4]);
-            }
-        }
-        result.push(lowercase);
-        result
-    }
 }
 
 /// Execute a git command
-async fn execute_git(location: &Path, args: &[&str]) -> Result<(), ApiError> {
+pub async fn execute_git(location: &Path, args: &[&str]) -> Result<(), ApiError> {
     execute_at_location(location, "git", args, &[]).await.map(|_| ())
 }
 
@@ -225,4 +201,29 @@ async fn execute_at_location(location: &Path, command: &str, args: &[&str], inpu
     } else {
         Err(specialize(error_backend_failure(), String::from_utf8(output.stdout)?))
     }
+}
+
+/// Gets path elements for a package in the file system
+pub fn package_file_path(lowercase: &str) -> (&str, Option<&str>) {
+    match lowercase.len() {
+        0 => panic!("Empty name is not possible"),
+        1 => ("1", None),
+        2 => ("2", None),
+        3 => ("3", Some(&lowercase[..1])),
+        _ => (&lowercase[0..2], Some(&lowercase[2..4])),
+    }
+}
+
+/// Produce the path elements that contains the metadata for the crate
+pub fn build_package_file_path(mut root: PathBuf, name: &str) -> PathBuf {
+    let lowercase = name.to_ascii_lowercase();
+    let (first, second) = package_file_path(&lowercase);
+
+    root.push(first);
+    if let Some(second) = second {
+        root.push(second);
+    }
+    root.push(lowercase);
+
+    root
 }

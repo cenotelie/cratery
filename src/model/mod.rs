@@ -6,6 +6,7 @@
 
 pub mod auth;
 pub mod config;
+pub mod deps;
 pub mod errors;
 pub mod namegen;
 pub mod objects;

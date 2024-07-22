@@ -31,6 +31,7 @@ mime = "0.3"
 quick-xml = "0.36"
 rand = "0.8"
 ring = "0.17"
+semver = "1.0"
 urlencoding = "2.1"
 tar = "0.4.41"
 

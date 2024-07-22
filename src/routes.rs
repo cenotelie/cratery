@@ -21,6 +21,7 @@ use tokio::fs::File;
 use tokio_util::io::ReaderStream;
 
 use crate::application::Application;
+use crate::model::deps::DependencyInfo;
 use crate::model::objects::{
     AuthenticatedUser, CrateInfo, CrateUploadResult, OwnersAddQuery, OwnersQueryResult, RegistryUser, RegistryUserToken,
     RegistryUserTokenWithSecret, SearchResults, YesNoMsgResult, YesNoResult,
@@ -207,7 +208,7 @@ pub async fn get_docs_resource(
     let path = &request.uri().path()[1..]; // strip leading /
     assert!(path.starts_with("docs/"));
     let extension = get_content_type(path);
-    match state.application.get_storage().download_doc_file(&path[5..]).await {
+    match state.application.get_service_storage().download_doc_file(&path[5..]).await {
         Ok(content) => Ok((
             StatusCode::OK,
             [
@@ -462,6 +463,19 @@ pub async fn api_v1_regen_crate_version_doc(
         state
             .application
             .regen_crate_version_doc(&auth_data, &package, &version)
+            .await,
+    )
+}
+
+pub async fn api_v1_check_crate_version(
+    auth_data: AuthData,
+    State(state): State<Arc<AxumState>>,
+    Path(PathInfoCrateVersion { package, version }): Path<PathInfoCrateVersion>,
+) -> ApiResult<Vec<DependencyInfo>> {
+    response(
+        state
+            .application
+            .check_crate_version_deps(&auth_data, &package, &version)
             .await,
     )
 }

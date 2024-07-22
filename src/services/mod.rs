@@ -5,7 +5,7 @@
 //! Service implementations
 
 pub mod database;
-// pub mod deps;
+pub mod deps;
 pub mod docs;
 pub mod index;
 pub mod storage;

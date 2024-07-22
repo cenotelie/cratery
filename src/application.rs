@@ -15,11 +15,13 @@ use sqlx::{Pool, Sqlite};
 use tokio::task::JoinHandle;
 
 use crate::model::config::Configuration;
+use crate::model::deps::DependencyInfo;
 use crate::model::objects::{
     AuthenticatedUser, CrateInfo, CrateUploadData, CrateUploadResult, DocsGenerationJob, OwnersQueryResult, RegistryUser,
     RegistryUserToken, RegistryUserTokenWithSecret, SearchResults, YesNoMsgResult, YesNoResult,
 };
 use crate::services::database::Database;
+use crate::services::deps::{DependencyChecker, DependencyCheckerAccess};
 use crate::services::index::Index;
 use crate::services::storage::Storage;
 use crate::utils::apierror::{error_unauthorized, ApiError};
@@ -32,8 +34,10 @@ pub struct Application {
     pub configuration: Arc<Configuration>,
     /// The database connection
     pub db_pool: Pool<Sqlite>,
-    /// A mutex for synchronisation on git commands
+    /// Service to index the metadata of crates
     pub index: Mutex<Index>,
+    /// Service to check the dependencies of a crate
+    pub deps_checker: Mutex<DependencyChecker>,
     /// Sender of documentation generation jobs
     pub docs_worker_sender: UnboundedSender<DocsGenerationJob>,
 }
@@ -88,14 +92,25 @@ impl Application {
                 configuration,
                 db_pool,
                 index: Mutex::new(index),
+                deps_checker: Mutex::new(DependencyChecker::default()),
                 docs_worker_sender,
             }),
             docs_worker,
         ))
     }
 
-    pub fn get_storage(&self) -> impl Storage + '_ {
+    /// Gets the storage service
+    pub fn get_service_storage(&self) -> impl Storage + '_ {
         crate::services::storage::get_storage(&self.configuration)
+    }
+
+    /// Gets the service to check the dependencies of a crate
+    pub fn get_service_deps_checker(&self) -> DependencyCheckerAccess {
+        DependencyCheckerAccess {
+            data: &self.deps_checker,
+            configuration: &self.configuration,
+            index: &self.index,
+        }
     }
 
     /// Creates the application with transaction
@@ -242,7 +257,9 @@ impl Application {
             // publish
             let index = self.index.lock().await;
             let r = app.database.publish_crate_version(&principal, &package).await?;
-            self.get_storage().store_crate(&package.metadata, package.content).await?;
+            self.get_service_storage()
+                .store_crate(&package.metadata, package.content)
+                .await?;
             index.publish_crate_version(&index_data).await?;
             // generate the doc
             self.docs_worker_sender
@@ -268,7 +285,7 @@ impl Application {
                 .get_crate_versions(package, self.index.lock().await.get_crate_data(package).await?)
                 .await?;
             let metadata = self
-                .get_storage()
+                .get_service_storage()
                 .download_crate_metadata(package, &versions.last().unwrap().index.vers)
                 .await?;
             Ok(CrateInfo { metadata, versions })
@@ -283,7 +300,7 @@ impl Application {
             let app = self.with_transaction(transaction);
             let _principal = app.authenticate(auth_data).await?;
             let version = app.database.get_crate_last_version(package).await?;
-            let readme = self.get_storage().download_crate_readme(package, &version).await?;
+            let readme = self.get_service_storage().download_crate_readme(package, &version).await?;
             Ok(readme)
         })
         .await
@@ -295,7 +312,7 @@ impl Application {
         in_transaction(&mut connection, |transaction| async move {
             let app = self.with_transaction(transaction);
             let _principal = app.authenticate(auth_data).await?;
-            let readme = self.get_storage().download_crate_readme(package, version).await?;
+            let readme = self.get_service_storage().download_crate_readme(package, version).await?;
             Ok(readme)
         })
         .await
@@ -309,7 +326,7 @@ impl Application {
             let _principal = app.authenticate(auth_data).await?;
             app.database.check_crate_exists(package, version).await?;
             app.database.increment_crate_version_dl_count(package, version).await?;
-            let content = self.get_storage().download_crate(package, version).await?;
+            let content = self.get_service_storage().download_crate(package, version).await?;
             Ok(content)
         })
         .await
@@ -421,6 +438,23 @@ impl Application {
             let app = self.with_transaction(transaction);
             let _principal = app.authenticate(auth_data).await?;
             app.database.search_crates(query, per_page).await
+        })
+        .await
+    }
+
+    /// Checks the dependencies of a local crate
+    pub async fn check_crate_version_deps(
+        &self,
+        auth_data: &AuthData,
+        package: &str,
+        version: &str,
+    ) -> Result<Vec<DependencyInfo>, ApiError> {
+        let mut connection: sqlx::pool::PoolConnection<Sqlite> = self.db_pool.acquire().await?;
+        in_transaction(&mut connection, |transaction| async move {
+            let app = self.with_transaction(transaction);
+            let _principal = app.authenticate(auth_data).await?;
+            app.database.check_crate_exists(package, version).await?;
+            self.get_service_deps_checker().check_crate(package, version).await
         })
         .await
     }

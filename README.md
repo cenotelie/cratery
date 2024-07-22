@@ -132,6 +132,12 @@ This is specified with the following environment variables.
 * `REGISTRY_EXTERNAL_{index}_LOGIN`: The login that Cargo will use to get crates from the registry.
 * `REGISTRY_EXTERNAL_{index}_TOKEN`: The associated token.
 
+### Dependency analysis
+
+When performing dependency analysis, Cratery will access `crates.io` and other external registries.
+
+* `REGISTRY_DEPS_ANALYSIS_STALE_PERIOD`: Number of milliseconds after which the local data about an external registry are deemed stale and must be pulled again. Defaults to 60000 (1 minute).
+
 
 ## Contributing
 
