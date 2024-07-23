@@ -202,10 +202,7 @@
       tabFeatures.appendChild(renderFeature(featureName, currentVersion.index.features[featureName]));
     }
 
-    const tabDependencies = document.getElementById("tab-dependencies");
-    for (const dep of currentVersion.index.deps) {
-      tabDependencies.appendChild(renderDependency(dep));
-    }
+    renderDependencies(currentVersion.index.deps, []);
 
     const canAdmin = currentUser.roles.includes("admin") || owners.users.find(u => u.id === currentUser.id) !== undefined;
     if (canAdmin) {
@@ -219,6 +216,10 @@
     }
 
     hljs.highlightAll();
+
+    apiCheckCrateDeps(currentVersion.index.name, currentVersion.index.vers).then((depsInfo) => {
+      renderDependencies(currentVersion.index.deps, depsInfo);
+    });
   }
 
   function renderAdminOwnerRow(crateName, owner) {
@@ -313,60 +314,134 @@
     return card;
   }
 
-  function renderDependency(dep) {
-    const card = document.createElement("a");
-    if (dep.registry === null) {
-      card.href = `/webapp/crate.html?crate=${dep.name}`;
-    } else if (dep.registry === "https://github.com/rust-lang/crates.io-index") {
-      card.href = `https://crates.io/crates/${dep.name}`;
+  function renderDependencies(deps, depsInfo) {
+    const tabDependencies = document.getElementById("tab-dependencies");
+    while (tabDependencies.lastElementChild !== null) {
+      tabDependencies.removeChild(tabDependencies.lastElementChild);
     }
-    card.className = "flex block mb-4 p-6 bg-white border border-gray-200 rounded-lg shadow hover:bg-gray-100 dark:bg-gray-800 dark:border-gray-700 dark:hover:bg-gray-700";
-    const wrapper = document.createElement("div");
-    wrapper.className = "flex items-center me-4";
-    const title = document.createElement("h5");
-    title.className = "text-xl font-bold tracking-tight text-gray-900 dark:text-white";
-    title.appendChild(document.createTextNode(dep.req));
-    wrapper.appendChild(title);
-    const dataName = document.createElement("p");
-    dataName.className = "ml-4 font-normal text-gray-700 dark:text-gray-400";
-    dataName.appendChild(document.createTextNode(dep.name));
-    wrapper.appendChild(dataName);
-    if (dep.optional) {
-      wrapper.innerHTML += '<p class="ml-4 font-normal text-gray-700 dark:text-gray-400">\
-          <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-6 h-6">\
-            <path stroke-linecap="round" stroke-linejoin="round" d="M9.879 7.519c1.171-1.025 3.071-1.025 4.242 0 1.172 1.025 1.172 2.687 0 3.712-.203.179-.43.326-.67.442-.745.361-1.45.999-1.45 1.827v.75M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0Zm-9 5.25h.008v.008H12v-.008Z" />\
-          </svg>\
-          </p>';
-      const text = document.createElement("p");
-      text.className = "font-normal text-gray-700 dark:text-gray-400";
-      text.appendChild(document.createTextNode("optional"));
-      wrapper.appendChild(text);
+    const normalDeps = [];
+    const devDeps = [];
+    const buildDeps = [];
+    let index = 0;
+    for (const dep of deps) {
+      const target = dep.kind === "normal" ? normalDeps : dep.kind === "dev" ? devDeps : buildDeps;
+      if (depsInfo.length === 0) {
+        target.push([dep, null]);
+      } else {
+        target.push([dep, depsInfo[index]]);
+      }
+      index += 1;
     }
-    if (!dep.default_features) {
-      wrapper.innerHTML += '<p class="ml-4 font-normal text-gray-700 dark:text-gray-400">\
-            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-6 h-6">\
-              <path stroke-linecap="round" stroke-linejoin="round" d="M12 9v3.75m9-.75a9 9 0 1 1-18 0 9 9 0 0 1 18 0Zm-9 3.75h.008v.008H12v-.008Z" />\
-            </svg>\
-          </p>';
-      const text = document.createElement("p");
-      text.className = "font-normal text-gray-700 dark:text-gray-400";
-      text.appendChild(document.createTextNode("no default features"));
-      wrapper.appendChild(text);
+    if (normalDeps.length > 0) {
+      renderDependenciesCategory(tabDependencies, "Dependencies", normalDeps);
     }
-    if (dep.features.length > 0) {
-      wrapper.innerHTML += '<p class="ml-4 font-normal text-gray-700 dark:text-gray-400">\
-            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-6 h-6">\
-              <path stroke-linecap="round" stroke-linejoin="round" d="M12 9v6m3-3H9m12 0a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z" />\
-            </svg>\
-          </p>';
-      const text = document.createElement("p");
-      text.className = "font-normal text-gray-700 dark:text-gray-400";
-      text.appendChild(document.createTextNode(`features: ${dep.features.join(",")}`));
-      wrapper.appendChild(text);
+    if (devDeps.length > 0) {
+      renderDependenciesCategory(tabDependencies, "Dev dependencies", devDeps);
     }
+    if (buildDeps.length > 0) {
+      renderDependenciesCategory(tabDependencies, "Build dependencies", buildDeps);
+    }
+  }
 
-    card.appendChild(wrapper);
-    return card;
+  function renderDependenciesCategory(tabDependencies, name, depsWithInfo) {
+    const title = document.createElement("h5");
+    title.className = "text-xl font-bold tracking-tight text-gray-900 dark:text-white my-10";
+    title.appendChild(document.createTextNode(name));
+    tabDependencies.appendChild(title);
+    const tableWrapper = document.createElement("div");
+    tableWrapper.className = "relative overflow-x-auto shadow-md sm:rounded-lg";
+    tabDependencies.appendChild(tableWrapper);
+    const table = document.createElement("table");
+    table.className = "w-full text-sm text-left rtl:text-right text-gray-500 dark:text-gray-400";
+    tableWrapper.appendChild(table);
+    table.innerHTML += '<thead class="text-xs text-gray-700 uppercase bg-gray-50 dark:bg-gray-700 dark:text-gray-400">\
+                  <tr>\
+                      <th scope="col" class="px-6 py-3">\
+                          Crate\
+                      </th>\
+                      <th scope="col" class="px-6 py-3">\
+                          Features\
+                      </th>\
+                      <th scope="col" class="px-6 py-3">\
+                          Required\
+                      </th>\
+                      <th scope="col" class="px-6 py-3">\
+                          Latest\
+                      </th>\
+                      <th scope="col" class="px-6 py-3">\
+                          Status\
+                      </th>\
+                  </tr>\
+              </thead>';
+    const tBody = document.createElement("tbody");
+    table.appendChild(tBody);
+    for (const [dep, depInfo] of depsWithInfo) {
+      tBody.appendChild(renderDependency(dep, depInfo));
+    }
+  }
+
+  function renderDependency(dep, depInfo) {
+    const row = document.createElement("tr");
+    row.className = "odd:bg-white odd:dark:bg-gray-900 even:bg-gray-50 even:dark:bg-gray-800 border-b dark:border-gray-700";
+    const cellHead = document.createElement("th");
+    cellHead.setAttribute("scope", "row");
+    cellHead.className = "px-6 py-4 font-medium text-gray-900 whitespace-nowrap dark:text-white";
+    const link = document.createElement("a");
+    if (dep.registry === null) {
+      link.href = `/crates/${dep.name}`;
+    } else if (dep.registry === "https://github.com/rust-lang/crates.io-index") {
+      link.href = `https://crates.io/crates/${dep.name}`;
+    } else {
+      let reg = dep.registry;
+      if (!reg.endsWith("/")) {
+        reg += "/";
+      }
+      link.href = `${reg}crates/${dep.name}`;
+    }
+    link.appendChild(document.createTextNode(dep.name));
+    cellHead.appendChild(link);
+    if (dep.optional) {
+      cellHead.appendChild(document.createTextNode(", optional"));
+    }
+    row.appendChild(cellHead);
+
+    const cellFeatures = document.createElement("td");
+    cellFeatures.className = "px-6 py-4";
+    if (!dep.default_features) {
+      const marker = document.createElement("span");
+      marker.className = "font-bold";
+      marker.appendChild(document.createTextNode("no default feature"));
+      cellFeatures.appendChild(marker);
+    }
+    cellFeatures.appendChild(document.createTextNode(" "));
+    if (dep.features.length > 0) {
+      cellFeatures.appendChild(document.createTextNode(dep.features.join(",")));
+    }
+    row.appendChild(cellFeatures);
+
+    const cellReq = document.createElement("td");
+    cellReq.className = "px-6 py-4";
+    cellReq.appendChild(document.createTextNode(dep.req));
+    row.appendChild(cellReq);
+
+    const cellLatest = document.createElement("td");
+    cellLatest.className = "px-6 py-4";
+    if (depInfo !== null) {
+      cellLatest.appendChild(document.createTextNode(depInfo.lastVersion));
+    }
+    row.appendChild(cellLatest);
+
+    const cellStatus = document.createElement("td");
+    cellStatus.className = "px-6 py-4";
+    if (depInfo !== null) {
+      const color = depInfo.isOudated ? "yellow" : "green";
+      const span = document.createElement("span");
+      span.className = `bg-${color}-100 text-${color}-800 text-xs font-medium me-2 px-2.5 py-0.5 rounded dark:bg-${color}-900 dark:text-${color}-300`;
+      span.appendChild(document.createTextNode(depInfo.isOudated ? "out of date" : "up to date"));
+      cellStatus.appendChild(span);
+    }
+    row.appendChild(cellStatus);
+    return row;
   }
 
   function onClickTab(index) {
