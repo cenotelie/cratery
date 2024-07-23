@@ -56,7 +56,8 @@ CREATE TABLE PackageVersion (
     yanked BOOLEAN NOT NULL,
     hasDocs BOOLEAN NOT NULL,
     docGenAttempted BOOLEAN NOT NULL,
-    downloadCount INTEGER NOT NULL
+    downloadCount INTEGER NOT NULL,
+    downloads BLOB
 );
 
 CREATE INDEX IndexPackageVersion ON PackageVersion(package);

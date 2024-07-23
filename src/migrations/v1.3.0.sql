@@ -1,2 +1,4 @@
 ALTER TABLE PackageVersion
     ADD COLUMN downloadCount INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE PackageVersion
+    ADD COLUMN downloads BLOB DEFAULT NULL;

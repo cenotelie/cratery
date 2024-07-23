@@ -107,6 +107,7 @@ async fn main_serve_app(application: Arc<Application>, cookie_key: Key) -> Resul
                             post(crate::routes::api_v1_regen_crate_version_doc),
                         )
                         .route("/:package/:version/checkdeps", get(crate::routes::api_v1_check_crate_version))
+                        .route("/:package/dlstats", get(crate::routes::api_v1_get_download_stats))
                         .route("/:package/owners", get(crate::routes::api_v1_get_crate_owners))
                         .route("/:package/owners", put(crate::routes::api_v1_add_crate_owners))
                         .route("/:package/owners", delete(crate::routes::api_v1_remove_crate_owners)),

@@ -5,9 +5,11 @@
 //! Service for persisting information in the database
 //! API related to the management of packages (crates)
 
-use chrono::Local;
+use byteorder::ByteOrder;
+use chrono::{Datelike, Local};
 
 use super::Database;
+use crate::model::dlstats::{DownloadStats, SERIES_LENGTH};
 use crate::model::objects::{
     AuthenticatedUser, CrateInfoVersion, CrateMetadataIndex, CrateUploadData, CrateUploadResult, DocsGenerationJob,
     OwnersQueryResult, RegistryUser, SearchResultCrate, SearchResults, SearchResultsMeta, YesNoMsgResult, YesNoResult,
@@ -165,7 +167,7 @@ impl<'c> Database<'c> {
         // create the version
         let description = package.metadata.description.as_ref().map_or("", std::string::String::as_str);
         sqlx::query!(
-            "INSERT INTO PackageVersion (package, version, description, upload, uploadedBy, yanked, hasDocs, docGenAttempted, downloadCount) VALUES ($1, $2, $3, $4, $5, false, false, false, 0)",
+            "INSERT INTO PackageVersion (package, version, description, upload, uploadedBy, yanked, hasDocs, docGenAttempted, downloadCount, downloads) VALUES ($1, $2, $3, $4, $5, false, false, false, 0, NULL)",
             package.metadata.name,
             package.metadata.vers,
             description,
@@ -375,14 +377,48 @@ impl<'c> Database<'c> {
 
     /// Increments the counter of downloads for a crate version
     pub async fn increment_crate_version_dl_count(&self, package: &str, version: &str) -> Result<(), ApiError> {
-        sqlx::query!(
-            "UPDATE PackageVersion SET downloadCount = downloadCount + 1 WHERE package = $1 AND version = $2",
+        let row = sqlx::query!(
+            "SELECT downloads FROM PackageVersion WHERE package = $1 AND version = $2 LIMIT 1",
             package,
             version
+        )
+        .fetch_optional(&mut *self.transaction.borrow().await)
+        .await?
+        .ok_or_else(error_not_found)?;
+        let mut downloads = row
+            .downloads
+            .unwrap_or_else(|| vec![0; std::mem::size_of::<u32>() * SERIES_LENGTH]);
+        let day_index = (Local::now().naive_local().ordinal0() as usize % SERIES_LENGTH) * std::mem::size_of::<u32>();
+        let count = byteorder::NativeEndian::read_u32(&downloads[day_index..]);
+        byteorder::NativeEndian::write_u32(&mut downloads[day_index..], count + 1);
+
+        sqlx::query!(
+            "UPDATE PackageVersion SET downloadCount = downloadCount + 1, downloads = $3 WHERE package = $1 AND version = $2",
+            package,
+            version,
+            downloads
         )
         .execute(&mut *self.transaction.borrow().await)
         .await?;
         Ok(())
+    }
+
+    /// Gets the download statistics for a crate
+    pub async fn get_download_stats(
+        &self,
+        authenticated_user: &AuthenticatedUser,
+        package: &str,
+    ) -> Result<DownloadStats, ApiError> {
+        self.check_is_user(&authenticated_user.principal).await?;
+        let rows = sqlx::query!("SELECT version, downloads FROM PackageVersion WHERE package = $1", package)
+            .fetch_all(&mut *self.transaction.borrow().await)
+            .await?;
+        let mut stats = DownloadStats::new();
+        for row in rows {
+            stats.add_version(row.version, row.downloads.as_deref());
+        }
+        stats.finalize();
+        Ok(stats)
     }
 
     /// Gets the list of owners for a package

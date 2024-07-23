@@ -1,0 +1,26 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT version, downloads FROM PackageVersion WHERE package = $1",
+  "describe": {
+    "columns": [
+      {
+        "name": "version",
+        "ordinal": 0,
+        "type_info": "Text"
+      },
+      {
+        "name": "downloads",
+        "ordinal": 1,
+        "type_info": "Blob"
+      }
+    ],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": [
+      false,
+      true
+    ]
+  },
+  "hash": "2f19b6981522cd14267b016d171c8b7b2f2e0d3e7e0a8cb3c41d7b9155bbecbf"
+}

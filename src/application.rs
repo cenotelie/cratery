@@ -16,6 +16,7 @@ use tokio::task::JoinHandle;
 
 use crate::model::config::Configuration;
 use crate::model::deps::DependencyInfo;
+use crate::model::dlstats::DownloadStats;
 use crate::model::objects::{
     AuthenticatedUser, CrateInfo, CrateUploadData, CrateUploadResult, DocsGenerationJob, OwnersQueryResult, RegistryUser,
     RegistryUserToken, RegistryUserTokenWithSecret, SearchResults, YesNoMsgResult, YesNoResult,
@@ -379,6 +380,17 @@ impl Application {
                 })
                 .await?;
             Ok(())
+        })
+        .await
+    }
+
+    /// Gets the download statistics for a crate
+    pub async fn get_download_stats(&self, auth_data: &AuthData, package: &str) -> Result<DownloadStats, ApiError> {
+        let mut connection: sqlx::pool::PoolConnection<Sqlite> = self.db_pool.acquire().await?;
+        in_transaction(&mut connection, |transaction| async move {
+            let app = self.with_transaction(transaction);
+            let principal = app.authenticate(auth_data).await?;
+            app.database.get_download_stats(&principal, package).await
         })
         .await
     }

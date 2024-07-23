@@ -22,6 +22,7 @@ use tokio_util::io::ReaderStream;
 
 use crate::application::Application;
 use crate::model::deps::DependencyInfo;
+use crate::model::dlstats::DownloadStats;
 use crate::model::objects::{
     AuthenticatedUser, CrateInfo, CrateUploadResult, OwnersAddQuery, OwnersQueryResult, RegistryUser, RegistryUserToken,
     RegistryUserTokenWithSecret, SearchResults, YesNoMsgResult, YesNoResult,
@@ -478,6 +479,15 @@ pub async fn api_v1_check_crate_version(
             .check_crate_version_deps(&auth_data, &package, &version)
             .await,
     )
+}
+
+/// Gets the download statistics for a crate
+pub async fn api_v1_get_download_stats(
+    auth_data: AuthData,
+    State(state): State<Arc<AxumState>>,
+    Path(PathInfoCrate { package }): Path<PathInfoCrate>,
+) -> ApiResult<DownloadStats> {
+    response(state.application.get_download_stats(&auth_data, &package).await)
 }
 
 // #[get("/crates/{package}/owners")]
