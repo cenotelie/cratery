@@ -11,10 +11,11 @@ use ring::digest::{Context, SHA256};
 
 use super::Database;
 use crate::model::auth::{find_field_in_blob, OAuthToken};
+use crate::model::cargo::RegistryUser;
 use crate::model::config::Configuration;
 use crate::model::generate_token;
 use crate::model::namegen::generate_name;
-use crate::model::objects::{AuthenticatedUser, RegistryUser, RegistryUserToken, RegistryUserTokenWithSecret};
+use crate::model::objects::{AuthenticatedUser, RegistryUserToken, RegistryUserTokenWithSecret};
 use crate::utils::apierror::{
     error_conflict, error_forbidden, error_invalid_request, error_not_found, error_unauthorized, specialize, ApiError,
 };

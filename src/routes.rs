@@ -21,12 +21,12 @@ use tokio::fs::File;
 use tokio_util::io::ReaderStream;
 
 use crate::application::Application;
+use crate::model::cargo::{
+    CrateUploadResult, OwnersChangeQuery, OwnersQueryResult, RegistryUser, SearchResults, YesNoMsgResult, YesNoResult,
+};
 use crate::model::deps::DependencyInfo;
 use crate::model::dlstats::DownloadStats;
-use crate::model::objects::{
-    AuthenticatedUser, CrateInfo, CrateUploadResult, OwnersAddQuery, OwnersQueryResult, RegistryUser, RegistryUserToken,
-    RegistryUserTokenWithSecret, SearchResults, YesNoMsgResult, YesNoResult,
-};
+use crate::model::objects::{AuthenticatedUser, CrateInfo, RegistryUserToken, RegistryUserTokenWithSecret};
 use crate::model::stats::GlobalStats;
 use crate::model::{generate_token, AppVersion};
 use crate::services::index::Index;
@@ -381,8 +381,7 @@ pub async fn api_revoke_token(
     response(state.application.revoke_token(&auth_data, token_id).await)
 }
 
-// #[put("/crates/new")]
-pub async fn api_v1_publish_crate_version(
+pub async fn api_v1_cargo_publish_crate_version(
     auth_data: AuthData,
     State(state): State<Arc<AxumState>>,
     body: Bytes,
@@ -434,7 +433,6 @@ pub async fn api_v1_get_crate_readme(
     ))
 }
 
-// #[get("/crates/{package}/{version}/download")]
 pub async fn api_v1_download_crate(
     auth_data: AuthData,
     State(state): State<Arc<AxumState>>,
@@ -456,8 +454,7 @@ pub async fn api_v1_download_crate(
     }
 }
 
-// #[delete("/crates/{package}/{version}/yank")]
-pub async fn api_v1_yank(
+pub async fn api_v1_cargo_yank(
     auth_data: AuthData,
     State(state): State<Arc<AxumState>>,
     Path(PathInfoCrateVersion { package, version }): Path<PathInfoCrateVersion>,
@@ -465,8 +462,7 @@ pub async fn api_v1_yank(
     response(state.application.yank_crate_version(&auth_data, &package, &version).await)
 }
 
-// #[put("/crates/{package}/{version}/unyank")]
-pub async fn api_v1_unyank(
+pub async fn api_v1_cargo_unyank(
     auth_data: AuthData,
     State(state): State<Arc<AxumState>>,
     Path(PathInfoCrateVersion { package, version }): Path<PathInfoCrateVersion>,
@@ -474,7 +470,6 @@ pub async fn api_v1_unyank(
     response(state.application.unyank_crate_version(&auth_data, &package, &version).await)
 }
 
-// #[post("/crates/{package}/{version}/docsregen")]
 pub async fn api_v1_regen_crate_version_doc(
     auth_data: AuthData,
     State(state): State<Arc<AxumState>>,
@@ -510,8 +505,7 @@ pub async fn api_v1_get_download_stats(
     response(state.application.get_download_stats(&auth_data, &package).await)
 }
 
-// #[get("/crates/{package}/owners")]
-pub async fn api_v1_get_crate_owners(
+pub async fn api_v1_cargo_get_crate_owners(
     auth_data: AuthData,
     State(state): State<Arc<AxumState>>,
     Path(PathInfoCrate { package }): Path<PathInfoCrate>,
@@ -519,22 +513,20 @@ pub async fn api_v1_get_crate_owners(
     response(state.application.get_crate_owners(&auth_data, &package).await)
 }
 
-// #[put("/crates/{package}/owners")]
-pub async fn api_v1_add_crate_owners(
+pub async fn api_v1_cargo_add_crate_owners(
     auth_data: AuthData,
     State(state): State<Arc<AxumState>>,
     Path(PathInfoCrate { package }): Path<PathInfoCrate>,
-    input: Json<OwnersAddQuery>,
+    input: Json<OwnersChangeQuery>,
 ) -> ApiResult<YesNoMsgResult> {
     response(state.application.add_crate_owners(&auth_data, &package, &input.users).await)
 }
 
-// #[delete("/crates/{package}/owners")]
-pub async fn api_v1_remove_crate_owners(
+pub async fn api_v1_cargo_remove_crate_owners(
     auth_data: AuthData,
     State(state): State<Arc<AxumState>>,
     Path(PathInfoCrate { package }): Path<PathInfoCrate>,
-    input: Json<OwnersAddQuery>,
+    input: Json<OwnersChangeQuery>,
 ) -> ApiResult<YesNoResult> {
     response(
         state
@@ -550,8 +542,7 @@ pub struct SearchForm {
     per_page: Option<usize>,
 }
 
-// #[get("/crates")]
-pub async fn api_v1_search(
+pub async fn api_v1_cargo_search(
     auth_data: AuthData,
     State(state): State<Arc<AxumState>>,
     form: Query<SearchForm>,

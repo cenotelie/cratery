@@ -15,8 +15,8 @@ use std::time::Duration;
 use flate2::bufread::GzDecoder;
 use tar::Archive;
 
+use crate::model::cargo::CrateMetadata;
 use crate::model::config::{Configuration, StorageConfig};
-use crate::model::objects::CrateMetadata;
 use crate::utils::apierror::{error_backend_failure, specialize, ApiError};
 
 /// Backing storage implementations

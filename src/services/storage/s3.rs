@@ -7,7 +7,7 @@
 use std::path::Path;
 
 use super::Storage;
-use crate::model::objects::CrateMetadata;
+use crate::model::cargo::CrateMetadata;
 use crate::utils::apierror::ApiError;
 use crate::utils::s3::S3Params;
 

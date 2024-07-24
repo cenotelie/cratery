@@ -5,6 +5,7 @@
 //! Data model
 
 pub mod auth;
+pub mod cargo;
 pub mod config;
 pub mod deps;
 pub mod dlstats;
