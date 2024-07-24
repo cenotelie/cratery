@@ -10,7 +10,7 @@ pub mod config;
 pub mod deps;
 pub mod errors;
 pub mod namegen;
-pub mod objects;
+pub mod packages;
 pub mod stats;
 
 use rand::distributions::Alphanumeric;

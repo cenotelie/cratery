@@ -26,7 +26,7 @@ use crate::model::cargo::{
     CrateUploadResult, OwnersChangeQuery, OwnersQueryResult, RegistryUser, SearchResults, YesNoMsgResult, YesNoResult,
 };
 use crate::model::deps::DependencyInfo;
-use crate::model::objects::CrateInfo;
+use crate::model::packages::CrateInfo;
 use crate::model::stats::{DownloadStats, GlobalStats};
 use crate::model::{generate_token, AppVersion};
 use crate::services::index::Index;

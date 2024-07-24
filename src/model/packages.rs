@@ -2,7 +2,7 @@
  * Copyright (c) 2024 Cénotélie Opérations SAS (cenotelie.fr)
  ******************************************************************************/
 
-//! Module for definition of API objects
+//! Data types for crate information and description, in addition to Cargo types
 
 use chrono::NaiveDateTime;
 use serde_derive::{Deserialize, Serialize};

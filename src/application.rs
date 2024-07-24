@@ -20,7 +20,7 @@ use crate::model::cargo::{
 };
 use crate::model::config::Configuration;
 use crate::model::deps::DependencyInfo;
-use crate::model::objects::CrateInfo;
+use crate::model::packages::CrateInfo;
 use crate::model::stats::{DownloadStats, GlobalStats};
 use crate::model::CrateAndVersion;
 use crate::services::database::Database;

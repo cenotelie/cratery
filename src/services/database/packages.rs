@@ -14,7 +14,7 @@ use crate::model::cargo::{
     CrateUploadData, CrateUploadResult, IndexCrateMetadata, OwnersQueryResult, RegistryUser, SearchResultCrate, SearchResults,
     SearchResultsMeta, YesNoMsgResult, YesNoResult,
 };
-use crate::model::objects::CrateInfoVersion;
+use crate::model::packages::CrateInfoVersion;
 use crate::model::stats::{DownloadStats, SERIES_LENGTH};
 use crate::model::CrateAndVersion;
 use crate::utils::apierror::{error_forbidden, error_invalid_request, error_not_found, specialize, ApiError};
