@@ -18,7 +18,7 @@ use tokio::process::Command;
 use tokio::task::JoinHandle;
 
 use crate::model::config::Configuration;
-use crate::model::objects::DocsGenerationJob;
+use crate::model::CrateAndVersion;
 use crate::services::database::Database;
 use crate::services::storage;
 use crate::services::storage::Storage;
@@ -30,7 +30,7 @@ use crate::utils::db::in_transaction;
 pub fn create_docs_worker(
     configuration: Arc<Configuration>,
     pool: Pool<Sqlite>,
-) -> (UnboundedSender<DocsGenerationJob>, JoinHandle<()>) {
+) -> (UnboundedSender<CrateAndVersion>, JoinHandle<()>) {
     let (sender, mut receiver) = futures::channel::mpsc::unbounded();
     let handle = tokio::spawn(async move {
         while let Some(job) = receiver.next().await {
@@ -46,28 +46,24 @@ pub fn create_docs_worker(
 }
 
 /// Executes a documentation generation job
-async fn docs_worker_job(
-    configuration: Arc<Configuration>,
-    pool: &Pool<Sqlite>,
-    job: DocsGenerationJob,
-) -> Result<(), ApiError> {
-    info!("generating doc for {} {}", job.crate_name, job.crate_version);
+async fn docs_worker_job(configuration: Arc<Configuration>, pool: &Pool<Sqlite>, job: CrateAndVersion) -> Result<(), ApiError> {
+    info!("generating doc for {} {}", job.name, job.version);
     let content = storage::get_storage(&configuration)
-        .download_crate(&job.crate_name, &job.crate_version)
+        .download_crate(&job.name, &job.version)
         .await?;
-    let temp_folder = extract_content(&job.crate_name, &job.crate_version, &content)?;
+    let temp_folder = extract_content(&job.name, &job.version, &content)?;
     let gen_is_ok = match generate_doc(&configuration, &temp_folder).await {
         Ok(mut project_folder) => {
             project_folder.push("target");
             project_folder.push("doc");
             let doc_folder = project_folder;
-            upload_package(configuration, &job.crate_name, &job.crate_version, &doc_folder).await?;
+            upload_package(configuration, &job.name, &job.version, &doc_folder).await?;
             true
         }
         Err(e) => {
             // upload the log
             let log = e.details.unwrap();
-            let path = format!("{}/{}/log.txt", job.crate_name, job.crate_version);
+            let path = format!("{}/{}/log.txt", job.name, job.version);
             storage::get_storage(&configuration)
                 .store_doc_data(&path, log.into_bytes())
                 .await?;
@@ -77,9 +73,7 @@ async fn docs_worker_job(
     let mut connection = pool.acquire().await?;
     in_transaction(&mut connection, |transaction| async move {
         let database = Database::new(transaction);
-        database
-            .set_crate_documention(&job.crate_name, &job.crate_version, gen_is_ok)
-            .await
+        database.set_crate_documention(&job.name, &job.version, gen_is_ok).await
     })
     .await?;
     tokio::fs::remove_dir_all(&temp_folder).await?;
@@ -143,11 +137,11 @@ async fn generate_doc(configuration: &Configuration, temp_folder: &Path) -> Resu
 /// Uploads the documentation for package
 async fn upload_package(
     configuration: Arc<Configuration>,
-    crate_name: &str,
-    crate_version: &str,
+    name: &str,
+    version: &str,
     doc_folder: &Path,
 ) -> Result<(), ApiError> {
-    let files = upload_package_find_files(doc_folder, &format!("{crate_name}/{crate_version}")).await?;
+    let files = upload_package_find_files(doc_folder, &format!("{name}/{version}")).await?;
     let results = n_at_a_time(
         files.into_iter().map(|(key, path)| {
             let configuration = configuration.clone();

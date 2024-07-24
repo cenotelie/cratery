@@ -20,8 +20,9 @@ use crate::model::cargo::{
 };
 use crate::model::config::Configuration;
 use crate::model::deps::DependencyInfo;
-use crate::model::objects::{CrateInfo, DocsGenerationJob};
+use crate::model::objects::CrateInfo;
 use crate::model::stats::{DownloadStats, GlobalStats};
+use crate::model::CrateAndVersion;
 use crate::services::database::Database;
 use crate::services::deps::{DependencyChecker, DependencyCheckerAccess};
 use crate::services::index::Index;
@@ -41,7 +42,7 @@ pub struct Application {
     /// Service to check the dependencies of a crate
     pub deps_checker: Mutex<DependencyChecker>,
     /// Sender of documentation generation jobs
-    pub docs_worker_sender: UnboundedSender<DocsGenerationJob>,
+    pub docs_worker_sender: UnboundedSender<CrateAndVersion>,
 }
 
 /// The empty database
@@ -266,9 +267,9 @@ impl Application {
             // generate the doc
             self.docs_worker_sender
                 .clone()
-                .send(DocsGenerationJob {
-                    crate_name: package.metadata.name.clone(),
-                    crate_version: package.metadata.vers.clone(),
+                .send(CrateAndVersion {
+                    name: package.metadata.name.clone(),
+                    version: package.metadata.vers.clone(),
                 })
                 .await?;
             Ok(r)
@@ -375,9 +376,9 @@ impl Application {
             app.database.regen_crate_version_doc(&principal, package, version).await?;
             self.docs_worker_sender
                 .clone()
-                .send(DocsGenerationJob {
-                    crate_name: package.to_string(),
-                    crate_version: version.to_string(),
+                .send(CrateAndVersion {
+                    name: package.to_string(),
+                    version: version.to_string(),
                 })
                 .await?;
             Ok(())

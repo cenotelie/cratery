@@ -38,12 +38,3 @@ pub struct CrateInfoVersion {
     #[serde(rename = "downloadCount")]
     pub download_count: i64,
 }
-
-/// Represents a documentation generation job
-#[derive(Debug, Clone)]
-pub struct DocsGenerationJob {
-    /// The name of the target crate
-    pub crate_name: String,
-    /// The version of the target crate
-    pub crate_version: String,
-}

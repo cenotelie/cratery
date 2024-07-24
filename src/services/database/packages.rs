@@ -14,8 +14,9 @@ use crate::model::cargo::{
     CrateUploadData, CrateUploadResult, IndexCrateMetadata, OwnersQueryResult, RegistryUser, SearchResultCrate, SearchResults,
     SearchResultsMeta, YesNoMsgResult, YesNoResult,
 };
-use crate::model::objects::{CrateInfoVersion, DocsGenerationJob};
+use crate::model::objects::CrateInfoVersion;
 use crate::model::stats::{DownloadStats, SERIES_LENGTH};
+use crate::model::CrateAndVersion;
 use crate::utils::apierror::{error_forbidden, error_invalid_request, error_not_found, specialize, ApiError};
 
 impl<'c> Database<'c> {
@@ -309,7 +310,7 @@ impl<'c> Database<'c> {
     }
 
     /// Gets the packages that need documentation generation
-    pub async fn get_undocumented_crates(&self) -> Result<Vec<DocsGenerationJob>, ApiError> {
+    pub async fn get_undocumented_crates(&self) -> Result<Vec<CrateAndVersion>, ApiError> {
         let rows = sqlx::query!(
             "SELECT package, version FROM PackageVersion WHERE hasDocs = FALSE AND docGenAttempted = FALSE ORDER BY id"
         )
@@ -317,9 +318,9 @@ impl<'c> Database<'c> {
         .await?;
         Ok(rows
             .into_iter()
-            .map(|row| DocsGenerationJob {
-                crate_name: row.package,
-                crate_version: row.version,
+            .map(|row| CrateAndVersion {
+                name: row.package,
+                version: row.version,
             })
             .collect())
     }
