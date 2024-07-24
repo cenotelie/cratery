@@ -5,6 +5,7 @@
 //! Service for persisting information in the database
 
 pub mod packages;
+pub mod stats;
 pub mod users;
 
 use crate::utils::apierror::{error_forbidden, error_unauthorized, ApiError};

@@ -60,6 +60,7 @@ async fn main_serve_app(application: Arc<Application>, cookie_key: Key) -> Resul
         .route("/git-upload-pack", post(crate::routes::index_serve_git_upload_pack))
         // web resources
         .route("/favicon.png", get(crate::routes::get_favicon))
+        .route("/crates/:package/:version", get(crate::routes::get_redirection_crate_version))
         .route("/crates/:package", get(crate::routes::get_redirection_crate))
         .route("/webapp/*path", get(crate::routes::get_webapp_resource))
         // api version
@@ -72,6 +73,7 @@ async fn main_serve_app(application: Arc<Application>, cookie_key: Key) -> Resul
         .nest(
             "/api/v1",
             Router::new()
+                .route("/stats", get(crate::routes::api_get_global_stats))
                 .route("/me", get(crate::routes::api_get_current_user))
                 .route("/oauth/code", post(crate::routes::api_login_with_oauth_code))
                 .route("/logout", post(crate::routes::api_logout))

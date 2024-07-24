@@ -27,6 +27,7 @@ use crate::model::objects::{
     AuthenticatedUser, CrateInfo, CrateUploadResult, OwnersAddQuery, OwnersQueryResult, RegistryUser, RegistryUserToken,
     RegistryUserTokenWithSecret, SearchResults, YesNoMsgResult, YesNoResult,
 };
+use crate::model::stats::GlobalStats;
 use crate::model::{generate_token, AppVersion};
 use crate::services::index::Index;
 use crate::services::storage::Storage;
@@ -129,6 +130,20 @@ pub async fn get_redirection_crate(
     Path(PathInfoCrate { package }): Path<PathInfoCrate>,
 ) -> (StatusCode, [(HeaderName, HeaderValue); 2]) {
     let target = format!("/webapp/crate.html?crate={package}");
+    (
+        StatusCode::FOUND,
+        [
+            (header::LOCATION, HeaderValue::from_str(&target).unwrap()),
+            (header::CACHE_CONTROL, HeaderValue::from_static("max-age=3600")),
+        ],
+    )
+}
+
+/// Gets the redirection for a crates shortcut
+pub async fn get_redirection_crate_version(
+    Path(PathInfoCrateVersion { package, version }): Path<PathInfoCrateVersion>,
+) -> (StatusCode, [(HeaderName, HeaderValue); 2]) {
+    let target = format!("/webapp/crate.html?crate={package}&version={version}");
     (
         StatusCode::FOUND,
         [
@@ -244,6 +259,11 @@ fn get_content_type(name: &str) -> &'static str {
         Some("ico") => "image/x-icon",
         _ => "application/octet-stream",
     }
+}
+
+/// Gets the global statistics for the registry
+pub async fn api_get_global_stats(auth_data: AuthData, State(state): State<Arc<AxumState>>) -> ApiResult<GlobalStats> {
+    response(state.application.get_global_stats(&auth_data).await)
 }
 
 /// Get the current user

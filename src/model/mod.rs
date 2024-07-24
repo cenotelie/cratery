@@ -11,6 +11,7 @@ pub mod dlstats;
 pub mod errors;
 pub mod namegen;
 pub mod objects;
+pub mod stats;
 
 use rand::distributions::Alphanumeric;
 use rand::{thread_rng, Rng};

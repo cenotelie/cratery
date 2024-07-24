@@ -1,0 +1,32 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT name, version, upload\n            FROM Package INNER JOIN PackageVersion ON package = name\n            WHERE (SELECT COUNT(version) FROM PackageVersion WHERE package = name) = 1\n            ORDER BY upload DESC\n            LIMIT 10",
+  "describe": {
+    "columns": [
+      {
+        "name": "name",
+        "ordinal": 0,
+        "type_info": "Text"
+      },
+      {
+        "name": "version",
+        "ordinal": 1,
+        "type_info": "Text"
+      },
+      {
+        "name": "upload",
+        "ordinal": 2,
+        "type_info": "Datetime"
+      }
+    ],
+    "parameters": {
+      "Right": 0
+    },
+    "nullable": [
+      false,
+      false,
+      false
+    ]
+  },
+  "hash": "a4d6fb993d381d3282cd28f404c7b32cd3cbc10083257bab55e63e9212a9bb00"
+}

@@ -309,7 +309,7 @@
 
   function renderVersion(version) {
     const card = document.createElement("a");
-    card.href = `/webapp/crate.html?crate=${version.index.name}&version=${version.index.vers}`;
+    card.href = `/crates/${version.index.name}/${version.index.vers}`;
     card.className = "flex block mb-4 p-6 bg-white border border-gray-200 rounded-lg shadow hover:bg-gray-100 dark:bg-gray-800 dark:border-gray-700 dark:hover:bg-gray-700";
     const wrapper = document.createElement("div");
     wrapper.className = "flex items-center me-4";

@@ -1,0 +1,32 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT package, version, upload\n            FROM PackageVersion\n            ORDER BY upload DESC\n            LIMIT 10",
+  "describe": {
+    "columns": [
+      {
+        "name": "package",
+        "ordinal": 0,
+        "type_info": "Text"
+      },
+      {
+        "name": "version",
+        "ordinal": 1,
+        "type_info": "Text"
+      },
+      {
+        "name": "upload",
+        "ordinal": 2,
+        "type_info": "Datetime"
+      }
+    ],
+    "parameters": {
+      "Right": 0
+    },
+    "nullable": [
+      false,
+      false,
+      false
+    ]
+  },
+  "hash": "2277fb211ad3d9b07575b363f7a0e425e4947f0ce03270a20b3a9261e8e69354"
+}

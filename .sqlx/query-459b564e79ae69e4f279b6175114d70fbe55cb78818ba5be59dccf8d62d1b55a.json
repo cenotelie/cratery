@@ -1,0 +1,20 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT SUM(downloadCount) AS total_downloads FROM PackageVersion",
+  "describe": {
+    "columns": [
+      {
+        "name": "total_downloads",
+        "ordinal": 0,
+        "type_info": "Integer"
+      }
+    ],
+    "parameters": {
+      "Right": 0
+    },
+    "nullable": [
+      true
+    ]
+  },
+  "hash": "459b564e79ae69e4f279b6175114d70fbe55cb78818ba5be59dccf8d62d1b55a"
+}

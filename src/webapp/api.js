@@ -1,3 +1,13 @@
+function apiGetGlobalStats() {
+  return fetch("/api/v1/stats").then((response) => {
+    if (response.status !== 200) {
+      throw response.text();
+    } else {
+      return response.json();
+    }
+  });
+}
+
 function apiMe() {
   return fetch("/api/v1/me").then((response) => {
     if (response.status !== 200) {

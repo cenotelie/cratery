@@ -1,0 +1,20 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT COUNT(name) AS total_crates FROM Package",
+  "describe": {
+    "columns": [
+      {
+        "name": "total_crates",
+        "ordinal": 0,
+        "type_info": "Integer"
+      }
+    ],
+    "parameters": {
+      "Right": 0
+    },
+    "nullable": [
+      false
+    ]
+  },
+  "hash": "876ce44ab03f7aa25f0c235d435bc80b4c4ed30c948109617b0c64a85ec8d667"
+}

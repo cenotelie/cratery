@@ -21,6 +21,7 @@ use crate::model::objects::{
     AuthenticatedUser, CrateInfo, CrateUploadData, CrateUploadResult, DocsGenerationJob, OwnersQueryResult, RegistryUser,
     RegistryUserToken, RegistryUserTokenWithSecret, SearchResults, YesNoMsgResult, YesNoResult,
 };
+use crate::model::stats::GlobalStats;
 use crate::services::database::Database;
 use crate::services::deps::{DependencyChecker, DependencyCheckerAccess};
 use crate::services::index::Index;
@@ -434,6 +435,17 @@ impl Application {
             let app = self.with_transaction(transaction);
             let principal = app.authenticate(auth_data).await?;
             app.database.remove_crate_owners(&principal, package, old_users).await
+        })
+        .await
+    }
+
+    /// Gets the global statistics for the registry
+    pub async fn get_global_stats(&self, auth_data: &AuthData) -> Result<GlobalStats, ApiError> {
+        let mut connection: sqlx::pool::PoolConnection<Sqlite> = self.db_pool.acquire().await?;
+        in_transaction(&mut connection, |transaction| async move {
+            let app = self.with_transaction(transaction);
+            let _principal = app.authenticate(auth_data).await?;
+            app.database.get_global_stats().await
         })
         .await
     }

@@ -26,7 +26,7 @@
       </div>
   </nav>
 </header>
-<body onload="onPageLoad()" class="bg-white dark:bg-gray-800">
+<body onload="doPageLoad()" class="bg-white dark:bg-gray-800">
   <section class="bg-gray-50 dark:bg-gray-900 py-4">
     <div class="p-6 space-y-4 md:space-y-6 sm:p-8 w-full">
       <h1 class="text-xl font-bold leading-tight tracking-tight text-gray-900 md:text-2xl dark:text-white" style="text-align: center;">
@@ -41,6 +41,53 @@
     </div>
     <div id="results" class="items-center justify-center px-6 py-8 mx-auto lg:py-0 flex flex-col space-y-4">
     </div>
+    <div class="p-6 mb-4 flex flex-row flex-wrap">
+      <div class="w-1/2">
+        <div class="block mx-4 p-6 bg-white border border-gray-200 rounded-lg shadow hover:bg-gray-100 dark:bg-gray-800 dark:border-gray-700 dark:hover:bg-gray-700">
+          <h5 class="mb-2 text-2xl font-bold tracking-tight text-gray-900 dark:text-white">
+            <span style="display: inline-block;">
+              <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="size-6">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M3 16.5v2.25A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75V16.5M16.5 12 12 16.5m0 0L7.5 12m4.5 4.5V3" />
+              </svg>
+            </span>
+            <span id="stats-total-downloads"></span>
+          </h5>
+          <p class="font-normal text-gray-700 dark:text-gray-400">Total downloads</p>
+        </div>
+      </div>
+      <div class="w-1/2">
+        <div class="block mx-4 p-6 bg-white border border-gray-200 rounded-lg shadow hover:bg-gray-100 dark:bg-gray-800 dark:border-gray-700 dark:hover:bg-gray-700">
+          <h5 class="mb-2 text-2xl font-bold tracking-tight text-gray-900 dark:text-white">
+            <span>📦</span>
+            <span id="stats-total-crates"></span>
+          </h5>
+          <p class="font-normal text-gray-700 dark:text-gray-400">Total published crates</p>
+        </div>
+      </div>
+    </div>
+    <div class="p-6 mb-4 flex flex-row flex-wrap">
+      <div class="w-1/3">
+        <h1 class="text-xl font-bold leading-tight tracking-tight text-gray-900 md:text-2xl dark:text-white" style="text-align: center;">
+          New crates
+        </h1>
+      </div>
+      <div class="w-1/3">
+        <h1 class="text-xl font-bold leading-tight tracking-tight text-gray-900 md:text-2xl dark:text-white" style="text-align: center;">
+          Most downloaded
+        </h1>
+      </div>
+      <div class="w-1/3">
+        <h1 class="text-xl font-bold leading-tight tracking-tight text-gray-900 md:text-2xl dark:text-white" style="text-align: center;">
+          Just updated
+        </h1>
+      </div>
+      <div class="w-1/3 flex flex-col" id="stats-crates-newest">
+      </div>
+      <div class="w-1/3 flex flex-col" id="stats-crates-most-downloaded">
+      </div>
+      <div class="w-1/3 flex flex-col" id="stats-crates-last-updated">
+      </div>
+    </div>
   </section>
 </body>
 <footer class="p-4 bg-white md:p-8 lg:p-10 dark:bg-gray-800">
@@ -53,6 +100,46 @@
 <script src="/webapp/api.js"></script>
 <script src="/webapp/index.js"></script>
 <script>
+  function doPageLoad() {
+    onPageLoad().then((_) => {
+      apiGetGlobalStats().then(renderStats);
+    });
+  }
+
+  function renderStats(stats) {
+    document.getElementById("stats-total-downloads").appendChild(document.createTextNode(stats.totalDownloads.toString()));
+    document.getElementById("stats-total-crates").appendChild(document.createTextNode(stats.totalCrates.toString()));
+    const listNewest = document.getElementById("stats-crates-newest");
+    const listMostDownloaded = document.getElementById("stats-crates-most-downloaded");
+    const listLastUpdated = document.getElementById("stats-crates-last-updated");
+    for (const crate of stats.cratesNewest) {
+      listNewest.appendChild(renderCrateLink(crate, true));
+    }
+    for (const crate of stats.cratesMostDownloaded) {
+      listMostDownloaded.appendChild(renderCrateLink(crate, false));
+    }
+    for (const crate of stats.cratesLastUpdated) {
+      listLastUpdated.appendChild(renderCrateLink(crate, true));
+    }
+  }
+
+  function renderCrateLink(crate, withVersion) {
+    const card = document.createElement("a");
+    card.className = "block m-4 p-6 bg-white border border-gray-200 rounded-lg shadow hover:bg-gray-100 dark:bg-gray-800 dark:border-gray-700 dark:hover:bg-gray-700";
+    card.href = withVersion ? `/crates/${crate.name}/${crate.version}` : `/crates/${crate.name}`;
+    const title = document.createElement("h5");
+    title.className = "mb-2 text-2xl font-bold tracking-tight text-gray-900 dark:text-white";
+    title.appendChild(document.createTextNode(crate.name));
+    card.appendChild(title);
+    if (withVersion) {
+      const sub = document.createElement("p");
+      sub.className = "font-normal text-gray-700 dark:text-gray-400";
+      sub.appendChild(document.createTextNode(crate.version));
+      card.appendChild(sub);
+    }
+    return card;
+  }
+
   function onSearch() {
     const search = document.getElementById("lookup").value;
     apiLookupCrates(search).then((crates) => {
@@ -74,7 +161,7 @@
     const div = document.createElement("div");
     div.className = "w-full p-6 bg-white border border-gray-200 rounded-lg shadow dark:bg-gray-800 dark:border-gray-700";
     const a = document.createElement("a");
-    a.setAttribute("href", `/webapp/crate.html?crate=${encodeURIComponent(crate.name)}`);
+    a.setAttribute("href", `/crates/${crate.name}`);
     const h5 = document.createElement("h3");
     h5.className = "mb-2 text-2xl font-bold tracking-tight text-gray-900 dark:text-white";
     h5.appendChild(document.createTextNode(crate.name));

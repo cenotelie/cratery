@@ -1,0 +1,26 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT name, SUM(downloadCount) AS download_count\n            FROM Package INNER JOIN PackageVersion ON package = name\n            GROUP BY package\n            ORDER BY download_count DESC\n            LIMIT 10",
+  "describe": {
+    "columns": [
+      {
+        "name": "name",
+        "ordinal": 0,
+        "type_info": "Text"
+      },
+      {
+        "name": "download_count",
+        "ordinal": 1,
+        "type_info": "Integer"
+      }
+    ],
+    "parameters": {
+      "Right": 0
+    },
+    "nullable": [
+      false,
+      false
+    ]
+  },
+  "hash": "11b4ffa2408ab2321eaa04038ef91d5af781f833b9386bb53b1c4309d79d832c"
+}
