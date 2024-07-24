@@ -16,7 +16,7 @@
       {
         "name": "uploaded_by",
         "ordinal": 2,
-        "type_info": "Int64"
+        "type_info": "Integer"
       },
       {
         "name": "has_docs",
@@ -31,7 +31,7 @@
       {
         "name": "download_count",
         "ordinal": 5,
-        "type_info": "Int64"
+        "type_info": "Integer"
       }
     ],
     "parameters": {
