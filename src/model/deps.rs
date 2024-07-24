@@ -4,36 +4,9 @@
 
 //! Data types around dependency analysis
 
-use std::str::FromStr;
-
 use serde_derive::{Deserialize, Serialize};
 
-/// The kind of dependency
-#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
-pub enum DependencyKind {
-    /// A normal dependency
-    #[serde(rename = "normal")]
-    Normal,
-    /// A dev dependency (for tests, etc.)
-    #[serde(rename = "dev")]
-    Dev,
-    /// A build dependency (for build.rs)
-    #[serde(rename = "build")]
-    Build,
-}
-
-impl FromStr for DependencyKind {
-    type Err = ();
-
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
-        match s {
-            "normal" => Ok(DependencyKind::Normal),
-            "dev" => Ok(DependencyKind::Dev),
-            "build" => Ok(DependencyKind::Build),
-            _ => Err(()),
-        }
-    }
-}
+use super::cargo::DependencyKind;
 
 /// The information about a dependency, resulting from an analysis
 #[derive(Debug, Clone, Serialize, Deserialize)]

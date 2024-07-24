@@ -15,12 +15,13 @@ use sqlx::{Pool, Sqlite};
 use tokio::task::JoinHandle;
 
 use crate::model::auth::{AuthenticatedUser, RegistryUserToken, RegistryUserTokenWithSecret};
-use crate::model::cargo::{CrateUploadResult, OwnersQueryResult, RegistryUser, SearchResults, YesNoMsgResult, YesNoResult};
+use crate::model::cargo::{
+    CrateUploadData, CrateUploadResult, OwnersQueryResult, RegistryUser, SearchResults, YesNoMsgResult, YesNoResult,
+};
 use crate::model::config::Configuration;
 use crate::model::deps::DependencyInfo;
-use crate::model::dlstats::DownloadStats;
-use crate::model::objects::{CrateInfo, CrateUploadData, DocsGenerationJob};
-use crate::model::stats::GlobalStats;
+use crate::model::objects::{CrateInfo, DocsGenerationJob};
+use crate::model::stats::{DownloadStats, GlobalStats};
 use crate::services::database::Database;
 use crate::services::deps::{DependencyChecker, DependencyCheckerAccess};
 use crate::services::index::Index;

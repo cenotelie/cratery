@@ -5,7 +5,12 @@
 //! Data model for the Cargo web API
 
 use std::collections::HashMap;
+use std::io::Cursor;
+use std::str::FromStr;
 
+use byteorder::{LittleEndian, ReadBytesExt};
+use data_encoding::HEXLOWER;
+use ring::digest::{Context, SHA256};
 use serde_derive::{Deserialize, Serialize};
 
 use crate::utils::apierror::{error_invalid_request, specialize, ApiError};
@@ -132,7 +137,7 @@ pub struct CrateMetadata {
     /// The version of the package being published
     pub vers: String,
     /// Array of direct dependencies of the package
-    pub deps: Vec<Dependency>,
+    pub deps: Vec<CrateMetadataDependency>,
     /// Set of features defined for the package.
     /// Each feature maps to an array of features or dependencies it enables.
     /// Cargo does not impose limitations on feature names, but crates.io
@@ -182,7 +187,6 @@ impl CrateMetadata {
     /// Validate the crate's metadata
     pub fn validate(&self) -> Result<CrateUploadResult, ApiError> {
         self.validate_name()?;
-        self.validate_kind()?;
         Ok(CrateUploadResult::default())
     }
 
@@ -207,16 +211,6 @@ impl CrateMetadata {
         }
         Ok(())
     }
-
-    /// Validate the kind field
-    fn validate_kind(&self) -> Result<(), ApiError> {
-        for dep in &self.deps {
-            if dep.kind != "dev" && dep.kind != "build" && dep.kind != "normal" {
-                return validation_error("kind for dependency must be either [normal, dev, build]");
-            }
-        }
-        Ok(())
-    }
 }
 
 /// Creates a validation error
@@ -224,9 +218,37 @@ pub fn validation_error(details: &str) -> Result<(), ApiError> {
     Err(specialize(error_invalid_request(), details.to_string()))
 }
 
+/// The kind of dependency
+#[derive(Debug, Default, Clone, Copy, Serialize, Deserialize)]
+pub enum DependencyKind {
+    /// A normal dependency
+    #[default]
+    #[serde(rename = "normal")]
+    Normal,
+    /// A dev dependency (for tests, etc.)
+    #[serde(rename = "dev")]
+    Dev,
+    /// A build dependency (for build.rs)
+    #[serde(rename = "build")]
+    Build,
+}
+
+impl FromStr for DependencyKind {
+    type Err = ();
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s {
+            "normal" => Ok(DependencyKind::Normal),
+            "dev" => Ok(DependencyKind::Dev),
+            "build" => Ok(DependencyKind::Build),
+            _ => Err(()),
+        }
+    }
+}
+
 /// A dependency for a crate
 #[derive(Default, Debug, Clone, Serialize, Deserialize)]
-pub struct Dependency {
+pub struct CrateMetadataDependency {
     /// Name of the dependency.
     /// If the dependency is renamed from the original package name,
     /// this is the original name. The new package name is stored in
@@ -246,7 +268,7 @@ pub struct Dependency {
     pub target: Option<String>,
     /// The dependency kind.
     /// "dev", "build", or "normal".
-    pub kind: String,
+    pub kind: DependencyKind,
     /// The URL of the index of the registry where this dependency is
     /// from as a string. If not specified or null, it is assumed the
     /// dependency is in the current registry.
@@ -273,4 +295,126 @@ pub struct CrateUploadWarnings {
     pub invalid_badges: Vec<String>,
     /// Array of strings of arbitrary warnings to display to the user
     pub other: Vec<String>,
+}
+
+/// The upload data for publishing a crate
+pub struct CrateUploadData {
+    /// The metadata
+    pub metadata: CrateMetadata,
+    /// The content of the .crate package
+    pub content: Vec<u8>,
+}
+
+impl CrateUploadData {
+    /// Deserialize the content of an input payload
+    #[allow(clippy::cast_possible_truncation)]
+    pub fn new(buffer: &[u8]) -> Result<CrateUploadData, ApiError> {
+        let mut cursor = Cursor::new(buffer);
+        // read the metadata
+        let metadata_length = u64::from(cursor.read_u32::<LittleEndian>()?);
+        let metadata_buffer = &buffer[4..((4 + metadata_length) as usize)];
+        let metadata = serde_json::from_slice(metadata_buffer)?;
+        // read the content
+        cursor.set_position(4 + metadata_length);
+        let content_length = cursor.read_u32::<LittleEndian>()? as usize;
+        let mut content = vec![0_u8; content_length];
+        content.copy_from_slice(&buffer[((4 + metadata_length + 4) as usize)..]);
+        Ok(CrateUploadData { metadata, content })
+    }
+
+    /// Builds the metadata to be index for this version
+    pub fn build_index_data(&self) -> IndexCrateMetadata {
+        let cksum = sha256(&self.content);
+        IndexCrateMetadata {
+            name: self.metadata.name.clone(),
+            vers: self.metadata.vers.clone(),
+            deps: self.metadata.deps.iter().map(IndexCrateDependency::from).collect(),
+            cksum,
+            features: self.metadata.features.clone(),
+            yanked: false,
+            links: self.metadata.links.clone(),
+        }
+    }
+}
+
+/// Computes the SHA256 digest of bytes
+pub fn sha256(buffer: &[u8]) -> String {
+    let mut context = Context::new(&SHA256);
+    context.update(buffer);
+    let digest = context.finish();
+    HEXLOWER.encode(digest.as_ref())
+}
+
+/// The metadata for a crate inside the index
+#[derive(Default, Debug, Clone, Serialize, Deserialize)]
+pub struct IndexCrateMetadata {
+    /// The name of the package
+    pub name: String,
+    /// The version of the package this row is describing.
+    /// This must be a valid version number according to the Semantic
+    /// Versioning 2.0.0 spec at [https://semver.org/](https://semver.org/).
+    pub vers: String,
+    /// Array of direct dependencies of the package
+    pub deps: Vec<IndexCrateDependency>,
+    /// A SHA256 checksum of the `.crate` file.
+    pub cksum: String,
+    /// Set of features defined for the package.
+    /// Each feature maps to an array of features or dependencies it enables.
+    pub features: HashMap<String, Vec<String>>,
+    /// Boolean of whether or not this version has been yanked.
+    pub yanked: bool,
+    /// The `links` string value from the package's manifest, or null if not
+    /// specified. This field is optional and defaults to null.
+    pub links: Option<String>,
+}
+
+/// A dependency for a crate in the index
+#[derive(Default, Debug, Clone, Serialize, Deserialize)]
+pub struct IndexCrateDependency {
+    /// Name of the dependency.
+    /// If the dependency is renamed from the original package name,
+    /// this is the original name. The new package name is stored in
+    /// the `package` field.
+    pub name: String,
+    /// The semver requirement for this dependency.
+    /// This must be a valid version requirement defined at
+    /// [https://github.com/steveklabnik/semver#requirements](https://github.com/steveklabnik/semver#requirements).
+    pub req: String,
+    /// Array of features (as strings) enabled for this dependency
+    pub features: Vec<String>,
+    /// Boolean of whether or not this is an optional dependency
+    pub optional: bool,
+    /// Boolean of whether or not default features are enabled
+    pub default_features: bool,
+    /// The target platform for the dependency.
+    /// null if not a target dependency.
+    /// Otherwise, a string such as "cfg(windows)".
+    pub target: Option<String>,
+    /// The dependency kind.
+    /// "dev", "build", or "normal".
+    pub kind: DependencyKind,
+    /// The URL of the index of the registry where this dependency is
+    /// from as a string. If not specified or null, it is assumed the
+    /// dependency is in the current registry.
+    pub registry: Option<String>,
+    /// If the dependency is renamed, this is a string of the new
+    /// package name. If not specified or null, this dependency is not
+    /// renamed.
+    pub package: Option<String>,
+}
+
+impl From<&CrateMetadataDependency> for IndexCrateDependency {
+    fn from(dep: &CrateMetadataDependency) -> Self {
+        Self {
+            name: dep.name.clone(),
+            req: dep.version_req.clone(),
+            features: dep.features.clone(),
+            optional: dep.optional,
+            default_features: dep.default_features,
+            target: dep.target.clone(),
+            kind: dep.kind,
+            registry: dep.registry.clone(),
+            package: dep.explicit_name_in_toml.clone(),
+        }
+    }
 }

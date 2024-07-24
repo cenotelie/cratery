@@ -16,9 +16,9 @@ use semver::{Version, VersionReq};
 use tokio::fs::File;
 use tokio::io::AsyncBufReadExt;
 
+use crate::model::cargo::{IndexCrateDependency, IndexCrateMetadata};
 use crate::model::config::{Configuration, ExternalRegistryProtocol};
 use crate::model::deps::DependencyInfo;
-use crate::model::objects::{CrateMetadataIndex, DependencyIndex};
 use crate::services::index::Index;
 use crate::utils::apierror::{error_backend_failure, error_not_found, specialize, ApiError};
 
@@ -66,7 +66,7 @@ impl<'a> DependencyCheckerAccess<'a> {
     }
 
     /// Gets the information about a dependency
-    async fn get_dependency_info(&self, dep: &DependencyIndex) -> Result<DependencyInfo, ApiError> {
+    async fn get_dependency_info(&self, dep: &IndexCrateDependency) -> Result<DependencyInfo, ApiError> {
         let requirement = dep.req.parse::<VersionReq>()?;
         let versions = self.get_dependency_versions(dep).await?;
         let versions = versions
@@ -78,14 +78,14 @@ impl<'a> DependencyCheckerAccess<'a> {
             registry: dep.registry.clone(),
             package: dep.name.clone(),
             required: dep.req.clone(),
-            kind: dep.kind.parse().unwrap(),
+            kind: dep.kind,
             last_version: last_version.to_string(),
             is_outdated: !requirement.matches(last_version),
         })
     }
 
     /// Retrieves the versions of a dependency
-    async fn get_dependency_versions(&self, dep: &DependencyIndex) -> Result<Vec<CrateMetadataIndex>, ApiError> {
+    async fn get_dependency_versions(&self, dep: &IndexCrateDependency) -> Result<Vec<IndexCrateMetadata>, ApiError> {
         if let Some(registry) = &dep.registry {
             if registry == CRATES_IO_REGISTRY_URI {
                 self.get_dependency_info_sparse(&dep.name, CRATES_IO_NAME, CRATES_IO_INDEX_URI, None)
@@ -125,7 +125,7 @@ impl<'a> DependencyCheckerAccess<'a> {
         dep_name: &str,
         reg_name: &str,
         index_uri: &str,
-    ) -> Result<Vec<CrateMetadataIndex>, ApiError> {
+    ) -> Result<Vec<IndexCrateMetadata>, ApiError> {
         let mut data = self.data.lock().await;
 
         let now = Instant::now();
@@ -193,7 +193,7 @@ impl<'a> DependencyCheckerAccess<'a> {
         reg_name: &str,
         index_uri: &str,
         credentials: Option<(&str, &str)>,
-    ) -> Result<Vec<CrateMetadataIndex>, ApiError> {
+    ) -> Result<Vec<IndexCrateMetadata>, ApiError> {
         let target_uri = Self::get_dependency_info_sparse_target_uri(dep_name, index_uri);
         let file_path = self.get_dependency_info_file_path(dep_name, reg_name).await?;
 
@@ -237,7 +237,7 @@ impl<'a> DependencyCheckerAccess<'a> {
         target_uri: String,
         credentials: Option<(&str, &str)>,
         data: &mut DependencyChecker,
-    ) -> Result<Vec<CrateMetadataIndex>, ApiError> {
+    ) -> Result<Vec<IndexCrateMetadata>, ApiError> {
         let mut request = reqwest::Client::new().get(&target_uri);
         if let Some((login, password)) = credentials {
             let value = STANDARD.encode(format!("{login}:{password}"));

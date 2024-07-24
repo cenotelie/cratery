@@ -6,7 +6,8 @@
 //! API related to statistics
 
 use super::Database;
-use crate::model::stats::{CrateLink, GlobalStats};
+use crate::model::stats::GlobalStats;
+use crate::model::CrateAndVersion;
 use crate::utils::apierror::ApiError;
 
 impl<'c> Database<'c> {
@@ -33,7 +34,7 @@ impl<'c> Database<'c> {
         .await?;
         let crates_newest = rows
             .into_iter()
-            .map(|row| CrateLink {
+            .map(|row| CrateAndVersion {
                 name: row.name,
                 version: row.version,
             })
@@ -50,7 +51,7 @@ impl<'c> Database<'c> {
         .await?;
         let crates_most_downloaded = rows
             .into_iter()
-            .map(|row| CrateLink {
+            .map(|row| CrateAndVersion {
                 name: row.name,
                 version: String::new(),
             })
@@ -66,7 +67,7 @@ impl<'c> Database<'c> {
         .await?;
         let crates_last_updated = rows
             .into_iter()
-            .map(|row| CrateLink {
+            .map(|row| CrateAndVersion {
                 name: row.package,
                 version: row.version,
             })

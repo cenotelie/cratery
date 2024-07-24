@@ -12,8 +12,8 @@ use tokio::fs::{self, create_dir_all, File, OpenOptions};
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 use tokio::process::Command;
 
+use crate::model::cargo::IndexCrateMetadata;
 use crate::model::config::IndexConfig;
-use crate::model::objects::CrateMetadataIndex;
 use crate::utils::apierror::{error_backend_failure, error_not_found, specialize, ApiError};
 
 /// Manages the index on git
@@ -140,7 +140,7 @@ impl Index {
     }
 
     /// Publish a new version for a crate
-    pub async fn publish_crate_version(&self, metadata: &CrateMetadataIndex) -> Result<(), ApiError> {
+    pub async fn publish_crate_version(&self, metadata: &IndexCrateMetadata) -> Result<(), ApiError> {
         let file_name = build_package_file_path(PathBuf::from(&self.config.location), &metadata.name);
         create_dir_all(file_name.parent().unwrap()).await?;
         let buffer = serde_json::to_vec(metadata)?;
@@ -165,7 +165,7 @@ impl Index {
     }
 
     ///  Gets the data for a crate
-    pub async fn get_crate_data(&self, package: &str) -> Result<Vec<CrateMetadataIndex>, ApiError> {
+    pub async fn get_crate_data(&self, package: &str) -> Result<Vec<IndexCrateMetadata>, ApiError> {
         let file_name = build_package_file_path(PathBuf::from(&self.config.location), package);
         if !file_name.exists() {
             return Err(error_not_found());

@@ -11,11 +11,11 @@ use chrono::{Datelike, Local};
 use super::Database;
 use crate::model::auth::AuthenticatedUser;
 use crate::model::cargo::{
-    CrateUploadResult, OwnersQueryResult, RegistryUser, SearchResultCrate, SearchResults, SearchResultsMeta, YesNoMsgResult,
-    YesNoResult,
+    CrateUploadData, CrateUploadResult, IndexCrateMetadata, OwnersQueryResult, RegistryUser, SearchResultCrate, SearchResults,
+    SearchResultsMeta, YesNoMsgResult, YesNoResult,
 };
-use crate::model::dlstats::{DownloadStats, SERIES_LENGTH};
-use crate::model::objects::{CrateInfoVersion, CrateMetadataIndex, CrateUploadData, DocsGenerationJob};
+use crate::model::objects::{CrateInfoVersion, DocsGenerationJob};
+use crate::model::stats::{DownloadStats, SERIES_LENGTH};
 use crate::utils::apierror::{error_forbidden, error_invalid_request, error_not_found, specialize, ApiError};
 
 impl<'c> Database<'c> {
@@ -68,7 +68,7 @@ impl<'c> Database<'c> {
     pub async fn get_crate_versions(
         &self,
         package: &str,
-        versions_in_index: Vec<CrateMetadataIndex>,
+        versions_in_index: Vec<IndexCrateMetadata>,
     ) -> Result<Vec<CrateInfoVersion>, ApiError> {
         let rows = sqlx::query!(
             "SELECT version, upload, uploadedBy AS uploaded_by, hasDocs AS has_docs, docGenAttempted AS doc_gen_attempted, downloadCount AS download_count FROM PackageVersion WHERE package = $1 ORDER BY id",
