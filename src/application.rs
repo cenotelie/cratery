@@ -14,13 +14,12 @@ use sqlx::sqlite::SqlitePoolOptions;
 use sqlx::{Pool, Sqlite};
 use tokio::task::JoinHandle;
 
+use crate::model::auth::{AuthenticatedUser, RegistryUserToken, RegistryUserTokenWithSecret};
 use crate::model::cargo::{CrateUploadResult, OwnersQueryResult, RegistryUser, SearchResults, YesNoMsgResult, YesNoResult};
 use crate::model::config::Configuration;
 use crate::model::deps::DependencyInfo;
 use crate::model::dlstats::DownloadStats;
-use crate::model::objects::{
-    AuthenticatedUser, CrateInfo, CrateUploadData, DocsGenerationJob, RegistryUserToken, RegistryUserTokenWithSecret,
-};
+use crate::model::objects::{CrateInfo, CrateUploadData, DocsGenerationJob};
 use crate::model::stats::GlobalStats;
 use crate::services::database::Database;
 use crate::services::deps::{DependencyChecker, DependencyCheckerAccess};

@@ -21,12 +21,13 @@ use tokio::fs::File;
 use tokio_util::io::ReaderStream;
 
 use crate::application::Application;
+use crate::model::auth::{AuthenticatedUser, RegistryUserToken, RegistryUserTokenWithSecret};
 use crate::model::cargo::{
     CrateUploadResult, OwnersChangeQuery, OwnersQueryResult, RegistryUser, SearchResults, YesNoMsgResult, YesNoResult,
 };
 use crate::model::deps::DependencyInfo;
 use crate::model::dlstats::DownloadStats;
-use crate::model::objects::{AuthenticatedUser, CrateInfo, RegistryUserToken, RegistryUserTokenWithSecret};
+use crate::model::objects::CrateInfo;
 use crate::model::stats::GlobalStats;
 use crate::model::{generate_token, AppVersion};
 use crate::services::index::Index;

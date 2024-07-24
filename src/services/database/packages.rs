@@ -9,12 +9,13 @@ use byteorder::ByteOrder;
 use chrono::{Datelike, Local};
 
 use super::Database;
+use crate::model::auth::AuthenticatedUser;
 use crate::model::cargo::{
     CrateUploadResult, OwnersQueryResult, RegistryUser, SearchResultCrate, SearchResults, SearchResultsMeta, YesNoMsgResult,
     YesNoResult,
 };
 use crate::model::dlstats::{DownloadStats, SERIES_LENGTH};
-use crate::model::objects::{AuthenticatedUser, CrateInfoVersion, CrateMetadataIndex, CrateUploadData, DocsGenerationJob};
+use crate::model::objects::{CrateInfoVersion, CrateMetadataIndex, CrateUploadData, DocsGenerationJob};
 use crate::utils::apierror::{error_forbidden, error_invalid_request, error_not_found, specialize, ApiError};
 
 impl<'c> Database<'c> {

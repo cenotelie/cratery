@@ -16,7 +16,7 @@ use cookie::time::OffsetDateTime;
 use cookie::{Cookie, CookieJar, Expiration, Key, SameSite};
 
 use super::extractors::Cookies;
-use crate::model::objects::AuthenticatedUser;
+use crate::model::auth::AuthenticatedUser;
 use crate::utils::apierror::ApiError;
 
 /// An authentication token
