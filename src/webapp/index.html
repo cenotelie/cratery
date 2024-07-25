@@ -26,8 +26,8 @@
       </div>
   </nav>
 </header>
-<body onload="doPageLoad()" class="bg-white dark:bg-gray-800">
-  <section class="bg-gray-50 dark:bg-gray-900 py-4">
+<body onload="doPageLoad()" class="bg-white dark:bg-gray-800 content-center">
+  <section class="bg-gray-50 dark:bg-gray-900 py-4 max-w-screen-lg mx-auto">
     <div class="p-6 space-y-4 md:space-y-6 sm:p-8 w-full">
       <h1 class="text-xl font-bold leading-tight tracking-tight text-gray-900 md:text-2xl dark:text-white" style="text-align: center;">
           Search for crates
@@ -88,6 +88,13 @@
       <div class="w-1/3 flex flex-col" id="stats-crates-last-updated">
       </div>
     </div>
+    <div class="p-6 mb-4 flex flex-col flex-wrap" id="crates-outdated">
+      <div class="w-full">
+        <h1 class="text-xl font-bold leading-tight tracking-tight text-gray-900 md:text-2xl dark:text-white" style="text-align: center;">
+          Head crates with outdated dependencies
+        </h1>
+      </div>
+    </div>
   </section>
 </body>
 <footer class="p-4 bg-white md:p-8 lg:p-10 dark:bg-gray-800">
@@ -103,6 +110,7 @@
   function doPageLoad() {
     onPageLoad().then((_) => {
       apiGetCratesStats().then(renderStats);
+      apiGetCratesOutdatedHeads().then(renderOutdated);
     });
   }
 
@@ -123,17 +131,25 @@
     }
   }
 
-  function renderCrateLink(crate, withVersion) {
+  function renderOutdated(crates) {
+    const listCratesEl = document.getElementById("crates-outdated");
+    for (const crate of crates) {
+      listCratesEl.appendChild(renderCrateLink(crate, true, true));
+    }
+  }
+
+  function renderCrateLink(crate, withVersion, hasWarning) {
+    const color = hasWarning ? "yellow" : "gray";
     const card = document.createElement("a");
-    card.className = "block m-4 p-6 bg-white border border-gray-200 rounded-lg shadow hover:bg-gray-100 dark:bg-gray-800 dark:border-gray-700 dark:hover:bg-gray-700";
+    card.className = `block m-2 p-2 bg-white border border-${color}-200 rounded-lg shadow hover:bg-${color}-100 dark:bg-${color}-800 dark:border-${color}-700 dark:hover:bg-${color}-700`;
     card.href = withVersion ? `/crates/${crate.name}/${crate.version}` : `/crates/${crate.name}`;
     const title = document.createElement("h5");
-    title.className = "mb-2 text-2xl font-bold tracking-tight text-gray-900 dark:text-white";
+    title.className = `mb-1 text-xl font-bold tracking-tight text-${color}-900 dark:text-${color}-100`;
     title.appendChild(document.createTextNode(crate.name));
     card.appendChild(title);
     if (withVersion) {
       const sub = document.createElement("p");
-      sub.className = "font-normal text-gray-700 dark:text-gray-400";
+      sub.className = `font-normal text-${color}-700 dark:text-${color}-400`;
       sub.appendChild(document.createTextNode(crate.version));
       card.appendChild(sub);
     }

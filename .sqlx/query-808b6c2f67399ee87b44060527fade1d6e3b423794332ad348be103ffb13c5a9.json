@@ -1,6 +1,6 @@
 {
   "db_name": "SQLite",
-  "query": "SELECT package, version\n            FROM PackageVersion\n            WHERE depsLastCheck <= $1 AND depsHasOutdated = FALSE",
+  "query": "SELECT package, version, depsLastCheck AS last_check FROM PackageVersion",
   "describe": {
     "columns": [
       {
@@ -12,15 +12,21 @@
         "name": "version",
         "ordinal": 1,
         "type_info": "Text"
+      },
+      {
+        "name": "last_check",
+        "ordinal": 2,
+        "type_info": "Datetime"
       }
     ],
     "parameters": {
-      "Right": 1
+      "Right": 0
     },
     "nullable": [
+      false,
       false,
       false
     ]
   },
-  "hash": "81c022252de53ad9d7392a322cb13b1e94785c531cdd6750f16253e916080167"
+  "hash": "808b6c2f67399ee87b44060527fade1d6e3b423794332ad348be103ffb13c5a9"
 }

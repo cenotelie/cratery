@@ -385,7 +385,7 @@ impl Application {
         .await
     }
 
-    /// Gets all the packages that are outdated while also being the latest version of their respective major banch
+    /// Gets all the packages that are outdated while also being the latest version
     pub async fn get_crates_outdated_heads(&self, auth_data: &AuthData) -> Result<Vec<CrateAndVersion>, ApiError> {
         let mut connection: sqlx::pool::PoolConnection<Sqlite> = self.db_pool.acquire().await?;
         in_transaction(&mut connection, |transaction| async move {

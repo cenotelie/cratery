@@ -5,10 +5,11 @@
 //! Service for persisting information in the database
 //! API related to the management of packages (crates)
 
+use std::collections::hash_map::Entry;
 use std::collections::HashMap;
 
 use byteorder::ByteOrder;
-use chrono::{Datelike, Duration, Local};
+use chrono::{Datelike, Duration, Local, NaiveDateTime};
 use futures::StreamExt;
 use semver::Version;
 
@@ -381,50 +382,45 @@ impl<'c> Database<'c> {
     }
 
     /// Gets the packages that need to have their dependencies analyzed
-    /// Those are the last version for each major branch of each crate
+    /// Those are the latest version of each crate
     pub async fn get_unanalyzed_crates(&self, deps_stale_analysis: i64) -> Result<Vec<CrateAndVersion>, ApiError> {
         let now = Local::now().naive_local();
         let from = now - Duration::minutes(deps_stale_analysis);
-        let mut cache = HashMap::<String, Vec<(u64, Version, String)>>::new();
+        let mut cache = HashMap::<String, (Version, String, NaiveDateTime)>::new();
         let transaction = &mut *self.transaction.borrow().await;
-        let mut stream = sqlx::query!(
-            "SELECT package, version
-            FROM PackageVersion
-            WHERE depsLastCheck <= $1 AND depsHasOutdated = FALSE",
-            from
-        )
-        .fetch(transaction);
+        let mut stream =
+            sqlx::query!("SELECT package, version, depsLastCheck AS last_check FROM PackageVersion").fetch(transaction);
         // accumulate the last version for each major branch of each crate
         while let Some(row) = stream.next().await {
             let row = row?;
             let name = row.package;
             let semver = row.version.parse::<Version>()?;
-            let entries = cache.entry(name.clone()).or_default();
-            if let Some(entry) = entries.iter_mut().find(|(major, _, _)| major == &semver.major) {
-                if entry.1 < semver {
-                    // replace
-                    entry.1 = semver;
-                    entry.2 = row.version;
+            match cache.entry(name.clone()) {
+                Entry::Vacant(entry) => {
+                    entry.insert((semver, row.version, row.last_check));
                 }
-            } else {
-                entries.push((semver.major, semver, row.version));
+                Entry::Occupied(mut entry) => {
+                    if semver > entry.get().0 {
+                        entry.insert((semver, row.version, row.last_check));
+                    }
+                }
             }
         }
-        let mut result = Vec::new();
-        for (name, entries) in cache {
-            for (_, _, version) in entries {
-                result.push(CrateAndVersion {
-                    name: name.clone(),
-                    version,
-                });
-            }
-        }
-        Ok(result)
+        Ok(cache
+            .into_iter()
+            .filter_map(|(name, (_, version, last_check))| {
+                if last_check < from {
+                    Some(CrateAndVersion { name, version })
+                } else {
+                    None
+                }
+            })
+            .collect())
     }
 
-    /// Gets all the packages that are outdated while also being the latest version of their respective major banch
+    /// Gets all the packages that are outdated while also being the latest version
     pub async fn get_crates_outdated_heads(&self) -> Result<Vec<CrateAndVersion>, ApiError> {
-        let mut cache = HashMap::<String, Vec<(u64, Version, String, bool)>>::new();
+        let mut cache = HashMap::<String, (Version, String, bool)>::new();
         let transaction = &mut *self.transaction.borrow().await;
         let mut stream = sqlx::query!(
             "SELECT package, version, depsHasOutdated AS has_outdated
@@ -436,30 +432,27 @@ impl<'c> Database<'c> {
             let row = row?;
             let name = row.package;
             let semver = row.version.parse::<Version>()?;
-            let entries = cache.entry(name.clone()).or_default();
-            if let Some(entry) = entries.iter_mut().find(|(major, _, _, _)| major == &semver.major) {
-                if entry.1 < semver {
-                    // replace
-                    entry.1 = semver;
-                    entry.2 = row.version;
-                    entry.3 = row.has_outdated;
+            match cache.entry(name.clone()) {
+                Entry::Vacant(entry) => {
+                    entry.insert((semver, row.version, row.has_outdated));
                 }
-            } else {
-                entries.push((semver.major, semver, row.version, row.has_outdated));
+                Entry::Occupied(mut entry) => {
+                    if semver > entry.get().0 {
+                        entry.insert((semver, row.version, row.has_outdated));
+                    }
+                }
             }
         }
-        let mut result = Vec::new();
-        for (name, entries) in cache {
-            for (_, _, version, has_outdated) in entries {
+        Ok(cache
+            .into_iter()
+            .filter_map(|(name, (_, version, has_outdated))| {
                 if has_outdated {
-                    result.push(CrateAndVersion {
-                        name: name.clone(),
-                        version,
-                    });
+                    Some(CrateAndVersion { name, version })
+                } else {
+                    None
                 }
-            }
-        }
-        Ok(result)
+            })
+            .collect())
     }
 
     /// Saves the dependency analysis of a crate
