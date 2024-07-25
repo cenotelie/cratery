@@ -45,8 +45,7 @@ pub fn check_hash(token: &str, hashed: &str) -> Result<(), ApiError> {
 impl<'c> Database<'c> {
     /// Gets the data about the current user
     pub async fn get_current_user(&self, authenticated_user: &AuthenticatedUser) -> Result<RegistryUser, ApiError> {
-        let uid = self.check_is_user(&authenticated_user.principal).await?;
-        self.get_user_profile(uid).await
+        self.get_user_profile(authenticated_user.uid).await
     }
 
     /// Retrieves a user profile
@@ -160,8 +159,7 @@ impl<'c> Database<'c> {
                 String::from("administration is forbidden for this authentication"),
             ));
         }
-        let uid = self.check_is_user(&authenticated_user.principal).await?;
-        self.check_is_admin(uid).await?;
+        self.check_is_admin(authenticated_user.uid).await?;
         let rows = sqlx::query_as!(
             RegistryUser,
             "SELECT id, isActive AS is_active, email, login, name, roles FROM RegistryUser ORDER BY login",
@@ -177,7 +175,7 @@ impl<'c> Database<'c> {
         authenticated_user: &AuthenticatedUser,
         target: &RegistryUser,
     ) -> Result<RegistryUser, ApiError> {
-        let uid = self.check_is_user(&authenticated_user.principal).await?;
+        let uid = authenticated_user.uid;
         let is_admin = if target.id == uid {
             self.get_is_admin(uid).await?
         } else {
@@ -240,7 +238,7 @@ impl<'c> Database<'c> {
                 String::from("administration is forbidden for this authentication"),
             ));
         }
-        let uid = self.check_is_user(&authenticated_user.principal).await?;
+        let uid = authenticated_user.uid;
         let target_uid = self.check_is_user(target).await?;
         self.check_is_admin(uid).await?;
         if uid == target_uid {
@@ -261,7 +259,7 @@ impl<'c> Database<'c> {
                 String::from("administration is forbidden for this authentication"),
             ));
         }
-        let uid = self.check_is_user(&authenticated_user.principal).await?;
+        let uid = authenticated_user.uid;
         self.check_is_admin(uid).await?;
         sqlx::query!("UPDATE RegistryUser SET isActive = TRUE WHERE email = $1", target)
             .execute(&mut *self.transaction.borrow().await)
@@ -277,7 +275,7 @@ impl<'c> Database<'c> {
                 String::from("administration is forbidden for this authentication"),
             ));
         }
-        let uid = self.check_is_user(&authenticated_user.principal).await?;
+        let uid = authenticated_user.uid;
         self.check_is_admin(uid).await?;
         let target_uid = sqlx::query!("SELECT id FROM RegistryUser WHERE email = $1", target)
             .fetch_optional(&mut *self.transaction.borrow().await)
@@ -307,7 +305,7 @@ impl<'c> Database<'c> {
                 String::from("administration is forbidden for this authentication"),
             ));
         }
-        let uid = self.check_is_user(&authenticated_user.principal).await?;
+        let uid = authenticated_user.uid;
         let rows = sqlx::query!(
             "SELECT id, name, lastUsed AS last_used, canWrite AS can_write, canAdmin AS can_admin FROM RegistryUserToken WHERE user = $1 ORDER BY id",
             uid
@@ -340,7 +338,7 @@ impl<'c> Database<'c> {
                 String::from("administration is forbidden for this authentication"),
             ));
         }
-        let uid = self.check_is_user(&authenticated_user.principal).await?;
+        let uid = authenticated_user.uid;
         let token_secret = generate_token(64);
         let token_hash = hash_token(&token_secret);
         let now = Local::now().naive_local();
@@ -374,7 +372,7 @@ impl<'c> Database<'c> {
                 String::from("administration is forbidden for this authentication"),
             ));
         }
-        let uid = self.check_is_user(&authenticated_user.principal).await?;
+        let uid = authenticated_user.uid;
         sqlx::query!("DELETE FROM RegistryUserToken WHERE user = $1 AND id = $2", uid, token_id)
             .execute(&mut *self.transaction.borrow().await)
             .await?;
@@ -384,7 +382,7 @@ impl<'c> Database<'c> {
     /// Checks an authentication request with a token
     pub async fn check_token(&self, login: &str, token_secret: &str) -> Result<AuthenticatedUser, ApiError> {
         let rows = sqlx::query!(
-            "SELECT email, RegistryUserToken.id, token, canWrite AS can_write, canAdmin AS can_admin
+            "SELECT RegistryUser.id AS uid, email, RegistryUserToken.id, token, canWrite AS can_write, canAdmin AS can_admin
             FROM RegistryUser INNER JOIN RegistryUserToken ON RegistryUser.id = RegistryUserToken.user
             WHERE isActive = TRUE AND login = $1",
             login
@@ -398,6 +396,7 @@ impl<'c> Database<'c> {
                     .execute(&mut *self.transaction.borrow().await)
                     .await?;
                 return Ok(AuthenticatedUser {
+                    uid: row.uid,
                     principal: row.email,
                     can_write: row.can_write,
                     can_admin: row.can_admin,

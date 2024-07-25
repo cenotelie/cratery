@@ -73,30 +73,31 @@ async fn main_serve_app(application: Arc<Application>, cookie_key: Key) -> Resul
         .nest(
             "/api/v1",
             Router::new()
-                .route("/stats", get(crate::routes::api_get_global_stats))
-                .route("/me", get(crate::routes::api_get_current_user))
-                .route("/oauth/code", post(crate::routes::api_login_with_oauth_code))
-                .route("/logout", post(crate::routes::api_logout))
+                .route("/me", get(crate::routes::api_v1_get_current_user))
+                .route("/oauth/code", post(crate::routes::api_v1_login_with_oauth_code))
+                .route("/logout", post(crate::routes::api_v1_logout))
                 .nest(
                     "/tokens",
                     Router::new()
-                        .route("/", get(crate::routes::api_get_tokens))
-                        .route("/", put(crate::routes::api_create_token))
-                        .route("/:token_id", delete(crate::routes::api_revoke_token)),
+                        .route("/", get(crate::routes::api_v1_get_tokens))
+                        .route("/", put(crate::routes::api_v1_create_token))
+                        .route("/:token_id", delete(crate::routes::api_v1_revoke_token)),
                 )
                 .nest(
                     "/users",
                     Router::new()
-                        .route("/", get(crate::routes::api_get_users))
-                        .route("/:target", patch(crate::routes::api_update_user))
-                        .route("/:target", delete(crate::routes::api_delete_user))
-                        .route("/:target/deactivate", post(crate::routes::api_deactivate_user))
-                        .route("/:target/reactivate", post(crate::routes::api_reactivate_user)),
+                        .route("/", get(crate::routes::api_v1_get_users))
+                        .route("/:target", patch(crate::routes::api_v1_update_user))
+                        .route("/:target", delete(crate::routes::api_v1_delete_user))
+                        .route("/:target/deactivate", post(crate::routes::api_v1_deactivate_user))
+                        .route("/:target/reactivate", post(crate::routes::api_v1_reactivate_user)),
                 )
                 .nest(
                     "/crates",
                     Router::new()
                         .route("/", get(crate::routes::api_v1_cargo_search))
+                        .route("/stats", get(crate::routes::api_v1_get_crates_stats))
+                        .route("/outdated", get(crate::routes::api_v1_get_crates_outdated_heads))
                         .route("/new", put(crate::routes::api_v1_cargo_publish_crate_version))
                         .route("/:package", get(crate::routes::api_v1_get_crate_info))
                         .route("/:package/readme", get(crate::routes::api_v1_get_crate_last_readme))
@@ -109,7 +110,7 @@ async fn main_serve_app(application: Arc<Application>, cookie_key: Key) -> Resul
                             post(crate::routes::api_v1_regen_crate_version_doc),
                         )
                         .route("/:package/:version/checkdeps", get(crate::routes::api_v1_check_crate_version))
-                        .route("/:package/dlstats", get(crate::routes::api_v1_get_download_stats))
+                        .route("/:package/dlstats", get(crate::routes::api_v1_get_crate_dl_stats))
                         .route("/:package/owners", get(crate::routes::api_v1_cargo_get_crate_owners))
                         .route("/:package/owners", put(crate::routes::api_v1_cargo_add_crate_owners))
                         .route("/:package/owners", delete(crate::routes::api_v1_cargo_remove_crate_owners)),

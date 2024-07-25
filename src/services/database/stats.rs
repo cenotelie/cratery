@@ -12,7 +12,7 @@ use crate::utils::apierror::ApiError;
 
 impl<'c> Database<'c> {
     /// Gets the global statistics for the registry
-    pub async fn get_global_stats(&self) -> Result<GlobalStats, ApiError> {
+    pub async fn get_crates_stats(&self) -> Result<GlobalStats, ApiError> {
         let total_crates = sqlx::query!("SELECT COUNT(name) AS total_crates FROM Package")
             .fetch_one(&mut *self.transaction.borrow().await)
             .await?

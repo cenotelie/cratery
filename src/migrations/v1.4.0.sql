@@ -1,0 +1,4 @@
+ALTER TABLE PackageVersion
+    ADD COLUMN depsLastCheck TIMESTAMP NOT NULL DEFAULT 0;
+ALTER TABLE PackageVersion
+    ADD COLUMN depsHasOutdated BOOLEAN NOT NULL DEFAULT false;

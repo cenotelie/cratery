@@ -28,7 +28,7 @@ use crate::model::cargo::{
 use crate::model::deps::DependencyInfo;
 use crate::model::packages::CrateInfo;
 use crate::model::stats::{DownloadStats, GlobalStats};
-use crate::model::{generate_token, AppVersion};
+use crate::model::{generate_token, AppVersion, CrateAndVersion};
 use crate::services::index::Index;
 use crate::services::storage::Storage;
 use crate::utils::apierror::{error_invalid_request, error_not_found, specialize, ApiError};
@@ -261,18 +261,13 @@ fn get_content_type(name: &str) -> &'static str {
     }
 }
 
-/// Gets the global statistics for the registry
-pub async fn api_get_global_stats(auth_data: AuthData, State(state): State<Arc<AxumState>>) -> ApiResult<GlobalStats> {
-    response(state.application.get_global_stats(&auth_data).await)
-}
-
 /// Get the current user
-pub async fn api_get_current_user(auth_data: AuthData, State(state): State<Arc<AxumState>>) -> ApiResult<RegistryUser> {
+pub async fn api_v1_get_current_user(auth_data: AuthData, State(state): State<Arc<AxumState>>) -> ApiResult<RegistryUser> {
     response(state.application.get_current_user(&auth_data).await)
 }
 
 /// Attemps to login using an OAuth code
-pub async fn api_login_with_oauth_code(
+pub async fn api_v1_login_with_oauth_code(
     mut auth_data: AuthData,
     State(state): State<Arc<AxumState>>,
     body: Bytes,
@@ -280,6 +275,7 @@ pub async fn api_login_with_oauth_code(
     let code = String::from_utf8_lossy(&body);
     let registry_user = state.application.login_with_oauth_code(&code).await.map_err(response_error)?;
     let cookie = auth_data.create_id_cookie(&AuthenticatedUser {
+        uid: registry_user.id,
         principal: registry_user.email.clone(),
         // when authenticated via cookies, can do everything
         can_write: true,
@@ -293,7 +289,7 @@ pub async fn api_login_with_oauth_code(
 }
 
 /// Logout a user
-pub async fn api_logout(mut auth_data: AuthData) -> (StatusCode, [(HeaderName, HeaderValue); 1]) {
+pub async fn api_v1_logout(mut auth_data: AuthData) -> (StatusCode, [(HeaderName, HeaderValue); 1]) {
     let cookie = auth_data.create_expired_id_cookie();
     (
         StatusCode::OK,
@@ -301,13 +297,45 @@ pub async fn api_logout(mut auth_data: AuthData) -> (StatusCode, [(HeaderName, H
     )
 }
 
+/// Gets the tokens for a user
+pub async fn api_v1_get_tokens(auth_data: AuthData, State(state): State<Arc<AxumState>>) -> ApiResult<Vec<RegistryUserToken>> {
+    response(state.application.get_tokens(&auth_data).await)
+}
+
+#[derive(Deserialize)]
+pub struct CreateTokenQuery {
+    #[serde(rename = "canWrite")]
+    can_write: bool,
+    #[serde(rename = "canAdmin")]
+    can_admin: bool,
+}
+
+/// Creates a token for the current user
+pub async fn api_v1_create_token(
+    auth_data: AuthData,
+    State(state): State<Arc<AxumState>>,
+    Query(CreateTokenQuery { can_write, can_admin }): Query<CreateTokenQuery>,
+    name: String,
+) -> ApiResult<RegistryUserTokenWithSecret> {
+    response(state.application.create_token(&auth_data, &name, can_write, can_admin).await)
+}
+
+/// Revoke a previous token
+pub async fn api_v1_revoke_token(
+    auth_data: AuthData,
+    State(state): State<Arc<AxumState>>,
+    Path(token_id): Path<i64>,
+) -> ApiResult<()> {
+    response(state.application.revoke_token(&auth_data, token_id).await)
+}
+
 /// Gets the known users
-pub async fn api_get_users(auth_data: AuthData, State(state): State<Arc<AxumState>>) -> ApiResult<Vec<RegistryUser>> {
+pub async fn api_v1_get_users(auth_data: AuthData, State(state): State<Arc<AxumState>>) -> ApiResult<Vec<RegistryUser>> {
     response(state.application.get_users(&auth_data).await)
 }
 
 /// Updates the information of a user
-pub async fn api_update_user(
+pub async fn api_v1_update_user(
     auth_data: AuthData,
     State(state): State<Arc<AxumState>>,
     Path(Base64(email)): Path<Base64>,
@@ -322,8 +350,17 @@ pub async fn api_update_user(
     response(state.application.update_user(&auth_data, &target).await)
 }
 
+/// Attempts to delete a user
+pub async fn api_v1_delete_user(
+    auth_data: AuthData,
+    State(state): State<Arc<AxumState>>,
+    Path(Base64(email)): Path<Base64>,
+) -> ApiResult<()> {
+    response(state.application.delete_user(&auth_data, &email).await)
+}
+
 /// Attempts to deactivate a user
-pub async fn api_deactivate_user(
+pub async fn api_v1_deactivate_user(
     auth_data: AuthData,
     State(state): State<Arc<AxumState>>,
     Path(Base64(email)): Path<Base64>,
@@ -332,7 +369,7 @@ pub async fn api_deactivate_user(
 }
 
 /// Attempts to deactivate a user
-pub async fn api_reactivate_user(
+pub async fn api_v1_reactivate_user(
     auth_data: AuthData,
     State(state): State<Arc<AxumState>>,
     Path(Base64(email)): Path<Base64>,
@@ -340,45 +377,31 @@ pub async fn api_reactivate_user(
     response(state.application.reactivate_user(&auth_data, &email).await)
 }
 
-/// Attempts to delete a user
-pub async fn api_delete_user(
-    auth_data: AuthData,
-    State(state): State<Arc<AxumState>>,
-    Path(Base64(email)): Path<Base64>,
-) -> ApiResult<()> {
-    response(state.application.delete_user(&auth_data, &email).await)
-}
-
-/// Gets the tokens for a user
-pub async fn api_get_tokens(auth_data: AuthData, State(state): State<Arc<AxumState>>) -> ApiResult<Vec<RegistryUserToken>> {
-    response(state.application.get_tokens(&auth_data).await)
-}
-
 #[derive(Deserialize)]
-pub struct CreateTokenQuery {
-    #[serde(rename = "canWrite")]
-    can_write: bool,
-    #[serde(rename = "canAdmin")]
-    can_admin: bool,
+pub struct SearchForm {
+    q: String,
+    per_page: Option<usize>,
 }
 
-/// Creates a token for the current user
-pub async fn api_create_token(
+pub async fn api_v1_cargo_search(
     auth_data: AuthData,
     State(state): State<Arc<AxumState>>,
-    Query(CreateTokenQuery { can_write, can_admin }): Query<CreateTokenQuery>,
-    name: String,
-) -> ApiResult<RegistryUserTokenWithSecret> {
-    response(state.application.create_token(&auth_data, &name, can_write, can_admin).await)
+    form: Query<SearchForm>,
+) -> ApiResult<SearchResults> {
+    response(state.application.search_crates(&auth_data, &form.q, form.per_page).await)
 }
 
-/// Revoke a previous token
-pub async fn api_revoke_token(
+/// Gets the global statistics for the registry
+pub async fn api_v1_get_crates_stats(auth_data: AuthData, State(state): State<Arc<AxumState>>) -> ApiResult<GlobalStats> {
+    response(state.application.get_crates_stats(&auth_data).await)
+}
+
+/// Gets all the packages that are outdated while also being the latest version of their respective major banch
+pub async fn api_v1_get_crates_outdated_heads(
     auth_data: AuthData,
     State(state): State<Arc<AxumState>>,
-    Path(token_id): Path<i64>,
-) -> ApiResult<()> {
-    response(state.application.revoke_token(&auth_data, token_id).await)
+) -> ApiResult<Vec<CrateAndVersion>> {
+    response(state.application.get_crates_outdated_heads(&auth_data).await)
 }
 
 pub async fn api_v1_cargo_publish_crate_version(
@@ -497,12 +520,12 @@ pub async fn api_v1_check_crate_version(
 }
 
 /// Gets the download statistics for a crate
-pub async fn api_v1_get_download_stats(
+pub async fn api_v1_get_crate_dl_stats(
     auth_data: AuthData,
     State(state): State<Arc<AxumState>>,
     Path(PathInfoCrate { package }): Path<PathInfoCrate>,
 ) -> ApiResult<DownloadStats> {
-    response(state.application.get_download_stats(&auth_data, &package).await)
+    response(state.application.get_crate_dl_stats(&auth_data, &package).await)
 }
 
 pub async fn api_v1_cargo_get_crate_owners(
@@ -534,20 +557,6 @@ pub async fn api_v1_cargo_remove_crate_owners(
             .remove_crate_owners(&auth_data, &package, &input.users)
             .await,
     )
-}
-
-#[derive(Deserialize)]
-pub struct SearchForm {
-    q: String,
-    per_page: Option<usize>,
-}
-
-pub async fn api_v1_cargo_search(
-    auth_data: AuthData,
-    State(state): State<Arc<AxumState>>,
-    form: Query<SearchForm>,
-) -> ApiResult<SearchResults> {
-    response(state.application.search_crates(&auth_data, &form.q, form.per_page).await)
 }
 
 pub async fn index_serve_inner(

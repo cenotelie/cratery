@@ -5,8 +5,12 @@
 //! Service for persisting information in the database
 //! API related to the management of packages (crates)
 
+use std::collections::HashMap;
+
 use byteorder::ByteOrder;
-use chrono::{Datelike, Local};
+use chrono::{Datelike, Duration, Local};
+use futures::StreamExt;
+use semver::Version;
 
 use super::Database;
 use crate::model::auth::AuthenticatedUser;
@@ -101,7 +105,6 @@ impl<'c> Database<'c> {
         authenticated_user: &AuthenticatedUser,
         package: &CrateUploadData,
     ) -> Result<CrateUploadResult, ApiError> {
-        let uid = self.check_is_user(&authenticated_user.principal).await?;
         if !authenticated_user.can_write {
             return Err(specialize(
                 error_forbidden(),
@@ -142,7 +145,7 @@ impl<'c> Database<'c> {
             let rows = sqlx::query!("SELECT owner FROM PackageOwner WHERE package = $1", package.metadata.name,)
                 .fetch_all(&mut *self.transaction.borrow().await)
                 .await?;
-            if rows.into_iter().all(|r| r.owner != uid) {
+            if rows.into_iter().all(|r| r.owner != authenticated_user.uid) {
                 return Err(specialize(
                     error_forbidden(),
                     String::from("User is not an owner of this package"),
@@ -161,7 +164,7 @@ impl<'c> Database<'c> {
             sqlx::query!(
                 "INSERT INTO PackageOwner (package, owner) VALUES ($1, $2)",
                 package.metadata.name,
-                uid
+                authenticated_user.uid
             )
             .execute(&mut *self.transaction.borrow().await)
             .await?;
@@ -170,12 +173,12 @@ impl<'c> Database<'c> {
         // create the version
         let description = package.metadata.description.as_ref().map_or("", std::string::String::as_str);
         sqlx::query!(
-            "INSERT INTO PackageVersion (package, version, description, upload, uploadedBy, yanked, hasDocs, docGenAttempted, downloadCount, downloads) VALUES ($1, $2, $3, $4, $5, false, false, false, 0, NULL)",
+            "INSERT INTO PackageVersion (package, version, description, upload, uploadedBy, yanked, hasDocs, docGenAttempted, downloadCount, downloads, depsLastCheck, depsHasOutdated) VALUES ($1, $2, $3, $4, $5, false, false, false, 0, NULL, 0, false)",
             package.metadata.name,
             package.metadata.vers,
             description,
             now,
-            uid
+            authenticated_user.uid
         )
         .execute(&mut *self.transaction.borrow().await)
         .await?;
@@ -197,19 +200,18 @@ impl<'c> Database<'c> {
 
     /// Checks the ownership of a package
     async fn check_crate_ownership(&self, authenticated_user: &AuthenticatedUser, package: &str) -> Result<i64, ApiError> {
-        let uid = self.check_is_user(&authenticated_user.principal).await?;
-        if self.check_is_admin(uid).await.is_ok() {
-            return Ok(uid);
+        if self.check_is_admin(authenticated_user.uid).await.is_ok() {
+            return Ok(authenticated_user.uid);
         }
         let row = sqlx::query!(
             "SELECT id from PackageOwner WHERE package = $1 AND owner = $2 LIMIT 1",
             package,
-            uid
+            authenticated_user.uid
         )
         .fetch_optional(&mut *self.transaction.borrow().await)
         .await?;
         match row {
-            Some(_) => Ok(uid),
+            Some(_) => Ok(authenticated_user.uid),
             None => Err(specialize(
                 error_forbidden(),
                 String::from("User is not an owner of this package"),
@@ -378,6 +380,103 @@ impl<'c> Database<'c> {
         }
     }
 
+    /// Gets the packages that need to have their dependencies analyzed
+    /// Those are the last version for each major branch of each crate
+    pub async fn get_unanalyzed_crates(&self, deps_stale_analysis: i64) -> Result<Vec<CrateAndVersion>, ApiError> {
+        let now = Local::now().naive_local();
+        let from = now - Duration::minutes(deps_stale_analysis);
+        let mut cache = HashMap::<String, Vec<(u64, Version, String)>>::new();
+        let transaction = &mut *self.transaction.borrow().await;
+        let mut stream = sqlx::query!(
+            "SELECT package, version
+            FROM PackageVersion
+            WHERE depsLastCheck <= $1 AND depsHasOutdated = FALSE",
+            from
+        )
+        .fetch(transaction);
+        // accumulate the last version for each major branch of each crate
+        while let Some(row) = stream.next().await {
+            let row = row?;
+            let name = row.package;
+            let semver = row.version.parse::<Version>()?;
+            let entries = cache.entry(name.clone()).or_default();
+            if let Some(entry) = entries.iter_mut().find(|(major, _, _)| major == &semver.major) {
+                if entry.1 < semver {
+                    // replace
+                    entry.1 = semver;
+                    entry.2 = row.version;
+                }
+            } else {
+                entries.push((semver.major, semver, row.version));
+            }
+        }
+        let mut result = Vec::new();
+        for (name, entries) in cache {
+            for (_, _, version) in entries {
+                result.push(CrateAndVersion {
+                    name: name.clone(),
+                    version,
+                });
+            }
+        }
+        Ok(result)
+    }
+
+    /// Gets all the packages that are outdated while also being the latest version of their respective major banch
+    pub async fn get_crates_outdated_heads(&self) -> Result<Vec<CrateAndVersion>, ApiError> {
+        let mut cache = HashMap::<String, Vec<(u64, Version, String, bool)>>::new();
+        let transaction = &mut *self.transaction.borrow().await;
+        let mut stream = sqlx::query!(
+            "SELECT package, version, depsHasOutdated AS has_outdated
+            FROM PackageVersion"
+        )
+        .fetch(transaction);
+        // accumulate the last version for each major branch of each crate
+        while let Some(row) = stream.next().await {
+            let row = row?;
+            let name = row.package;
+            let semver = row.version.parse::<Version>()?;
+            let entries = cache.entry(name.clone()).or_default();
+            if let Some(entry) = entries.iter_mut().find(|(major, _, _, _)| major == &semver.major) {
+                if entry.1 < semver {
+                    // replace
+                    entry.1 = semver;
+                    entry.2 = row.version;
+                    entry.3 = row.has_outdated;
+                }
+            } else {
+                entries.push((semver.major, semver, row.version, row.has_outdated));
+            }
+        }
+        let mut result = Vec::new();
+        for (name, entries) in cache {
+            for (_, _, version, has_outdated) in entries {
+                if has_outdated {
+                    result.push(CrateAndVersion {
+                        name: name.clone(),
+                        version,
+                    });
+                }
+            }
+        }
+        Ok(result)
+    }
+
+    /// Saves the dependency analysis of a crate
+    pub async fn set_crate_deps_analysis(&self, package: &str, version: &str, has_outdated: bool) -> Result<(), ApiError> {
+        let now = Local::now().naive_local();
+        sqlx::query!(
+            "UPDATE PackageVersion SET depsLastCheck = $3, depsHasOutdated = $4 WHERE package = $1 AND version = $2",
+            package,
+            version,
+            now,
+            has_outdated
+        )
+        .execute(&mut *self.transaction.borrow().await)
+        .await?;
+        Ok(())
+    }
+
     /// Increments the counter of downloads for a crate version
     pub async fn increment_crate_version_dl_count(&self, package: &str, version: &str) -> Result<(), ApiError> {
         let row = sqlx::query!(
@@ -407,12 +506,7 @@ impl<'c> Database<'c> {
     }
 
     /// Gets the download statistics for a crate
-    pub async fn get_download_stats(
-        &self,
-        authenticated_user: &AuthenticatedUser,
-        package: &str,
-    ) -> Result<DownloadStats, ApiError> {
-        self.check_is_user(&authenticated_user.principal).await?;
+    pub async fn get_crate_dl_stats(&self, package: &str) -> Result<DownloadStats, ApiError> {
         let rows = sqlx::query!("SELECT version, downloads FROM PackageVersion WHERE package = $1", package)
             .fetch_all(&mut *self.transaction.borrow().await)
             .await?;
@@ -425,12 +519,7 @@ impl<'c> Database<'c> {
     }
 
     /// Gets the list of owners for a package
-    pub async fn get_crate_owners(
-        &self,
-        authenticated_user: &AuthenticatedUser,
-        package: &str,
-    ) -> Result<OwnersQueryResult, ApiError> {
-        self.check_is_user(&authenticated_user.principal).await?;
+    pub async fn get_crate_owners(&self, package: &str) -> Result<OwnersQueryResult, ApiError> {
         let users = sqlx::query_as!(RegistryUser, "SELECT RegistryUser.id, isActive AS is_active, email, login, name, roles FROM RegistryUser INNER JOIN PackageOwner ON PackageOwner.owner = RegistryUser.id WHERE package = $1", package)
             .fetch_all(&mut *self.transaction.borrow().await).await?;
         Ok(OwnersQueryResult { users })

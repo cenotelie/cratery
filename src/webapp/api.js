@@ -1,5 +1,5 @@
-function apiGetGlobalStats() {
-  return fetch("/api/v1/stats").then((response) => {
+function apiGetVersion() {
+  return fetch("/version").then((response) => {
     if (response.status !== 200) {
       throw response.text();
     } else {
@@ -127,6 +127,26 @@ function apiReactivateUser(email) {
       throw response.text();
     } else {
       return response.text();
+    }
+  });
+}
+
+function apiGetCratesStats() {
+  return fetch("/api/v1/crates/stats").then((response) => {
+    if (response.status !== 200) {
+      throw response.text();
+    } else {
+      return response.json();
+    }
+  });
+}
+
+function apiGetCratesOutdatedHeads() {
+  return fetch("/api/v1/crates/outdated").then((response) => {
+    if (response.status !== 200) {
+      throw response.text();
+    } else {
+      return response.json();
     }
   });
 }

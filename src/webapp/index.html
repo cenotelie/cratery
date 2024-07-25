@@ -102,7 +102,7 @@
 <script>
   function doPageLoad() {
     onPageLoad().then((_) => {
-      apiGetGlobalStats().then(renderStats);
+      apiGetCratesStats().then(renderStats);
     });
   }
 

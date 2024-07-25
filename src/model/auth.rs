@@ -10,6 +10,8 @@ use serde_derive::{Deserialize, Serialize};
 /// Represents the possible access for an authenticated user
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct AuthenticatedUser {
+    /// The uid for the user
+    pub uid: i64,
     /// The principal (email of the user)
     pub principal: String,
     /// Whether a crate can be uploaded

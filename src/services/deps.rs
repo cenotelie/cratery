@@ -134,7 +134,7 @@ impl<'a> DependencyCheckerAccess<'a> {
             .get(reg_name)
             .copied()
             .unwrap_or(now.checked_sub(now.elapsed()).unwrap());
-        let is_stale = now.duration_since(last_touch) > Duration::from_millis(self.configuration.deps_analysis_stale_period);
+        let is_stale = now.duration_since(last_touch) > Duration::from_millis(self.configuration.deps_stale_registry);
 
         let mut reg_location = PathBuf::from(&self.configuration.data_dir);
         reg_location.push(DATA_SUB_DIR);
@@ -207,8 +207,7 @@ impl<'a> DependencyCheckerAccess<'a> {
                 .get(&target_uri)
                 .copied()
                 .unwrap_or(now.checked_sub(now.elapsed()).unwrap());
-            let is_stale =
-                now.duration_since(last_touch) > Duration::from_millis(self.configuration.deps_analysis_stale_period);
+            let is_stale = now.duration_since(last_touch) > Duration::from_millis(self.configuration.deps_stale_registry);
             if is_stale {
                 self.get_dependency_info_sparse_fetch(&file_path, target_uri, credentials, &mut data)
                     .await

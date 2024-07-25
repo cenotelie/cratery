@@ -386,13 +386,24 @@ impl Application {
         .await
     }
 
-    /// Gets the download statistics for a crate
-    pub async fn get_download_stats(&self, auth_data: &AuthData, package: &str) -> Result<DownloadStats, ApiError> {
+    /// Gets all the packages that are outdated while also being the latest version of their respective major banch
+    pub async fn get_crates_outdated_heads(&self, auth_data: &AuthData) -> Result<Vec<CrateAndVersion>, ApiError> {
         let mut connection: sqlx::pool::PoolConnection<Sqlite> = self.db_pool.acquire().await?;
         in_transaction(&mut connection, |transaction| async move {
             let app = self.with_transaction(transaction);
-            let principal = app.authenticate(auth_data).await?;
-            app.database.get_download_stats(&principal, package).await
+            let _principal = app.authenticate(auth_data).await?;
+            app.database.get_crates_outdated_heads().await
+        })
+        .await
+    }
+
+    /// Gets the download statistics for a crate
+    pub async fn get_crate_dl_stats(&self, auth_data: &AuthData, package: &str) -> Result<DownloadStats, ApiError> {
+        let mut connection: sqlx::pool::PoolConnection<Sqlite> = self.db_pool.acquire().await?;
+        in_transaction(&mut connection, |transaction| async move {
+            let app = self.with_transaction(transaction);
+            let _principal = app.authenticate(auth_data).await?;
+            app.database.get_crate_dl_stats(package).await
         })
         .await
     }
@@ -402,8 +413,8 @@ impl Application {
         let mut connection: sqlx::pool::PoolConnection<Sqlite> = self.db_pool.acquire().await?;
         in_transaction(&mut connection, |transaction| async move {
             let app = self.with_transaction(transaction);
-            let principal = app.authenticate(auth_data).await?;
-            app.database.get_crate_owners(&principal, package).await
+            let _principal = app.authenticate(auth_data).await?;
+            app.database.get_crate_owners(package).await
         })
         .await
     }
@@ -441,12 +452,12 @@ impl Application {
     }
 
     /// Gets the global statistics for the registry
-    pub async fn get_global_stats(&self, auth_data: &AuthData) -> Result<GlobalStats, ApiError> {
+    pub async fn get_crates_stats(&self, auth_data: &AuthData) -> Result<GlobalStats, ApiError> {
         let mut connection: sqlx::pool::PoolConnection<Sqlite> = self.db_pool.acquire().await?;
         in_transaction(&mut connection, |transaction| async move {
             let app = self.with_transaction(transaction);
             let _principal = app.authenticate(auth_data).await?;
-            app.database.get_global_stats().await
+            app.database.get_crates_stats().await
         })
         .await
     }
@@ -499,7 +510,9 @@ impl<'a, 'c> ApplicationWithTransaction<'a, 'c> {
         if let Some(token) = &auth_data.token {
             self.authenticate_token(token).await
         } else {
-            auth_data.try_authenticate_cookie()?.ok_or_else(error_unauthorized)
+            let authenticated_user = auth_data.try_authenticate_cookie()?.ok_or_else(error_unauthorized)?;
+            self.database.check_is_user(&authenticated_user.principal).await?;
+            Ok(authenticated_user)
         }
     }
 
@@ -510,6 +523,7 @@ impl<'a, 'c> ApplicationWithTransaction<'a, 'c> {
         {
             // self authentication to read
             return Ok(AuthenticatedUser {
+                uid: -1,
                 principal: self.application.configuration.self_service_login.clone(),
                 can_write: false,
                 can_admin: false,

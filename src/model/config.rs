@@ -247,8 +247,11 @@ pub struct Configuration {
     #[serde(rename = "externalRegistries")]
     pub external_registries: Vec<ExternalRegistry>,
     /// Number of milliseconds after which the local data about an external registry are deemed stale and must be pulled again
-    #[serde(rename = "depsAnalysisStalePeriod")]
-    pub deps_analysis_stale_period: u64,
+    #[serde(rename = "depsStaleRegistry")]
+    pub deps_stale_registry: u64,
+    /// Number of minutes after which the saved analysis for a crate becomes stale
+    #[serde(rename = "depsStaleAnalysis")]
+    pub deps_stale_analysis: i64,
     /// The name to use for the local registry in cargo and git config
     #[serde(rename = "selfLocalName")]
     pub self_local_name: String,
@@ -321,9 +324,12 @@ impl Configuration {
             oauth_client_id: get_var("REGISTRY_OAUTH_CLIENT_ID")?,
             oauth_client_secret: get_var("REGISTRY_OAUTH_CLIENT_SECRET")?,
             oauth_client_scope: get_var("REGISTRY_OAUTH_CLIENT_SCOPE")?,
-            deps_analysis_stale_period: get_var("REGISTRY_DEPS_ANALYSIS_STALE_PERIOD")
-                .map(|s| s.parse().expect("invalid REGISTRY_DEPS_ANALYSIS_STALE_PERIOD"))
-                .unwrap_or(60 * 1000),
+            deps_stale_registry: get_var("REGISTRY_DEPS_STALE_REGISTRY")
+                .map(|s| s.parse().expect("invalid REGISTRY_DEPS_STALE_REGISTRY"))
+                .unwrap_or(60 * 1000), // 1 minute
+            deps_stale_analysis: get_var("REGISTRY_DEPS_STALE_ANALYSIS")
+                .map(|s| s.parse().expect("invalid REGISTRY_DEPS_STALE_ANALYSIS"))
+                .unwrap_or(24 * 60), // 24 hours
             self_local_name,
             self_service_login: super::generate_token(16),
             self_service_token: super::generate_token(64),
