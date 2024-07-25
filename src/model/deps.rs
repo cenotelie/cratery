@@ -23,6 +23,6 @@ pub struct DependencyInfo {
     #[serde(rename = "lastVersion")]
     pub last_version: String,
     /// Whether the requirement leads to the resolution of an outdated version
-    #[serde(rename = "isOudated")]
+    #[serde(rename = "isOutdated")]
     pub is_outdated: bool,
 }

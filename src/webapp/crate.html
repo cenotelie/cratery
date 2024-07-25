@@ -494,10 +494,10 @@
     const cellStatus = document.createElement("td");
     cellStatus.className = "px-6 py-4";
     if (depInfo !== null) {
-      const color = depInfo.isOudated ? "yellow" : "green";
+      const color = depInfo.isOutdated ? "yellow" : "green";
       const span = document.createElement("span");
       span.className = `bg-${color}-100 text-${color}-800 text-xs font-medium me-2 px-2.5 py-0.5 rounded dark:bg-${color}-900 dark:text-${color}-300`;
-      span.appendChild(document.createTextNode(depInfo.isOudated ? "out of date" : "up to date"));
+      span.appendChild(document.createTextNode(depInfo.isOutdated ? "out of date" : "up to date"));
       cellStatus.appendChild(span);
     }
     row.appendChild(cellStatus);
