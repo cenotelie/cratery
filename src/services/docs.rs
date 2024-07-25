@@ -15,7 +15,6 @@ use log::{error, info};
 use sqlx::{Pool, Sqlite};
 use tar::Archive;
 use tokio::process::Command;
-use tokio::task::JoinHandle;
 
 use crate::model::config::Configuration;
 use crate::model::CrateAndVersion;
@@ -27,12 +26,9 @@ use crate::utils::concurrent::n_at_a_time;
 use crate::utils::db::in_transaction;
 
 /// Creates a worker for the generation of documentation
-pub fn create_docs_worker(
-    configuration: Arc<Configuration>,
-    pool: Pool<Sqlite>,
-) -> (UnboundedSender<CrateAndVersion>, JoinHandle<()>) {
+pub fn create_docs_worker(configuration: Arc<Configuration>, pool: Pool<Sqlite>) -> UnboundedSender<CrateAndVersion> {
     let (sender, mut receiver) = futures::channel::mpsc::unbounded();
-    let handle = tokio::spawn(async move {
+    let _handle = tokio::spawn(async move {
         while let Some(job) = receiver.next().await {
             if let Err(e) = docs_worker_job(configuration.clone(), &pool, job).await {
                 error!("{e}");
@@ -42,7 +38,7 @@ pub fn create_docs_worker(
             }
         }
     });
-    (sender, handle)
+    sender
 }
 
 /// Executes a documentation generation job

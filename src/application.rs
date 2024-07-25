@@ -12,7 +12,6 @@ use futures::SinkExt;
 use log::info;
 use sqlx::sqlite::SqlitePoolOptions;
 use sqlx::{Pool, Sqlite};
-use tokio::task::JoinHandle;
 
 use crate::model::auth::{AuthenticatedUser, RegistryUserToken, RegistryUserTokenWithSecret};
 use crate::model::cargo::{
@@ -38,9 +37,9 @@ pub struct Application {
     /// The database connection
     pub db_pool: Pool<Sqlite>,
     /// Service to index the metadata of crates
-    pub index: Mutex<Index>,
+    pub index: Arc<Mutex<Index>>,
     /// Service to check the dependencies of a crate
-    pub deps_checker: Mutex<DependencyChecker>,
+    pub deps_checker: Arc<Mutex<DependencyChecker>>,
     /// Sender of documentation generation jobs
     pub docs_worker_sender: UnboundedSender<CrateAndVersion>,
 }
@@ -50,7 +49,7 @@ const DB_EMPTY: &[u8] = include_bytes!("empty.db");
 
 impl Application {
     /// Creates a new application
-    pub async fn launch() -> Result<(Arc<Self>, JoinHandle<()>), ApiError> {
+    pub async fn launch() -> Result<Arc<Self>, ApiError> {
         // load configuration
         let configuration = Arc::new(Configuration::from_env()?);
         // write the auth data
@@ -70,11 +69,10 @@ impl Application {
         crate::migrations::migrate_to_last(&mut *db_pool.acquire().await?).await?;
 
         // prepare the index
-        let index = Index::on_launch(configuration.get_index_git_config()).await?;
+        let index = Arc::new(Mutex::new(Index::on_launch(configuration.get_index_git_config()).await?));
 
         // docs worker
-        let (docs_worker_sender, docs_worker) =
-            crate::services::docs::create_docs_worker(configuration.clone(), db_pool.clone());
+        let docs_worker_sender = crate::services::docs::create_docs_worker(configuration.clone(), db_pool.clone());
         // check undocumented packages
         {
             let mut docs_worker_sender = docs_worker_sender.clone();
@@ -90,16 +88,17 @@ impl Application {
             .await?;
         }
 
-        Ok((
-            Arc::new(Self {
-                configuration,
-                db_pool,
-                index: Mutex::new(index),
-                deps_checker: Mutex::new(DependencyChecker::default()),
-                docs_worker_sender,
-            }),
-            docs_worker,
-        ))
+        // deps worker
+        let deps_checker = Arc::new(Mutex::new(DependencyChecker::default()));
+        crate::services::deps::create_deps_worker(configuration.clone(), deps_checker.clone(), index.clone(), db_pool.clone());
+
+        Ok(Arc::new(Self {
+            configuration,
+            db_pool,
+            index,
+            deps_checker,
+            docs_worker_sender,
+        }))
     }
 
     /// Gets the storage service

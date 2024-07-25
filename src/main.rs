@@ -17,7 +17,6 @@ use axum::extract::DefaultBodyLimit;
 use axum::routing::{delete, get, patch, post, put};
 use axum::Router;
 use cookie::Key;
-use futures::future::select;
 use log::info;
 
 use crate::application::Application;
@@ -160,7 +159,7 @@ async fn main() {
     setup_log();
     info!("{} commit={} tag={}", CRATE_NAME, GIT_HASH, GIT_TAG);
 
-    let (application, worker) = crate::application::Application::launch().await.unwrap();
+    let application = crate::application::Application::launch().await.unwrap();
 
     let cookie_key = Key::from(
         std::env::var("REGISTRY_WEB_COOKIE_SECRET")
@@ -170,6 +169,5 @@ async fn main() {
 
     let server = pin!(main_serve_app(application, cookie_key,));
 
-    let program = select(server, worker);
-    let _ = waiting_sigterm(program).await;
+    let _ = waiting_sigterm(server).await;
 }

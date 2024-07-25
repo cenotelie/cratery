@@ -7,20 +7,82 @@
 use std::collections::HashMap;
 use std::io::{BufRead, BufReader};
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use base64::engine::general_purpose::STANDARD;
 use base64::Engine;
 use futures::lock::Mutex;
+use log::{error, info};
 use semver::{Version, VersionReq};
+use sqlx::{Pool, Sqlite};
 use tokio::fs::File;
 use tokio::io::AsyncBufReadExt;
 
 use crate::model::cargo::{IndexCrateDependency, IndexCrateMetadata};
 use crate::model::config::{Configuration, ExternalRegistryProtocol};
 use crate::model::deps::DependencyInfo;
+use crate::model::CrateAndVersion;
+use crate::services::database::Database;
 use crate::services::index::Index;
 use crate::utils::apierror::{error_backend_failure, error_not_found, specialize, ApiError};
+use crate::utils::db::in_transaction;
+
+/// Creates a worker for the continuous check of dependencies for head crates
+pub fn create_deps_worker(
+    configuration: Arc<Configuration>,
+    deps_checker: Arc<Mutex<DependencyChecker>>,
+    index: Arc<Mutex<Index>>,
+    pool: Pool<Sqlite>,
+) {
+    let _handle = tokio::spawn(async move {
+        // every minute
+        let mut interval = tokio::time::interval(Duration::from_secs(60));
+        loop {
+            let _instant = interval.tick().await;
+            if let Err(e) = deps_worker_job(&configuration, deps_checker.clone(), index.clone(), &pool).await {
+                error!("{e}");
+                if let Some(backtrace) = &e.backtrace {
+                    error!("{backtrace}");
+                }
+            }
+        }
+    });
+}
+
+/// A job for the worker
+async fn deps_worker_job(
+    configuration: &Configuration,
+    deps_checker: Arc<Mutex<DependencyChecker>>,
+    index: Arc<Mutex<Index>>,
+    pool: &Pool<Sqlite>,
+) -> Result<(), ApiError> {
+    let targets = {
+        let mut connection = pool.acquire().await?;
+        in_transaction(&mut connection, |transaction| async move {
+            let database = Database::new(transaction);
+            database.get_unanalyzed_crates(configuration.deps_stale_analysis).await
+        })
+        .await?
+    };
+    for CrateAndVersion { name, version } in targets {
+        info!("checking deps for {name} {version}");
+        let access = DependencyCheckerAccess {
+            data: &deps_checker,
+            configuration,
+            index: &index,
+        };
+        let deps_info = access.check_crate(&name, &version).await?;
+        let has_outdated = deps_info.iter().any(|info| info.is_outdated);
+        let mut connection = pool.acquire().await?;
+        in_transaction(&mut connection, |transaction| async move {
+            let database = Database::new(transaction);
+            database.set_crate_deps_analysis(&name, &version, has_outdated).await
+        })
+        .await?;
+    }
+    Ok(())
+}
 
 /// Service to check the dependencies of a crate
 #[derive(Debug, Clone, Default)]
