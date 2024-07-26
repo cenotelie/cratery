@@ -59,13 +59,6 @@ impl<'config> Storage for S3Storage<'config> {
         Ok(())
     }
 
-    /// Stores the README for a crate
-    async fn store_crate_readme(&self, name: &str, version: &str, content: Vec<u8>) -> Result<(), ApiError> {
-        let object_key = format!("crates/{name}/{version}/readme");
-        crate::utils::s3::upload_object_raw(self.params, self.bucket, &object_key, content).await?;
-        Ok(())
-    }
-
     /// Downloads a crate
     async fn download_crate(&self, name: &str, version: &str) -> Result<Vec<u8>, ApiError> {
         let object_key = format!("crates/{name}/{version}");

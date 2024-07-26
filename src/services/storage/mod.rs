@@ -24,14 +24,6 @@ pub trait Storage {
     /// Stores the data for a crate
     fn store_crate(&self, metadata: &CrateMetadata, content: Vec<u8>) -> impl Future<Output = Result<(), ApiError>> + Send;
 
-    /// Stores the README for a crate
-    fn store_crate_readme(
-        &self,
-        name: &str,
-        version: &str,
-        content: Vec<u8>,
-    ) -> impl Future<Output = Result<(), ApiError>> + Send;
-
     /// Downloads a crate
     fn download_crate(&self, name: &str, version: &str) -> impl Future<Output = Result<Vec<u8>, ApiError>> + Send;
 
@@ -93,19 +85,6 @@ impl<'config> Storage for StorageImpl<'config> {
             }
             StorageConfig::S3 { params, bucket } => {
                 self.with_timeout(s3::S3Storage::new(params, bucket).store_crate(metadata, content))
-                    .await
-            }
-        }
-    }
-
-    async fn store_crate_readme(&self, name: &str, version: &str, content: Vec<u8>) -> Result<(), ApiError> {
-        match &self.config.storage {
-            StorageConfig::FileSystem => {
-                self.with_timeout(fs::FsStorage::new(&self.config.data_dir).store_crate_readme(name, version, content))
-                    .await
-            }
-            StorageConfig::S3 { params, bucket } => {
-                self.with_timeout(s3::S3Storage::new(params, bucket).store_crate_readme(name, version, content))
                     .await
             }
         }

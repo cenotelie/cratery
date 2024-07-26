@@ -70,13 +70,6 @@ impl<'config> Storage for FsStorage<'config> {
         Ok(())
     }
 
-    /// Stores the README for a crate
-    async fn store_crate_readme(&self, name: &str, version: &str, content: Vec<u8>) -> Result<(), ApiError> {
-        self.write_to_file(&format!("crates/{name}/{version}/readme"), &content)
-            .await?;
-        Ok(())
-    }
-
     /// Downloads a crate
     async fn download_crate(&self, name: &str, version: &str) -> Result<Vec<u8>, ApiError> {
         self.read_from_file(&format!("{name}/{version}")).await
