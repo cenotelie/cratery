@@ -137,7 +137,7 @@ This is specified with the following environment variables.
 When performing dependency analysis, Cratery will access `crates.io` and other external registries.
 
 * `REGISTRY_DEPS_STALE_REGISTRY`: Number of milliseconds after which the local data about an external registry are deemed stale and must be pulled again. Defaults to 60000 (1 minute).
-* `REGISTRY_DEPS_STALE_ANALYSIS`: Number of minutes after which the saved analysis for a crate becomes stale. Defaults to 1 day.
+* `REGISTRY_DEPS_STALE_ANALYSIS`: Number of minutes after which the saved analysis for a crate becomes stale. Defaults to 1 day. A negative number deactivates background analysis of crates.
 
 
 ## Contributing

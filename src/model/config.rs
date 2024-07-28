@@ -5,6 +5,7 @@
 //! Module for configuration management
 
 use std::net::{IpAddr, Ipv4Addr};
+use std::process::Stdio;
 use std::str::FromStr;
 
 use axum::http::Uri;
@@ -13,6 +14,7 @@ use base64::Engine;
 use serde_derive::{Deserialize, Serialize};
 use tokio::fs::File;
 use tokio::io::{AsyncWriteExt, BufWriter};
+use tokio::process::Command;
 
 use crate::model::errors::MissingEnvVar;
 use crate::utils::apierror::ApiError;
@@ -250,6 +252,7 @@ pub struct Configuration {
     #[serde(rename = "depsStaleRegistry")]
     pub deps_stale_registry: u64,
     /// Number of minutes after which the saved analysis for a crate becomes stale
+    /// A negative number deactivates background analysis of crates
     #[serde(rename = "depsStaleAnalysis")]
     pub deps_stale_analysis: i64,
     /// The name to use for the local registry in cargo and git config
@@ -261,6 +264,9 @@ pub struct Configuration {
     /// The token to the service account for self authentication
     #[serde(rename = "selfServiceToken")]
     pub self_service_token: String,
+    /// The version of the locally installed toolchain
+    #[serde(rename = "selfToolchainVersion")]
+    pub self_toolchain_version: String,
 }
 
 impl Configuration {
@@ -269,7 +275,7 @@ impl Configuration {
     /// # Errors
     ///
     /// Return a `VarError` when an expected environment variable is not present
-    pub fn from_env() -> Result<Self, MissingEnvVar> {
+    pub async fn from_env() -> Result<Self, MissingEnvVar> {
         let data_dir = get_var("REGISTRY_DATA_DIR")?;
         let web_public_uri = get_var("REGISTRY_WEB_PUBLIC_URI")?;
         let web_domain = Uri::from_str(&web_public_uri)
@@ -333,6 +339,7 @@ impl Configuration {
             self_local_name,
             self_service_login: super::generate_token(16),
             self_service_token: super::generate_token(64),
+            self_toolchain_version: get_rustc_version().await,
             external_registries,
         })
     }
@@ -449,4 +456,17 @@ impl Configuration {
         }
         Ok(())
     }
+}
+
+/// Gets the rustc version
+async fn get_rustc_version() -> String {
+    let child = Command::new("rustc")
+        .args(["+stable", "--version"])
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .spawn()
+        .unwrap();
+    let output = child.wait_with_output().await.unwrap();
+    let output = String::from_utf8(output.stdout).unwrap();
+    output.split_ascii_whitespace().nth(1).unwrap().to_string()
 }

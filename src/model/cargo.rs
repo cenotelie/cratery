@@ -219,7 +219,7 @@ pub fn validation_error(details: &str) -> Result<(), ApiError> {
 }
 
 /// The kind of dependency
-#[derive(Debug, Default, Clone, Copy, Serialize, Deserialize)]
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum DependencyKind {
     /// A normal dependency
     #[default]
@@ -401,6 +401,13 @@ pub struct IndexCrateDependency {
     /// package name. If not specified or null, this dependency is not
     /// renamed.
     pub package: Option<String>,
+}
+
+impl IndexCrateDependency {
+    /// Gets the crate name for this dependency
+    pub fn get_name(&self) -> &str {
+        self.package.as_deref().unwrap_or(&self.name)
+    }
 }
 
 impl From<&CrateMetadataDependency> for IndexCrateDependency {

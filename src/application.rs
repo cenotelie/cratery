@@ -18,7 +18,7 @@ use crate::model::cargo::{
     CrateUploadData, CrateUploadResult, OwnersQueryResult, RegistryUser, SearchResults, YesNoMsgResult, YesNoResult,
 };
 use crate::model::config::Configuration;
-use crate::model::deps::DependencyInfo;
+use crate::model::deps::DepsAnalysis;
 use crate::model::packages::CrateInfo;
 use crate::model::stats::{DownloadStats, GlobalStats};
 use crate::model::CrateAndVersion;
@@ -51,7 +51,7 @@ impl Application {
     /// Creates a new application
     pub async fn launch() -> Result<Arc<Self>, ApiError> {
         // load configuration
-        let configuration = Arc::new(Configuration::from_env()?);
+        let configuration = Arc::new(Configuration::from_env().await?);
         // write the auth data
         configuration.write_auth_config().await?;
 
@@ -483,7 +483,7 @@ impl Application {
         auth_data: &AuthData,
         package: &str,
         version: &str,
-    ) -> Result<Vec<DependencyInfo>, ApiError> {
+    ) -> Result<DepsAnalysis, ApiError> {
         let mut connection: sqlx::pool::PoolConnection<Sqlite> = self.db_pool.acquire().await?;
         in_transaction(&mut connection, |transaction| async move {
             let app = self.with_transaction(transaction);

@@ -14,14 +14,13 @@ use base64::engine::general_purpose::STANDARD;
 use base64::Engine;
 use futures::lock::Mutex;
 use log::{error, info};
-use semver::{Version, VersionReq};
 use sqlx::{Pool, Sqlite};
 use tokio::fs::File;
 use tokio::io::AsyncBufReadExt;
 
 use crate::model::cargo::{IndexCrateDependency, IndexCrateMetadata};
 use crate::model::config::{Configuration, ExternalRegistryProtocol};
-use crate::model::deps::DependencyInfo;
+use crate::model::deps::{DepsAnalysis, DepsGraph, DepsGraphCrateOrigin, BUILTIN_CRATES_REGISTRY_URI};
 use crate::model::CrateAndVersion;
 use crate::services::database::Database;
 use crate::services::index::Index;
@@ -57,6 +56,11 @@ async fn deps_worker_job(
     index: Arc<Mutex<Index>>,
     pool: &Pool<Sqlite>,
 ) -> Result<(), ApiError> {
+    if configuration.deps_stale_analysis <= 0 {
+        // deactivated
+        return Ok(());
+    }
+
     let targets = {
         let mut connection = pool.acquire().await?;
         in_transaction(&mut connection, |transaction| async move {
@@ -72,8 +76,8 @@ async fn deps_worker_job(
             configuration,
             index: &index,
         };
-        let deps_info = access.check_crate(&name, &version).await?;
-        let has_outdated = deps_info.iter().any(|info| info.is_outdated);
+        let analysis = access.check_crate(&name, &version).await?;
+        let has_outdated = analysis.direct_dependencies.iter().any(|info| info.is_outdated);
         let mut connection = pool.acquire().await?;
         in_transaction(&mut connection, |transaction| async move {
             let database = Database::new(transaction);
@@ -110,61 +114,58 @@ const CRATES_IO_NAME: &str = "crates.io";
 /// Name of the sub-directory to use within the data directory
 const DATA_SUB_DIR: &str = "deps";
 
+/// The URI of the git repo with the `RustSec` database
+const RUSTSEC_DB_GIT_URI: &str = "https://github.com/rustsec/advisory-db";
+/// The branch inside the repo with the actual data
+const RUSTSEC_DB_GIT_BRANCH: &str = "osv";
+
 impl<'a> DependencyCheckerAccess<'a> {
     /// Checks the dependencies of a local crate
-    pub async fn check_crate(&self, package: &str, version: &str) -> Result<Vec<DependencyInfo>, ApiError> {
+    pub async fn check_crate(&self, package: &str, version: &str) -> Result<DepsAnalysis, ApiError> {
         let metadata = self.index.lock().await.get_crate_data(package).await?;
         let metadata = metadata
             .iter()
             .find(|meta| meta.vers == version)
             .ok_or_else(error_not_found)?;
 
-        let mut results = Vec::new();
-        for dep in &metadata.deps {
-            results.push(self.get_dependency_info(dep).await?);
-        }
-
-        Ok(results)
+        let graph = self.get_dependencies_closure(&metadata.deps).await?;
+        Ok(DepsAnalysis::new(&graph, &metadata.deps))
     }
 
-    /// Gets the information about a dependency
-    async fn get_dependency_info(&self, dep: &IndexCrateDependency) -> Result<DependencyInfo, ApiError> {
-        let requirement = dep.req.parse::<VersionReq>()?;
-        let versions = self.get_dependency_versions(dep).await?;
-        let versions = versions
-            .into_iter()
-            .map(|v| v.vers.parse::<Version>())
-            .collect::<Result<Vec<_>, _>>()?;
-        let last_version = versions.iter().max().unwrap();
-        Ok(DependencyInfo {
-            registry: dep.registry.clone(),
-            package: dep.name.clone(),
-            required: dep.req.clone(),
-            kind: dep.kind,
-            last_version: last_version.to_string(),
-            is_outdated: !requirement.matches(last_version),
-        })
+    /// Gets the transitive closure of dependencies
+    async fn get_dependencies_closure(&self, directs: &[IndexCrateDependency]) -> Result<DepsGraph, ApiError> {
+        let mut graph = DepsGraph::default();
+        let get_versions = |registry: Option<String>, name: String| async move {
+            self.get_dependency_versions(registry.as_deref(), &name).await
+        };
+        for direct in directs {
+            graph
+                .resolve(direct, &[], &[DepsGraphCrateOrigin::Direct(direct.kind)], &get_versions)
+                .await?;
+        }
+        graph.close(&get_versions).await?;
+        Ok(graph)
     }
 
     /// Retrieves the versions of a dependency
-    async fn get_dependency_versions(&self, dep: &IndexCrateDependency) -> Result<Vec<IndexCrateMetadata>, ApiError> {
-        if let Some(registry) = &dep.registry {
-            if registry == CRATES_IO_REGISTRY_URI {
-                self.get_dependency_info_sparse(&dep.name, CRATES_IO_NAME, CRATES_IO_INDEX_URI, None)
+    async fn get_dependency_versions(&self, registry: Option<&str>, name: &str) -> Result<Vec<IndexCrateMetadata>, ApiError> {
+        if let Some(registry) = registry {
+            if registry == BUILTIN_CRATES_REGISTRY_URI {
+                Ok(Self::generate_for_built_in(name, &self.configuration.self_toolchain_version))
+            } else if registry == CRATES_IO_REGISTRY_URI {
+                self.get_dependency_info_sparse(name, CRATES_IO_NAME, CRATES_IO_INDEX_URI, None)
                     .await
             } else if let Some(registry) = self
                 .configuration
                 .external_registries
                 .iter()
-                .find(|reg| &reg.index == registry)
+                .find(|reg| reg.index == registry)
             {
                 match registry.protocol {
-                    ExternalRegistryProtocol::Git => {
-                        self.get_dependency_info_git(&dep.name, &registry.name, &registry.index).await
-                    }
+                    ExternalRegistryProtocol::Git => self.get_dependency_info_git(name, &registry.name, &registry.index).await,
                     ExternalRegistryProtocol::Sparse => {
                         self.get_dependency_info_sparse(
-                            &dep.name,
+                            name,
                             &registry.name,
                             &registry.index,
                             Some((&registry.login, &registry.token)),
@@ -177,8 +178,17 @@ impl<'a> DependencyCheckerAccess<'a> {
             }
         } else {
             // same registry, lookup in internal intex
-            self.index.lock().await.get_crate_data(&dep.name).await
+            self.index.lock().await.get_crate_data(name).await
         }
+    }
+
+    /// Generates the versions vector for a built-in crate
+    fn generate_for_built_in(name: &str, toolchain_version: &str) -> Vec<IndexCrateMetadata> {
+        vec![IndexCrateMetadata {
+            name: name.to_string(),
+            vers: toolchain_version.to_string(),
+            ..Default::default()
+        }]
     }
 
     /// Gets the crate index data for a dependency in a registry with the git protocol

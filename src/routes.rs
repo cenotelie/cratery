@@ -25,7 +25,7 @@ use crate::model::auth::{AuthenticatedUser, RegistryUserToken, RegistryUserToken
 use crate::model::cargo::{
     CrateUploadResult, OwnersChangeQuery, OwnersQueryResult, RegistryUser, SearchResults, YesNoMsgResult, YesNoResult,
 };
-use crate::model::deps::DependencyInfo;
+use crate::model::deps::DepsAnalysis;
 use crate::model::packages::CrateInfo;
 use crate::model::stats::{DownloadStats, GlobalStats};
 use crate::model::{generate_token, AppVersion, CrateAndVersion};
@@ -510,7 +510,7 @@ pub async fn api_v1_check_crate_version(
     auth_data: AuthData,
     State(state): State<Arc<AxumState>>,
     Path(PathInfoCrateVersion { package, version }): Path<PathInfoCrateVersion>,
-) -> ApiResult<Vec<DependencyInfo>> {
+) -> ApiResult<DepsAnalysis> {
     response(
         state
             .application

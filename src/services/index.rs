@@ -168,7 +168,10 @@ impl Index {
     pub async fn get_crate_data(&self, package: &str) -> Result<Vec<IndexCrateMetadata>, ApiError> {
         let file_name = build_package_file_path(PathBuf::from(&self.config.location), package);
         if !file_name.exists() {
-            return Err(error_not_found());
+            return Err(specialize(
+                error_not_found(),
+                format!("package {package} is not in this registry"),
+            ));
         }
         let file = File::open(&file_name).await?;
         let mut reader = BufReader::new(file).lines();

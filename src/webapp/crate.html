@@ -243,7 +243,7 @@
       tabFeatures.appendChild(renderFeature(featureName, currentVersion.index.features[featureName]));
     }
 
-    renderDependencies(currentVersion.index.deps, []);
+    renderDependencies(currentVersion.index.deps, null);
 
     const canAdmin = currentUser.roles.includes("admin") || owners.users.find(u => u.id === currentUser.id) !== undefined;
     if (canAdmin) {
@@ -258,8 +258,8 @@
 
     hljs.highlightAll();
 
-    apiCheckCrateDeps(currentVersion.index.name, currentVersion.index.vers).then((depsInfo) => {
-      renderDependencies(currentVersion.index.deps, depsInfo);
+    apiCheckCrateDeps(currentVersion.index.name, currentVersion.index.vers).then((analysis) => {
+      renderDependencies(currentVersion.index.deps, analysis);
     });
     apiGetCrateDlStats(currentVersion.index.name).then(stats => {
       const chart = new Chart(document.getElementById("tab-readme-dl-chart"), {
@@ -374,7 +374,7 @@
     return card;
   }
 
-  function renderDependencies(deps, depsInfo) {
+  function renderDependencies(deps, analysis) {
     const tabDependencies = document.getElementById("tab-dependencies");
     while (tabDependencies.lastElementChild !== null) {
       tabDependencies.removeChild(tabDependencies.lastElementChild);
@@ -385,10 +385,10 @@
     let index = 0;
     for (const dep of deps) {
       const target = dep.kind === "normal" ? normalDeps : dep.kind === "dev" ? devDeps : buildDeps;
-      if (depsInfo.length === 0) {
+      if (analysis === null) {
         target.push([dep, null]);
       } else {
-        target.push([dep, depsInfo[index]]);
+        target.push([dep, analysis.directDependencies[index]]);
       }
       index += 1;
     }
