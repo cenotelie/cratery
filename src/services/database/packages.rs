@@ -77,7 +77,11 @@ impl<'c> Database<'c> {
         versions_in_index: Vec<IndexCrateMetadata>,
     ) -> Result<Vec<CrateInfoVersion>, ApiError> {
         let rows = sqlx::query!(
-            "SELECT version, upload, uploadedBy AS uploaded_by, hasDocs AS has_docs, docGenAttempted AS doc_gen_attempted, downloadCount AS download_count FROM PackageVersion WHERE package = $1 ORDER BY id",
+            "SELECT version, upload, uploadedBy AS uploaded_by,
+                    hasDocs AS has_docs, docGenAttempted AS doc_gen_attempted,
+                    downloadCount AS download_count,
+                    depsLastCheck AS deps_last_check, depsHasOutdated AS deps_has_outdated, depsHasCVEs AS deps_has_cves
+            FROM PackageVersion WHERE package = $1 ORDER BY id",
             package
         )
         .fetch_all(&mut *self.transaction.borrow().await)
@@ -93,6 +97,9 @@ impl<'c> Database<'c> {
                     has_docs: row.has_docs,
                     doc_gen_attempted: row.doc_gen_attempted,
                     download_count: row.download_count,
+                    deps_last_check: row.deps_last_check,
+                    deps_has_outdated: row.deps_has_outdated,
+                    deps_has_cves: row.deps_has_cves,
                 });
             }
         }
@@ -155,7 +162,7 @@ impl<'c> Database<'c> {
         } else {
             // create the package
             sqlx::query!(
-                "INSERT INTO Package (name, lowercase) VALUES ($1, $2)",
+                "INSERT INTO Package (name, lowercase, targets) VALUES ($1, $2, '')",
                 package.metadata.name,
                 lowercase
             )
@@ -174,7 +181,7 @@ impl<'c> Database<'c> {
         // create the version
         let description = package.metadata.description.as_ref().map_or("", std::string::String::as_str);
         sqlx::query!(
-            "INSERT INTO PackageVersion (package, version, description, upload, uploadedBy, yanked, hasDocs, docGenAttempted, downloadCount, downloads, depsLastCheck, depsHasOutdated) VALUES ($1, $2, $3, $4, $5, false, false, false, 0, NULL, 0, false)",
+            "INSERT INTO PackageVersion (package, version, description, upload, uploadedBy, yanked, hasDocs, docGenAttempted, downloadCount, downloads, depsLastCheck, depsHasOutdated, depsHasCVEs) VALUES ($1, $2, $3, $4, $5, false, false, false, 0, NULL, 0, false, false)",
             package.metadata.name,
             package.metadata.vers,
             description,
@@ -456,14 +463,21 @@ impl<'c> Database<'c> {
     }
 
     /// Saves the dependency analysis of a crate
-    pub async fn set_crate_deps_analysis(&self, package: &str, version: &str, has_outdated: bool) -> Result<(), ApiError> {
+    pub async fn set_crate_deps_analysis(
+        &self,
+        package: &str,
+        version: &str,
+        has_outdated: bool,
+        has_cves: bool,
+    ) -> Result<(), ApiError> {
         let now = Local::now().naive_local();
         sqlx::query!(
-            "UPDATE PackageVersion SET depsLastCheck = $3, depsHasOutdated = $4 WHERE package = $1 AND version = $2",
+            "UPDATE PackageVersion SET depsLastCheck = $3, depsHasOutdated = $4, depsHasCVEs = $5 WHERE package = $1 AND version = $2",
             package,
             version,
             now,
-            has_outdated
+            has_outdated,
+            has_cves
         )
         .execute(&mut *self.transaction.borrow().await)
         .await?;
@@ -594,5 +608,47 @@ impl<'c> Database<'c> {
             }
         }
         Ok(YesNoResult::new())
+    }
+
+    /// Gets the targets for a crate
+    pub async fn get_crate_targets(&self, package: &str) -> Result<Vec<String>, ApiError> {
+        let row = sqlx::query!("SELECT targets FROM Package WHERE name = $1 LIMIT 1", package)
+            .fetch_optional(&mut *self.transaction.borrow().await)
+            .await?
+            .ok_or_else(error_not_found)?;
+        Ok(row
+            .targets
+            .split(',')
+            .filter_map(|s| {
+                let s = s.trim();
+                if s.is_empty() {
+                    None
+                } else {
+                    Some(s.to_string())
+                }
+            })
+            .collect::<Vec<_>>())
+    }
+
+    /// Sets the targets for a crate
+    pub async fn set_crate_targets(
+        &self,
+        authenticated_user: &AuthenticatedUser,
+        package: &str,
+        targets: &[String],
+    ) -> Result<(), ApiError> {
+        if !authenticated_user.can_admin {
+            return Err(specialize(
+                error_forbidden(),
+                String::from("administration is forbidden for this authentication"),
+            ));
+        }
+        // check access
+        self.check_crate_ownership(authenticated_user, package).await?;
+        let targets = targets.join(",");
+        sqlx::query!("UPDATE Package SET targets = $2 WHERE name = $1", package, targets)
+            .execute(&mut *self.transaction.borrow().await)
+            .await?;
+        Ok(())
     }
 }

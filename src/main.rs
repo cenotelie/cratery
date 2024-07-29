@@ -112,7 +112,9 @@ async fn main_serve_app(application: Arc<Application>, cookie_key: Key) -> Resul
                         .route("/:package/dlstats", get(crate::routes::api_v1_get_crate_dl_stats))
                         .route("/:package/owners", get(crate::routes::api_v1_cargo_get_crate_owners))
                         .route("/:package/owners", put(crate::routes::api_v1_cargo_add_crate_owners))
-                        .route("/:package/owners", delete(crate::routes::api_v1_cargo_remove_crate_owners)),
+                        .route("/:package/owners", delete(crate::routes::api_v1_cargo_remove_crate_owners))
+                        .route("/:package/targets", get(crate::routes::api_v1_get_crate_targets))
+                        .route("/:package/targets", patch(crate::routes::api_v1_set_crate_targets)),
                 ),
         )
         // fall back to serving the index

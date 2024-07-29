@@ -559,6 +559,25 @@ pub async fn api_v1_cargo_remove_crate_owners(
     )
 }
 
+/// Gets the targets for a crate
+pub async fn api_v1_get_crate_targets(
+    auth_data: AuthData,
+    State(state): State<Arc<AxumState>>,
+    Path(PathInfoCrate { package }): Path<PathInfoCrate>,
+) -> ApiResult<Vec<String>> {
+    response(state.application.get_crate_targets(&auth_data, &package).await)
+}
+
+/// Sets the targets for a crate
+pub async fn api_v1_set_crate_targets(
+    auth_data: AuthData,
+    State(state): State<Arc<AxumState>>,
+    Path(PathInfoCrate { package }): Path<PathInfoCrate>,
+    input: Json<Vec<String>>,
+) -> ApiResult<()> {
+    response(state.application.set_crate_targets(&auth_data, &package, &input).await)
+}
+
 pub async fn index_serve_inner(
     index: &Index,
     path: &str,

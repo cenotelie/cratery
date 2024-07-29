@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "INSERT INTO Package (name, lowercase, targets) VALUES ($1, $2, '')",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 2
+    },
+    "nullable": []
+  },
+  "hash": "e0945b958309dee635c7b465156c661d5e7dc4f2185de2074aa66cd39eeada1d"
+}

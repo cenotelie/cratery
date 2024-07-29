@@ -16,10 +16,13 @@ pub struct CrateInfo {
     pub metadata: Option<CrateMetadata>,
     /// Gets the versions in the index
     pub versions: Vec<CrateInfoVersion>,
+    /// The build targets to use (for docs generation and deps analysis)
+    pub targets: Vec<String>,
 }
 
 /// The data for a crate version
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[allow(clippy::struct_excessive_bools)]
 pub struct CrateInfoVersion {
     /// The data from the index
     pub index: IndexCrateMetadata,
@@ -37,4 +40,13 @@ pub struct CrateInfoVersion {
     /// The number of times this version was downloaded
     #[serde(rename = "downloadCount")]
     pub download_count: i64,
+    /// Gets the last time this crate version had its dependencies automatically checked
+    #[serde(rename = "depsLastCheck")]
+    pub deps_last_check: NaiveDateTime,
+    /// Flag whether this crate has outdated dependencies
+    #[serde(rename = "depsHasOutdated")]
+    pub deps_has_outdated: bool,
+    /// Flag whether CVEs have been filed against dependencies of this crate
+    #[serde(rename = "depsHasCVEs")]
+    pub deps_has_cves: bool,
 }

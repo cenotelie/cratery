@@ -81,7 +81,7 @@ async fn deps_worker_job(
         let mut connection = pool.acquire().await?;
         in_transaction(&mut connection, |transaction| async move {
             let database = Database::new(transaction);
-            database.set_crate_deps_analysis(&name, &version, has_outdated).await
+            database.set_crate_deps_analysis(&name, &version, has_outdated, false).await
         })
         .await?;
     }

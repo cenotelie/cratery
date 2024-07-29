@@ -5,7 +5,7 @@ CREATE TABLE IF NOT EXISTS SchemaMetadata (
 
 CREATE INDEX IF NOT EXISTS SchemaMetadataIndex ON SchemaMetadata(name);
 
-INSERT INTO SchemaMetadata VALUES ('version', '1.4.0');
+INSERT INTO SchemaMetadata VALUES ('version', '1.5.0');
 
 CREATE TABLE RegistryUser (
     id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
@@ -33,7 +33,8 @@ CREATE INDEX IndexRegistryUserToken ON RegistryUserToken (user);
 
 CREATE TABLE Package (
     name TEXT NOT NULL PRIMARY KEY,
-    lowercase TEXT NOT NULL
+    lowercase TEXT NOT NULL,
+    targets TEXT NOT NULL
 );
 
 CREATE INDEX IndexPackage ON Package (name);
@@ -59,7 +60,8 @@ CREATE TABLE PackageVersion (
     downloadCount INTEGER NOT NULL,
     downloads BLOB,
     depsLastCheck TIMESTAMP NOT NULL,
-    depsHasOutdated BOOLEAN NOT NULL
+    depsHasOutdated BOOLEAN NOT NULL,
+    depsHasCVEs BOOLEAN NOT NULL
 );
 
 CREATE INDEX IndexPackageVersion ON PackageVersion(package);

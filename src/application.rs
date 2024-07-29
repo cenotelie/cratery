@@ -26,7 +26,7 @@ use crate::services::database::Database;
 use crate::services::deps::{DependencyChecker, DependencyCheckerAccess};
 use crate::services::index::Index;
 use crate::services::storage::Storage;
-use crate::utils::apierror::{error_unauthorized, ApiError};
+use crate::utils::apierror::{error_invalid_request, error_unauthorized, specialize, ApiError};
 use crate::utils::axum::auth::{AuthData, Token};
 use crate::utils::db::{in_transaction, AppTransaction};
 
@@ -290,7 +290,12 @@ impl Application {
                 .get_service_storage()
                 .download_crate_metadata(package, &versions.last().unwrap().index.vers)
                 .await?;
-            Ok(CrateInfo { metadata, versions })
+            let targets = app.database.get_crate_targets(package).await?;
+            Ok(CrateInfo {
+                metadata,
+                versions,
+                targets,
+            })
         })
         .await
     }
@@ -446,6 +451,33 @@ impl Application {
             let app = self.with_transaction(transaction);
             let principal = app.authenticate(auth_data).await?;
             app.database.remove_crate_owners(&principal, package, old_users).await
+        })
+        .await
+    }
+
+    /// Gets the targets for a crate
+    pub async fn get_crate_targets(&self, auth_data: &AuthData, package: &str) -> Result<Vec<String>, ApiError> {
+        let mut connection: sqlx::pool::PoolConnection<Sqlite> = self.db_pool.acquire().await?;
+        in_transaction(&mut connection, |transaction| async move {
+            let app = self.with_transaction(transaction);
+            let _principal = app.authenticate(auth_data).await?;
+            app.database.get_crate_targets(package).await
+        })
+        .await
+    }
+
+    /// Sets the targets for a crate
+    pub async fn set_crate_targets(&self, auth_data: &AuthData, package: &str, targets: &[String]) -> Result<(), ApiError> {
+        let mut connection: sqlx::pool::PoolConnection<Sqlite> = self.db_pool.acquire().await?;
+        in_transaction(&mut connection, |transaction| async move {
+            let app = self.with_transaction(transaction);
+            let principal = app.authenticate(auth_data).await?;
+            for target in targets {
+                if !self.configuration.self_builtin_targets.contains(target) {
+                    return Err(specialize(error_invalid_request(), format!("Unknown target: {target}")));
+                }
+            }
+            app.database.set_crate_targets(&principal, package, targets).await
         })
         .await
     }

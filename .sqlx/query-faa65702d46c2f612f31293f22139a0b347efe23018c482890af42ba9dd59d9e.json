@@ -1,6 +1,6 @@
 {
   "db_name": "SQLite",
-  "query": "SELECT version, upload, uploadedBy AS uploaded_by, hasDocs AS has_docs, docGenAttempted AS doc_gen_attempted, downloadCount AS download_count FROM PackageVersion WHERE package = $1 ORDER BY id",
+  "query": "SELECT version, upload, uploadedBy AS uploaded_by,\n                    hasDocs AS has_docs, docGenAttempted AS doc_gen_attempted,\n                    downloadCount AS download_count,\n                    depsLastCheck AS deps_last_check, depsHasOutdated AS deps_has_outdated, depsHasCVEs AS deps_has_cves\n            FROM PackageVersion WHERE package = $1 ORDER BY id",
   "describe": {
     "columns": [
       {
@@ -32,6 +32,21 @@
         "name": "download_count",
         "ordinal": 5,
         "type_info": "Integer"
+      },
+      {
+        "name": "deps_last_check",
+        "ordinal": 6,
+        "type_info": "Datetime"
+      },
+      {
+        "name": "deps_has_outdated",
+        "ordinal": 7,
+        "type_info": "Bool"
+      },
+      {
+        "name": "deps_has_cves",
+        "ordinal": 8,
+        "type_info": "Bool"
       }
     ],
     "parameters": {
@@ -43,8 +58,11 @@
       false,
       false,
       false,
+      false,
+      false,
+      false,
       false
     ]
   },
-  "hash": "c7c781fdf739223117229ec8287f39d2819422c7bc959fed63df1d8483aea32c"
+  "hash": "faa65702d46c2f612f31293f22139a0b347efe23018c482890af42ba9dd59d9e"
 }

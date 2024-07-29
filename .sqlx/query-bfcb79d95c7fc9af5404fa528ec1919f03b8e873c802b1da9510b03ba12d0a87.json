@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "UPDATE PackageVersion SET depsLastCheck = $3, depsHasOutdated = $4, depsHasCVEs = $5 WHERE package = $1 AND version = $2",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 5
+    },
+    "nullable": []
+  },
+  "hash": "bfcb79d95c7fc9af5404fa528ec1919f03b8e873c802b1da9510b03ba12d0a87"
+}

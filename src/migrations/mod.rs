@@ -30,6 +30,10 @@ const MIGRATIONS: &[Migration<'static>] = &[
         target: "1.4.0",
         content: MigrationContent::Sql(include_bytes!("v1.4.0.sql")),
     },
+    Migration {
+        target: "1.5.0",
+        content: MigrationContent::Sql(include_bytes!("v1.5.0.sql")),
+    },
 ];
 
 /// Gets the value for the metadata item

@@ -231,6 +231,30 @@ function apiRemoveCrateOwners(crate, email) {
   });
 }
 
+function apiGetCrateTargets(crate) {
+  return fetch(`/api/v1/crates/${crate}/targets`).then((response) => {
+    if (response.status !== 200) {
+      throw response.text();
+    } else {
+      return response.json();
+    }
+  });
+}
+
+function apiSetCrateTargets(crate, targets) {
+  return fetch(`/api/v1/crates/${crate}/targets`, {
+    method: "PATCH",
+    body: JSON.stringify(targets),
+    headers: [["content-type", "application/json"]],
+  }).then((response) => {
+    if (response.status !== 200) {
+      throw response.text();
+    } else {
+      return response.json();
+    }
+  });
+}
+
 function apiRegenCrateDoc(crate, version) {
   return fetch(`/api/v1/crates/${crate}/${version}/docsregen`, {
     method: "POST",
