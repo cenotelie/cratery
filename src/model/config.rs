@@ -267,6 +267,9 @@ pub struct Configuration {
     /// The version of the locally installed toolchain
     #[serde(rename = "selfToolchainVersion")]
     pub self_toolchain_version: String,
+    /// The host target of the locally installed toolchain
+    #[serde(rename = "selfToolchainHost")]
+    pub self_toolchain_host: String,
     /// The known built-in targets in rustc
     #[serde(rename = "selfBuiltinTargets")]
     pub self_builtin_targets: Vec<String>,
@@ -343,6 +346,7 @@ impl Configuration {
             self_service_login: super::generate_token(16),
             self_service_token: super::generate_token(64),
             self_toolchain_version: get_rustc_version().await,
+            self_toolchain_host: get_rustc_host().await,
             self_builtin_targets: get_builtin_targets().await,
             external_registries,
         })
@@ -473,6 +477,21 @@ async fn get_rustc_version() -> String {
     let output = child.wait_with_output().await.unwrap();
     let output = String::from_utf8(output.stdout).unwrap();
     output.split_ascii_whitespace().nth(1).unwrap().to_string()
+}
+
+async fn get_rustc_host() -> String {
+    let child = Command::new("rustc")
+        .args(["+stable", "-vV"])
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .spawn()
+        .unwrap();
+    let output = child.wait_with_output().await.unwrap();
+    let output = String::from_utf8(output.stdout).unwrap();
+    output
+        .lines()
+        .find_map(|line| line.strip_prefix("host: ").map(str::to_string))
+        .unwrap()
 }
 
 async fn get_builtin_targets() -> Vec<String> {

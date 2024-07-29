@@ -123,27 +123,38 @@ const RUSTSEC_DB_GIT_BRANCH: &str = "osv";
 
 impl<'a> DependencyCheckerAccess<'a> {
     /// Checks the dependencies of a local crate
-    pub async fn check_crate(&self, package: &str, version: &str, _targets: &[String]) -> Result<DepsAnalysis, ApiError> {
+    pub async fn check_crate(&self, package: &str, version: &str, targets: &[String]) -> Result<DepsAnalysis, ApiError> {
         let metadata = self.index.lock().await.get_crate_data(package).await?;
         let metadata = metadata
             .iter()
             .find(|meta| meta.vers == version)
             .ok_or_else(error_not_found)?;
 
-        let graph = self.get_dependencies_closure(&metadata.deps).await?;
+        let graph = self.get_dependencies_closure(&metadata.deps, targets).await?;
         Ok(DepsAnalysis::new(&graph, &metadata.deps))
     }
 
     /// Gets the transitive closure of dependencies
-    async fn get_dependencies_closure(&self, directs: &[IndexCrateDependency]) -> Result<DepsGraph, ApiError> {
-        let mut graph = DepsGraph::default();
+    async fn get_dependencies_closure(
+        &self,
+        directs: &[IndexCrateDependency],
+        targets: &[String],
+    ) -> Result<DepsGraph, ApiError> {
+        let mut graph = if targets.is_empty() {
+            // use the host as default target
+            DepsGraph::new(&[self.configuration.self_toolchain_host.clone()])
+        } else {
+            DepsGraph::new(targets)
+        };
         let get_versions = |registry: Option<String>, name: String| async move {
             self.get_dependency_versions(registry.as_deref(), &name).await
         };
         for direct in directs {
-            graph
-                .resolve(direct, &[], &[DepsGraphCrateOrigin::Direct(direct.kind)], &get_versions)
-                .await?;
+            if direct.is_active_for(targets, &[]) {
+                graph
+                    .resolve(direct, &[], &[DepsGraphCrateOrigin::Direct(direct.kind)], &get_versions)
+                    .await?;
+            }
         }
         graph.close(&get_versions).await?;
         Ok(graph)

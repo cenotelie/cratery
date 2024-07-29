@@ -198,6 +198,8 @@ impl IndexCrateMetadata {
 /// A complete dependency graphs
 #[derive(Debug, Default, Clone, Serialize, Deserialize)]
 pub struct DepsGraph {
+    /// The targets for the resolution
+    pub targets: Vec<String>,
     /// All the crates in the graph
     pub crates: Vec<DepsGraphCrate>,
     /// The list of unknown crates that failed before
@@ -207,6 +209,14 @@ pub struct DepsGraph {
 }
 
 impl DepsGraph {
+    /// Builds an empty graph for the specified targets
+    pub fn new(targets: &[String]) -> Self {
+        Self {
+            targets: targets.to_vec(),
+            ..Default::default()
+        }
+    }
+
     /// Gets the crate in the graph, if it exists
     pub fn get_crate(&mut self, registry: Option<&str>, name: &str) -> Option<(usize, &mut DepsGraphCrate)> {
         self.crates
@@ -267,7 +277,7 @@ impl DepsGraph {
         while let Some((crate_index, resolution_index)) = self.dirty.pop() {
             // new selected version/origin
             let dependencies = self.crates[crate_index]
-                .get_active_deps_in(resolution_index)
+                .get_active_deps_in(resolution_index, &self.targets)
                 .map(|(dep, features)| (dep.clone(), features.into_iter().map(str::to_string).collect::<Vec<_>>()))
                 .collect::<Vec<_>>();
             for (dep, features) in dependencies {
@@ -359,7 +369,6 @@ pub struct DepsGraphCrate {
     /// The name of the package
     pub name: String,
     /// All the known versions
-    #[serde(skip)]
     pub versions: Vec<DepsGraphCrateVersion>,
     /// The version number of latest
     #[serde(rename = "lastVersion")]
@@ -452,17 +461,16 @@ impl DepsGraphCrate {
     }
 
     /// Gets the active dependencies for a resolution
-    pub fn get_active_deps_in(&self, resolution_index: usize) -> impl Iterator<Item = (&IndexCrateDependency, Vec<&str>)> {
+    pub fn get_active_deps_in<'this: 'targets, 'targets>(
+        &'this self,
+        resolution_index: usize,
+        targets: &'targets [String],
+    ) -> impl Iterator<Item = (&'this IndexCrateDependency, Vec<&'this str>)> + 'targets {
         let resolution = &self.resolutions[resolution_index];
         let version = &self.versions[resolution.version_index];
         let active_features = Self::get_active_features(resolution, version);
         version.metadata.deps.iter().filter_map(move |dep| {
-            let is_active = dep.target.is_none()
-                && (!dep.optional
-                    || active_features.iter().any(|feature| {
-                        feature.strip_prefix("dep:").is_some_and(|suffix| dep.get_name() == suffix)
-                            || feature.find('/').is_some_and(|i| &feature[..i] == dep.get_name())
-                    }));
+            let is_active = dep.is_active_for(targets, &active_features);
             if is_active {
                 let sub_features = active_features
                     .iter()
@@ -488,7 +496,7 @@ impl DepsGraphCrate {
     fn get_active_features<'a>(resolution: &'a DepsGraphCrateResolution, version: &'a DepsGraphCrateVersion) -> Vec<&'a str> {
         let mut active_features = Vec::new();
         if resolution.default_features {
-            if let Some(children) = version.metadata.features.get("default") {
+            if let Some(children) = version.metadata.get_feature("default") {
                 active_features.push("default");
                 for f in children {
                     push_if_not_present(&mut active_features, f.as_str());
@@ -497,7 +505,7 @@ impl DepsGraphCrate {
         }
         for feature in &resolution.features {
             push_if_not_present(&mut active_features, feature.as_str());
-            if let Some(children) = version.metadata.features.get(feature) {
+            if let Some(children) = version.metadata.get_feature(feature) {
                 for f in children {
                     push_if_not_present(&mut active_features, f.as_str());
                 }
@@ -506,7 +514,7 @@ impl DepsGraphCrate {
         // close
         let mut index = 0;
         while index < active_features.len() {
-            if let Some(children) = version.metadata.features.get(active_features[index]) {
+            if let Some(children) = version.metadata.get_feature(active_features[index]) {
                 for f in children {
                     push_if_not_present(&mut active_features, f.as_str());
                 }

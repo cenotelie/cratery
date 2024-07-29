@@ -181,6 +181,9 @@ pub struct CrateMetadata {
     /// The `links` string value from the package's manifest, or null if not
     /// specified. This field is optional and defaults to null.
     pub links: Option<String>,
+    /// The minimal supported Rust version (optional)
+    /// This must be a valid version requirement without an operator (e.g. no `=`)
+    pub rust_version: Option<String>,
 }
 
 impl CrateMetadata {
@@ -330,9 +333,12 @@ impl CrateUploadData {
             vers: self.metadata.vers.clone(),
             deps: self.metadata.deps.iter().map(IndexCrateDependency::from).collect(),
             cksum,
-            features: self.metadata.features.clone(),
+            features: HashMap::new(),
             yanked: false,
             links: self.metadata.links.clone(),
+            v: Some(2),
+            features2: Some(self.metadata.features.clone()),
+            rust_version: self.metadata.rust_version.clone(),
         }
     }
 }
@@ -366,6 +372,56 @@ pub struct IndexCrateMetadata {
     /// The `links` string value from the package's manifest, or null if not
     /// specified. This field is optional and defaults to null.
     pub links: Option<String>,
+    /// An unsigned 32-bit integer value indicating the schema version of this
+    /// entry.
+    ///
+    /// If this not specified, it should be interpreted as the default of 1.
+    ///
+    /// Cargo (starting with version 1.51) will ignore versions it does not
+    /// recognize. This provides a method to safely introduce changes to index
+    /// entries and allow older versions of cargo to ignore newer entries it
+    /// doesn't understand. Versions older than 1.51 ignore this field, and
+    /// thus may misinterpret the meaning of the index entry.
+    ///
+    /// The current values are:
+    ///
+    /// * 1: The schema as documented here, not including newer additions.
+    ///      This is honored in Rust version 1.51 and newer.
+    /// * 2: The addition of the `features2` field.
+    ///      This is honored in Rust version 1.60 and newer.
+    pub v: Option<u32>,
+    /// This optional field contains features with new, extended syntax.
+    /// Specifically, namespaced features (`dep:`) and weak dependencies
+    /// (`pkg?/feat`).
+    ///
+    /// This is separated from `features` because versions older than 1.19
+    /// will fail to load due to not being able to parse the new syntax, even
+    /// with a `Cargo.lock` file.
+    ///
+    /// Cargo will merge any values listed here with the "features" field.
+    ///
+    /// If this field is included, the "v" field should be set to at least 2.
+    ///
+    /// Registries are not required to use this field for extended feature
+    /// syntax, they are allowed to include those in the "features" field.
+    /// Using this is only necessary if the registry wants to support cargo
+    /// versions older than 1.19, which in practice is only crates.io since
+    /// those older versions do not support other registries.
+    pub features2: Option<HashMap<String, Vec<String>>>,
+    /// The minimal supported Rust version (optional)
+    /// This must be a valid version requirement without an operator (e.g. no `=`)
+    pub rust_version: Option<String>,
+}
+
+impl IndexCrateMetadata {
+    /// Gets the value associated to a requested feature
+    pub fn get_feature(&self, feature: &str) -> Option<&[String]> {
+        self.features2
+            .as_ref()
+            .and_then(|r| r.get(feature))
+            .or_else(|| self.features.get(feature))
+            .map(Vec::as_slice)
+    }
 }
 
 /// A dependency for a crate in the index
@@ -408,12 +464,41 @@ impl IndexCrateDependency {
     pub fn get_name(&self) -> &str {
         self.package.as_deref().unwrap_or(&self.name)
     }
+
+    /// Gets whether this dependency is active, for the specified targets and features
+    pub fn is_active_for(&self, active_targets: &[String], active_features: &[&str]) -> bool {
+        let is_in_targets = match self.target.as_ref() {
+            None => true,
+            Some(target_spec) => {
+                if let Some(rest) = target_spec.strip_prefix("cfg(") {
+                    let _cfg_spec = &rest[..rest.len() - 1];
+                    // FIXME
+                    false
+                } else {
+                    active_targets.contains(target_spec)
+                }
+            }
+        };
+        if !is_in_targets {
+            // not for an active target
+            return false;
+        }
+        if !self.optional {
+            // not optional
+            return true;
+        }
+        let name = self.get_name();
+        active_features.iter().any(|feature| {
+            feature.strip_prefix("dep:").is_some_and(|suffix| name == suffix)
+                || feature.find('/').is_some_and(|i| &feature[..i] == name)
+        })
+    }
 }
 
 impl From<&CrateMetadataDependency> for IndexCrateDependency {
     fn from(dep: &CrateMetadataDependency) -> Self {
         Self {
-            name: dep.name.clone(),
+            name: dep.explicit_name_in_toml.as_ref().unwrap_or(&dep.name).clone(),
             req: dep.version_req.clone(),
             features: dep.features.clone(),
             optional: dep.optional,
@@ -421,7 +506,11 @@ impl From<&CrateMetadataDependency> for IndexCrateDependency {
             target: dep.target.clone(),
             kind: dep.kind,
             registry: dep.registry.clone(),
-            package: dep.explicit_name_in_toml.clone(),
+            package: if dep.explicit_name_in_toml.is_some() {
+                Some(dep.name.clone())
+            } else {
+                None
+            },
         }
     }
 }
