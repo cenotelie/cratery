@@ -17,7 +17,7 @@ use tar::Archive;
 use tokio::process::Command;
 
 use crate::model::config::Configuration;
-use crate::model::CrateAndVersion;
+use crate::model::JobCrate;
 use crate::services::database::Database;
 use crate::services::storage;
 use crate::services::storage::Storage;
@@ -26,7 +26,7 @@ use crate::utils::concurrent::n_at_a_time;
 use crate::utils::db::in_transaction;
 
 /// Creates a worker for the generation of documentation
-pub fn create_docs_worker(configuration: Arc<Configuration>, pool: Pool<Sqlite>) -> UnboundedSender<CrateAndVersion> {
+pub fn create_docs_worker(configuration: Arc<Configuration>, pool: Pool<Sqlite>) -> UnboundedSender<JobCrate> {
     let (sender, mut receiver) = futures::channel::mpsc::unbounded();
     let _handle = tokio::spawn(async move {
         while let Some(job) = receiver.next().await {
@@ -42,7 +42,7 @@ pub fn create_docs_worker(configuration: Arc<Configuration>, pool: Pool<Sqlite>)
 }
 
 /// Executes a documentation generation job
-async fn docs_worker_job(configuration: Arc<Configuration>, pool: &Pool<Sqlite>, job: CrateAndVersion) -> Result<(), ApiError> {
+async fn docs_worker_job(configuration: Arc<Configuration>, pool: &Pool<Sqlite>, job: JobCrate) -> Result<(), ApiError> {
     info!("generating doc for {} {}", job.name, job.version);
     let content = storage::get_storage(&configuration)
         .download_crate(&job.name, &job.version)

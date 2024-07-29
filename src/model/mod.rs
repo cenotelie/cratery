@@ -40,3 +40,14 @@ pub struct CrateAndVersion {
     /// The crate's version
     pub version: String,
 }
+
+/// The description of a crate for a job
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct JobCrate {
+    /// The name of the crate
+    pub name: String,
+    /// The crate's version
+    pub version: String,
+    /// The targets for the crate
+    pub targets: Vec<String>,
+}

@@ -21,7 +21,7 @@ use tokio::io::AsyncBufReadExt;
 use crate::model::cargo::{IndexCrateDependency, IndexCrateMetadata};
 use crate::model::config::{Configuration, ExternalRegistryProtocol};
 use crate::model::deps::{DepsAnalysis, DepsGraph, DepsGraphCrateOrigin, BUILTIN_CRATES_REGISTRY_URI};
-use crate::model::CrateAndVersion;
+use crate::model::JobCrate;
 use crate::services::database::Database;
 use crate::services::index::Index;
 use crate::utils::apierror::{error_backend_failure, error_not_found, specialize, ApiError};
@@ -61,7 +61,7 @@ async fn deps_worker_job(
         return Ok(());
     }
 
-    let targets = {
+    let crates = {
         let mut connection = pool.acquire().await?;
         in_transaction(&mut connection, |transaction| async move {
             let database = Database::new(transaction);
@@ -69,14 +69,16 @@ async fn deps_worker_job(
         })
         .await?
     };
-    for CrateAndVersion { name, version } in targets {
+    for JobCrate { name, version, targets } in crates {
         info!("checking deps for {name} {version}");
+        // get the targets
+
         let access = DependencyCheckerAccess {
             data: &deps_checker,
             configuration,
             index: &index,
         };
-        let analysis = access.check_crate(&name, &version).await?;
+        let analysis = access.check_crate(&name, &version, &targets).await?;
         let has_outdated = analysis.direct_dependencies.iter().any(|info| info.is_outdated);
         let mut connection = pool.acquire().await?;
         in_transaction(&mut connection, |transaction| async move {
@@ -121,7 +123,7 @@ const RUSTSEC_DB_GIT_BRANCH: &str = "osv";
 
 impl<'a> DependencyCheckerAccess<'a> {
     /// Checks the dependencies of a local crate
-    pub async fn check_crate(&self, package: &str, version: &str) -> Result<DepsAnalysis, ApiError> {
+    pub async fn check_crate(&self, package: &str, version: &str, _targets: &[String]) -> Result<DepsAnalysis, ApiError> {
         let metadata = self.index.lock().await.get_crate_data(package).await?;
         let metadata = metadata
             .iter()

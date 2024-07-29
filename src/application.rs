@@ -21,7 +21,7 @@ use crate::model::config::Configuration;
 use crate::model::deps::DepsAnalysis;
 use crate::model::packages::CrateInfo;
 use crate::model::stats::{DownloadStats, GlobalStats};
-use crate::model::CrateAndVersion;
+use crate::model::{CrateAndVersion, JobCrate};
 use crate::services::database::Database;
 use crate::services::deps::{DependencyChecker, DependencyCheckerAccess};
 use crate::services::index::Index;
@@ -41,7 +41,7 @@ pub struct Application {
     /// Service to check the dependencies of a crate
     pub deps_checker: Arc<Mutex<DependencyChecker>>,
     /// Sender of documentation generation jobs
-    pub docs_worker_sender: UnboundedSender<CrateAndVersion>,
+    pub docs_worker_sender: UnboundedSender<JobCrate>,
 }
 
 /// The empty database
@@ -263,12 +263,14 @@ impl Application {
                 .store_crate(&package.metadata, package.content)
                 .await?;
             index.publish_crate_version(&index_data).await?;
+            let targets = app.database.get_crate_targets(&package.metadata.name).await?;
             // generate the doc
             self.docs_worker_sender
                 .clone()
-                .send(CrateAndVersion {
+                .send(JobCrate {
                     name: package.metadata.name.clone(),
                     version: package.metadata.vers.clone(),
+                    targets,
                 })
                 .await?;
             Ok(r)
@@ -378,11 +380,13 @@ impl Application {
             let app = self.with_transaction(transaction);
             let principal = app.authenticate(auth_data).await?;
             app.database.regen_crate_version_doc(&principal, package, version).await?;
+            let targets = app.database.get_crate_targets(package).await?;
             self.docs_worker_sender
                 .clone()
-                .send(CrateAndVersion {
+                .send(JobCrate {
                     name: package.to_string(),
                     version: version.to_string(),
+                    targets,
                 })
                 .await?;
             Ok(())
@@ -521,7 +525,8 @@ impl Application {
             let app = self.with_transaction(transaction);
             let _principal = app.authenticate(auth_data).await?;
             app.database.check_crate_exists(package, version).await?;
-            self.get_service_deps_checker().check_crate(package, version).await
+            let targets = app.database.get_crate_targets(package).await?;
+            self.get_service_deps_checker().check_crate(package, version, &targets).await
         })
         .await
     }

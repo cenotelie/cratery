@@ -1,6 +1,6 @@
 {
   "db_name": "SQLite",
-  "query": "SELECT package, version, depsLastCheck AS last_check FROM PackageVersion",
+  "query": "SELECT package, version, depsLastCheck AS last_check, targets\n            FROM PackageVersion\n            INNER JOIN Package ON PackageVersion.package = Package.name",
   "describe": {
     "columns": [
       {
@@ -17,6 +17,11 @@
         "name": "last_check",
         "ordinal": 2,
         "type_info": "Datetime"
+      },
+      {
+        "name": "targets",
+        "ordinal": 3,
+        "type_info": "Text"
       }
     ],
     "parameters": {
@@ -25,8 +30,9 @@
     "nullable": [
       false,
       false,
+      false,
       false
     ]
   },
-  "hash": "808b6c2f67399ee87b44060527fade1d6e3b423794332ad348be103ffb13c5a9"
+  "hash": "c1157df9bad081dd38b9a7aa911096e9ebc9841d49d9f355b937132880e6f5a1"
 }

@@ -21,7 +21,7 @@ use crate::model::cargo::{
 };
 use crate::model::packages::CrateInfoVersion;
 use crate::model::stats::{DownloadStats, SERIES_LENGTH};
-use crate::model::CrateAndVersion;
+use crate::model::{CrateAndVersion, JobCrate};
 use crate::utils::apierror::{error_forbidden, error_invalid_request, error_not_found, specialize, ApiError};
 
 impl<'c> Database<'c> {
@@ -320,17 +320,32 @@ impl<'c> Database<'c> {
     }
 
     /// Gets the packages that need documentation generation
-    pub async fn get_undocumented_crates(&self) -> Result<Vec<CrateAndVersion>, ApiError> {
+    pub async fn get_undocumented_crates(&self) -> Result<Vec<JobCrate>, ApiError> {
         let rows = sqlx::query!(
-            "SELECT package, version FROM PackageVersion WHERE hasDocs = FALSE AND docGenAttempted = FALSE ORDER BY id"
+            "SELECT package, version, targets
+            FROM PackageVersion
+            INNER JOIN Package ON PackageVersion.package = Package.name
+            WHERE hasDocs = FALSE AND docGenAttempted = FALSE ORDER BY id"
         )
         .fetch_all(&mut *self.transaction.borrow().await)
         .await?;
         Ok(rows
             .into_iter()
-            .map(|row| CrateAndVersion {
+            .map(|row| JobCrate {
                 name: row.package,
                 version: row.version,
+                targets: row
+                    .targets
+                    .split(',')
+                    .filter_map(|s| {
+                        let s = s.trim();
+                        if s.is_empty() {
+                            None
+                        } else {
+                            Some(s.to_string())
+                        }
+                    })
+                    .collect::<Vec<_>>(),
             })
             .collect())
     }
@@ -390,13 +405,17 @@ impl<'c> Database<'c> {
 
     /// Gets the packages that need to have their dependencies analyzed
     /// Those are the latest version of each crate
-    pub async fn get_unanalyzed_crates(&self, deps_stale_analysis: i64) -> Result<Vec<CrateAndVersion>, ApiError> {
+    pub async fn get_unanalyzed_crates(&self, deps_stale_analysis: i64) -> Result<Vec<JobCrate>, ApiError> {
         let now = Local::now().naive_local();
         let from = now - Duration::minutes(deps_stale_analysis);
-        let mut cache = HashMap::<String, (Version, String, NaiveDateTime)>::new();
+        let mut cache = HashMap::<String, (Version, String, String, NaiveDateTime)>::new();
         let transaction = &mut *self.transaction.borrow().await;
-        let mut stream =
-            sqlx::query!("SELECT package, version, depsLastCheck AS last_check FROM PackageVersion").fetch(transaction);
+        let mut stream = sqlx::query!(
+            "SELECT package, version, depsLastCheck AS last_check, targets
+            FROM PackageVersion
+            INNER JOIN Package ON PackageVersion.package = Package.name"
+        )
+        .fetch(transaction);
         // accumulate the last version for each major branch of each crate
         while let Some(row) = stream.next().await {
             let row = row?;
@@ -404,20 +423,34 @@ impl<'c> Database<'c> {
             let semver = row.version.parse::<Version>()?;
             match cache.entry(name.clone()) {
                 Entry::Vacant(entry) => {
-                    entry.insert((semver, row.version, row.last_check));
+                    entry.insert((semver, row.version, row.targets, row.last_check));
                 }
                 Entry::Occupied(mut entry) => {
                     if semver > entry.get().0 {
-                        entry.insert((semver, row.version, row.last_check));
+                        entry.insert((semver, row.version, row.targets, row.last_check));
                     }
                 }
             }
         }
         Ok(cache
             .into_iter()
-            .filter_map(|(name, (_, version, last_check))| {
+            .filter_map(|(name, (_, version, targets, last_check))| {
                 if last_check < from {
-                    Some(CrateAndVersion { name, version })
+                    Some(JobCrate {
+                        name,
+                        version,
+                        targets: targets
+                            .split(',')
+                            .filter_map(|s| {
+                                let s = s.trim();
+                                if s.is_empty() {
+                                    None
+                                } else {
+                                    Some(s.to_string())
+                                }
+                            })
+                            .collect::<Vec<_>>(),
+                    })
                 } else {
                     None
                 }
