@@ -4,6 +4,8 @@
 
 //! Utility APIs for async programming
 
+use std::time::{Duration, Instant};
+
 pub mod apierror;
 pub mod axum;
 pub mod concurrent;
@@ -24,4 +26,12 @@ where
         v.push(item);
         true
     }
+}
+
+/// Builds an instant for stale data
+/// The value is 7 days before now
+#[must_use]
+pub fn stale_instant() -> Instant {
+    let now = Instant::now();
+    now.checked_sub(Duration::from_secs(60 * 60 * 24 * 7)).unwrap()
 }

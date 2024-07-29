@@ -38,6 +38,7 @@ tar = "0.4.41"
 # async support
 futures = "0.3"
 tokio = { version = "1.38", features = ["full"] }
+tokio-stream = "0.1.15"
 tokio-util = {version = "0.7", features = ["io"]}
 
 # framework for the application

@@ -4,12 +4,12 @@
 
 //! Data types around dependency analysis
 
-use std::fmt::Display;
-use std::str::FromStr;
-
+use log::error;
 use serde_derive::{Deserialize, Serialize};
 
 use super::cargo::{DependencyKind, IndexCrateDependency, IndexCrateMetadata};
+use super::osv::SimpleAdvisory;
+use super::semver::{SemverVersion, SemverVersionReq};
 use crate::utils::apierror::ApiError;
 use crate::utils::push_if_not_present;
 
@@ -19,121 +19,19 @@ pub const BUILTIN_CRATES_REGISTRY_URI: &str = "<builtin>";
 /// The list of built-in crates
 pub const BUILTIN_CRATES_LIST: &[&str] = &["core", "alloc", "std"];
 
-pub mod semver_version_serializer {
-    //! Serialize/Deserialize support for `semver::Version`
-
-    use serde::de::Error;
-    use serde::{Deserialize, Deserializer, Serialize, Serializer};
-
-    /// Serialize a `semver::Version`
-    ///
-    /// # Errors
-    ///
-    /// Return a deserialization error from serde.
-    pub fn serialize<S: Serializer>(data: &semver::Version, serializer: S) -> Result<S::Ok, S::Error> {
-        data.to_string().serialize(serializer)
-    }
-
-    /// Deserialize a chrono `semver::Version`
-    ///
-    /// # Errors
-    ///
-    /// Return a deserialization error from serde.
-    pub fn deserialize<'de, D: Deserializer<'de>>(deserializer: D) -> Result<semver::Version, D::Error> {
-        let text: String = Deserialize::deserialize(deserializer)?;
-        text.parse().map_err(D::Error::custom)
-    }
-}
-
-pub mod semver_version_req_serializer {
-    //! Serialize/Deserialize support for `semver::VersionReq`
-
-    use serde::de::Error;
-    use serde::{Deserialize, Deserializer, Serialize, Serializer};
-
-    /// Serialize a `semver::VersionReq`
-    ///
-    /// # Errors
-    ///
-    /// Return a deserialization error from serde.
-    pub fn serialize<S: Serializer>(data: &semver::VersionReq, serializer: S) -> Result<S::Ok, S::Error> {
-        data.to_string().serialize(serializer)
-    }
-
-    /// Deserialize a chrono `semver::VersionReq`
-    ///
-    /// # Errors
-    ///
-    /// Return a deserialization error from serde.
-    pub fn deserialize<'de, D: Deserializer<'de>>(deserializer: D) -> Result<semver::VersionReq, D::Error> {
-        let text: String = Deserialize::deserialize(deserializer)?;
-        text.parse().map_err(D::Error::custom)
-    }
-}
-
-/// The representation of a version number according to semver
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
-#[repr(transparent)]
-#[serde(transparent)]
-pub struct SemverVersion(#[serde(with = "semver_version_serializer")] semver::Version);
-
-impl From<semver::Version> for SemverVersion {
-    fn from(value: semver::Version) -> Self {
-        Self(value)
-    }
-}
-
-impl FromStr for SemverVersion {
-    type Err = <semver::Version as FromStr>::Err;
-
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
-        Ok(Self(semver::Version::from_str(s)?))
-    }
-}
-
-impl Display for SemverVersion {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        self.0.fmt(f)
-    }
-}
-
-/// The representation of the requirement for a version  according to semver
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[repr(transparent)]
-#[serde(transparent)]
-pub struct SemverVersionReq(#[serde(with = "semver_version_req_serializer")] semver::VersionReq);
-
-impl From<semver::VersionReq> for SemverVersionReq {
-    fn from(value: semver::VersionReq) -> Self {
-        Self(value)
-    }
-}
-
-impl FromStr for SemverVersionReq {
-    type Err = <semver::VersionReq as FromStr>::Err;
-
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
-        Ok(Self(semver::VersionReq::from_str(s)?))
-    }
-}
-
-impl Display for SemverVersionReq {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        self.0.fmt(f)
-    }
-}
-
 /// The complete dependendency analysis
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct DepsAnalysis {
     /// The direct dependencies
     #[serde(rename = "directDependencies")]
     pub direct_dependencies: Vec<DirectDepInfo>,
+    /// The advisories against dependencies
+    pub advisories: Vec<DepAdvisory>,
 }
 
 impl DepsAnalysis {
     /// Creates the analysis
-    pub fn new(graph: &DepsGraph, deps: &[IndexCrateDependency]) -> Self {
+    pub fn new(graph: &DepsGraph, deps: &[IndexCrateDependency], advisories: Vec<DepAdvisory>) -> Self {
         Self {
             direct_dependencies: deps
                 .iter()
@@ -155,6 +53,7 @@ impl DepsAnalysis {
                     }
                 })
                 .collect(),
+            advisories,
         }
     }
 }
@@ -176,6 +75,17 @@ pub struct DirectDepInfo {
     /// Whether the requirement leads to the resolution of an outdated version
     #[serde(rename = "isOutdated")]
     pub is_outdated: bool,
+}
+
+/// The advisory against a dependency resolved on crates.io
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DepAdvisory {
+    /// The name of the package
+    pub package: String,
+    /// The resolved version
+    pub version: SemverVersion,
+    /// The advisory itself
+    pub advisory: SimpleAdvisory,
 }
 
 impl IndexCrateMetadata {
@@ -250,12 +160,11 @@ impl DepsGraph {
             let all_versions = match get_versions(dep.registry.clone(), dep.get_name().to_string()).await {
                 Ok(d) => d,
                 Err(e) => {
-                    println!("=== deps: FAILED TO GET {:?} / {} => {}", dep.registry, dep.get_name(), e);
+                    error!("deps: FAILED TO GET {:?} / {} => {}", dep.registry, dep.get_name(), e);
                     self.unknowns.push((dep.registry.clone(), dep.get_name().to_string()));
                     return Ok(());
                 }
             };
-            println!("=== deps: discovered new {:?} / {}", dep.registry, dep.get_name());
             self.crates.push(DepsGraphCrate::new(dep, all_versions)?);
             let crate_index = self.crates.len() - 1;
             if let Some(resolution_index) = self.crates.last_mut().unwrap().resolve(dep, features, origins) {

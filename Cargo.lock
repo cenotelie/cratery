@@ -359,6 +359,7 @@ dependencies = [
  "sqlx",
  "tar",
  "tokio",
+ "tokio-stream",
  "tokio-util",
  "urlencoding",
 ]

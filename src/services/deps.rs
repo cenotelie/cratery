@@ -18,19 +18,22 @@ use sqlx::{Pool, Sqlite};
 use tokio::fs::File;
 use tokio::io::AsyncBufReadExt;
 
+use super::rustsec::{RustSecChecker, RustSecData};
 use crate::model::cargo::{IndexCrateDependency, IndexCrateMetadata};
 use crate::model::config::{Configuration, ExternalRegistryProtocol};
-use crate::model::deps::{DepsAnalysis, DepsGraph, DepsGraphCrateOrigin, BUILTIN_CRATES_REGISTRY_URI};
+use crate::model::deps::{DepAdvisory, DepsAnalysis, DepsGraph, DepsGraphCrateOrigin, BUILTIN_CRATES_REGISTRY_URI};
 use crate::model::JobCrate;
 use crate::services::database::Database;
 use crate::services::index::Index;
 use crate::utils::apierror::{error_backend_failure, error_not_found, specialize, ApiError};
 use crate::utils::db::in_transaction;
+use crate::utils::stale_instant;
 
 /// Creates a worker for the continuous check of dependencies for head crates
 pub fn create_deps_worker(
     configuration: Arc<Configuration>,
-    deps_checker: Arc<Mutex<DependencyChecker>>,
+    deps_data: Arc<Mutex<DepsCheckerData>>,
+    rustsec_data: Arc<Mutex<RustSecData>>,
     index: Arc<Mutex<Index>>,
     pool: Pool<Sqlite>,
 ) {
@@ -39,7 +42,8 @@ pub fn create_deps_worker(
         let mut interval = tokio::time::interval(Duration::from_secs(60));
         loop {
             let _instant = interval.tick().await;
-            if let Err(e) = deps_worker_job(&configuration, deps_checker.clone(), index.clone(), &pool).await {
+            if let Err(e) = deps_worker_job(&configuration, deps_data.clone(), rustsec_data.clone(), index.clone(), &pool).await
+            {
                 error!("{e}");
                 if let Some(backtrace) = &e.backtrace {
                     error!("{backtrace}");
@@ -52,7 +56,8 @@ pub fn create_deps_worker(
 /// A job for the worker
 async fn deps_worker_job(
     configuration: &Configuration,
-    deps_checker: Arc<Mutex<DependencyChecker>>,
+    deps_data: Arc<Mutex<DepsCheckerData>>,
+    rustsec_data: Arc<Mutex<RustSecData>>,
     index: Arc<Mutex<Index>>,
     pool: &Pool<Sqlite>,
 ) -> Result<(), ApiError> {
@@ -71,40 +76,47 @@ async fn deps_worker_job(
     };
     for JobCrate { name, version, targets } in crates {
         info!("checking deps for {name} {version}");
-        // get the targets
-
-        let access = DependencyCheckerAccess {
-            data: &deps_checker,
+        let access = DepsChecker {
+            data: &deps_data,
             configuration,
             index: &index,
+            rustsec: RustSecChecker {
+                data: &rustsec_data,
+                configuration,
+            },
         };
         let analysis = access.check_crate(&name, &version, &targets).await?;
         let has_outdated = analysis.direct_dependencies.iter().any(|info| info.is_outdated);
+        let has_cves = !analysis.advisories.is_empty();
         let mut connection = pool.acquire().await?;
         in_transaction(&mut connection, |transaction| async move {
             let database = Database::new(transaction);
-            database.set_crate_deps_analysis(&name, &version, has_outdated, false).await
+            database
+                .set_crate_deps_analysis(&name, &version, has_outdated, has_cves)
+                .await
         })
         .await?;
     }
     Ok(())
 }
 
-/// Service to check the dependencies of a crate
+/// Data for the service to check the dependencies of a crate
 #[derive(Debug, Clone, Default)]
-pub struct DependencyChecker {
+pub struct DepsCheckerData {
     /// The last time a piece of data was touched
     last_touch: HashMap<String, Instant>,
 }
 
-/// Access to the service to check the dependencies of a crate
-pub struct DependencyCheckerAccess<'a> {
+/// Service to check the dependencies of a crate
+pub struct DepsChecker<'a> {
     /// The data for the service
-    pub data: &'a Mutex<DependencyChecker>,
+    pub data: &'a Mutex<DepsCheckerData>,
     /// The app configuration
     pub configuration: &'a Configuration,
     /// Access to the index
     pub index: &'a Mutex<Index>,
+    /// The `RustSec` service
+    pub rustsec: RustSecChecker<'a>,
 }
 
 /// The URI identifying crates.io as the registry for a dependency
@@ -116,12 +128,7 @@ const CRATES_IO_NAME: &str = "crates.io";
 /// Name of the sub-directory to use within the data directory
 const DATA_SUB_DIR: &str = "deps";
 
-/// The URI of the git repo with the `RustSec` database
-const RUSTSEC_DB_GIT_URI: &str = "https://github.com/rustsec/advisory-db";
-/// The branch inside the repo with the actual data
-const RUSTSEC_DB_GIT_BRANCH: &str = "osv";
-
-impl<'a> DependencyCheckerAccess<'a> {
+impl<'a> DepsChecker<'a> {
     /// Checks the dependencies of a local crate
     pub async fn check_crate(&self, package: &str, version: &str, targets: &[String]) -> Result<DepsAnalysis, ApiError> {
         let metadata = self.index.lock().await.get_crate_data(package).await?;
@@ -131,7 +138,26 @@ impl<'a> DependencyCheckerAccess<'a> {
             .ok_or_else(error_not_found)?;
 
         let graph = self.get_dependencies_closure(&metadata.deps, targets).await?;
-        Ok(DepsAnalysis::new(&graph, &metadata.deps))
+        let mut advisories = Vec::new();
+        for dep in &graph.crates {
+            for resolution in &dep.resolutions {
+                let version = dep.versions[resolution.version_index].semver.clone();
+                let simples = self.rustsec.check_crate(&dep.name, &version.0).await?;
+                for simple in simples {
+                    if advisories
+                        .iter()
+                        .all(|a: &DepAdvisory| a.package != dep.name && a.version != version && a.advisory.id != simple.id)
+                    {
+                        advisories.push(DepAdvisory {
+                            package: dep.name.clone(),
+                            version: version.clone(),
+                            advisory: simple,
+                        });
+                    }
+                }
+            }
+        }
+        Ok(DepsAnalysis::new(&graph, &metadata.deps, advisories))
     }
 
     /// Gets the transitive closure of dependencies
@@ -213,12 +239,8 @@ impl<'a> DependencyCheckerAccess<'a> {
     ) -> Result<Vec<IndexCrateMetadata>, ApiError> {
         let mut data = self.data.lock().await;
 
+        let last_touch = data.last_touch.get(reg_name).copied().unwrap_or_else(stale_instant);
         let now = Instant::now();
-        let last_touch = data
-            .last_touch
-            .get(reg_name)
-            .copied()
-            .unwrap_or(now.checked_sub(now.elapsed()).unwrap());
         let is_stale = now.duration_since(last_touch) > Duration::from_millis(self.configuration.deps_stale_registry);
 
         let mut reg_location = PathBuf::from(&self.configuration.data_dir);
@@ -286,12 +308,8 @@ impl<'a> DependencyCheckerAccess<'a> {
 
         if tokio::fs::try_exists(&file_path).await? {
             // is it stale?
+            let last_touch = data.last_touch.get(&target_uri).copied().unwrap_or_else(stale_instant);
             let now = Instant::now();
-            let last_touch = data
-                .last_touch
-                .get(&target_uri)
-                .copied()
-                .unwrap_or(now.checked_sub(now.elapsed()).unwrap());
             let is_stale = now.duration_since(last_touch) > Duration::from_millis(self.configuration.deps_stale_registry);
             if is_stale {
                 self.get_dependency_info_sparse_fetch(&file_path, target_uri, credentials, &mut data)
@@ -320,7 +338,7 @@ impl<'a> DependencyCheckerAccess<'a> {
         file_path: &Path,
         target_uri: String,
         credentials: Option<(&str, &str)>,
-        data: &mut DependencyChecker,
+        data: &mut DepsCheckerData,
     ) -> Result<Vec<IndexCrateMetadata>, ApiError> {
         let mut request = reqwest::Client::new().get(&target_uri);
         if let Some((login, password)) = credentials {

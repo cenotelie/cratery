@@ -10,7 +10,9 @@ pub mod config;
 pub mod deps;
 pub mod errors;
 pub mod namegen;
+pub mod osv;
 pub mod packages;
+pub mod semver;
 pub mod stats;
 
 use rand::distributions::Alphanumeric;

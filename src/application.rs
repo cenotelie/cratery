@@ -23,8 +23,9 @@ use crate::model::packages::CrateInfo;
 use crate::model::stats::{DownloadStats, GlobalStats};
 use crate::model::{CrateAndVersion, JobCrate};
 use crate::services::database::Database;
-use crate::services::deps::{DependencyChecker, DependencyCheckerAccess};
+use crate::services::deps::{DepsChecker, DepsCheckerData};
 use crate::services::index::Index;
+use crate::services::rustsec::{RustSecChecker, RustSecData};
 use crate::services::storage::Storage;
 use crate::utils::apierror::{error_invalid_request, error_unauthorized, specialize, ApiError};
 use crate::utils::axum::auth::{AuthData, Token};
@@ -39,7 +40,9 @@ pub struct Application {
     /// Service to index the metadata of crates
     pub index: Arc<Mutex<Index>>,
     /// Service to check the dependencies of a crate
-    pub deps_checker: Arc<Mutex<DependencyChecker>>,
+    pub deps_checker: Arc<Mutex<DepsCheckerData>>,
+    /// The `RustSec` data
+    pub rustsec: Arc<Mutex<RustSecData>>,
     /// Sender of documentation generation jobs
     pub docs_worker_sender: UnboundedSender<JobCrate>,
 }
@@ -89,14 +92,22 @@ impl Application {
         }
 
         // deps worker
-        let deps_checker = Arc::new(Mutex::new(DependencyChecker::default()));
-        crate::services::deps::create_deps_worker(configuration.clone(), deps_checker.clone(), index.clone(), db_pool.clone());
+        let rustsec = Arc::new(Mutex::new(RustSecData::default()));
+        let deps_checker = Arc::new(Mutex::new(DepsCheckerData::default()));
+        crate::services::deps::create_deps_worker(
+            configuration.clone(),
+            deps_checker.clone(),
+            rustsec.clone(),
+            index.clone(),
+            db_pool.clone(),
+        );
 
         Ok(Arc::new(Self {
             configuration,
             db_pool,
             index,
             deps_checker,
+            rustsec,
             docs_worker_sender,
         }))
     }
@@ -106,12 +117,21 @@ impl Application {
         crate::services::storage::get_storage(&self.configuration)
     }
 
+    /// Gets the service to check for advisories using `RustSec`
+    pub fn get_service_rustsec(&self) -> RustSecChecker {
+        RustSecChecker {
+            data: &self.rustsec,
+            configuration: &self.configuration,
+        }
+    }
+
     /// Gets the service to check the dependencies of a crate
-    pub fn get_service_deps_checker(&self) -> DependencyCheckerAccess {
-        DependencyCheckerAccess {
+    pub fn get_service_deps_checker(&self) -> DepsChecker {
+        DepsChecker {
             data: &self.deps_checker,
             configuration: &self.configuration,
             index: &self.index,
+            rustsec: self.get_service_rustsec(),
         }
     }
 
