@@ -496,14 +496,28 @@ impl<'c> Database<'c> {
     }
 
     /// Saves the dependency analysis of a crate
+    /// Returns the previous values
     pub async fn set_crate_deps_analysis(
         &self,
         package: &str,
         version: &str,
         has_outdated: bool,
         has_cves: bool,
-    ) -> Result<(), ApiError> {
+    ) -> Result<(bool, bool), ApiError> {
         let now = Local::now().naive_local();
+        let row = sqlx::query!(
+            "SELECT depsHasOutdated AS deps_has_outdated, depsHasCVEs AS deps_has_cves
+            FROM PackageVersion
+            WHERE package = $1 AND version = $2
+            LIMIT 1",
+            package,
+            version
+        )
+        .fetch_optional(&mut *self.transaction.borrow().await)
+        .await?
+        .ok_or_else(error_not_found)?;
+        let deps_has_outdated = row.deps_has_outdated;
+        let deps_has_cves = row.deps_has_cves;
         sqlx::query!(
             "UPDATE PackageVersion SET depsLastCheck = $3, depsHasOutdated = $4, depsHasCVEs = $5 WHERE package = $1 AND version = $2",
             package,
@@ -514,7 +528,7 @@ impl<'c> Database<'c> {
         )
         .execute(&mut *self.transaction.borrow().await)
         .await?;
-        Ok(())
+        Ok((deps_has_outdated, deps_has_cves))
     }
 
     /// Increments the counter of downloads for a crate version

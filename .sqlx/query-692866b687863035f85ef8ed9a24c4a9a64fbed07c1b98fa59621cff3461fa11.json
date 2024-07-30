@@ -1,0 +1,26 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT depsHasOutdated AS deps_has_outdated, depsHasCVEs AS deps_has_cves\n            FROM PackageVersion\n            WHERE package = $1 AND version = $2\n            LIMIT 1",
+  "describe": {
+    "columns": [
+      {
+        "name": "deps_has_outdated",
+        "ordinal": 0,
+        "type_info": "Bool"
+      },
+      {
+        "name": "deps_has_cves",
+        "ordinal": 1,
+        "type_info": "Bool"
+      }
+    ],
+    "parameters": {
+      "Right": 2
+    },
+    "nullable": [
+      false,
+      false
+    ]
+  },
+  "hash": "692866b687863035f85ef8ed9a24c4a9a64fbed07c1b98fa59621cff3461fa11"
+}

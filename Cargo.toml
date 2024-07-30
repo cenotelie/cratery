@@ -34,6 +34,7 @@ ring = "0.17"
 semver = "1.0"
 urlencoding = "2.1"
 tar = "0.4.41"
+uuid =  { version = "1.2", features = ["v4", "fast-rng"] }
 
 # async support
 futures = "0.3"
@@ -42,6 +43,7 @@ tokio-stream = "0.1.15"
 tokio-util = {version = "0.7", features = ["io"]}
 
 # framework for the application
+lettre = { version = "0.11", default-features = false, features = ["builder", "smtp-transport", "rustls-tls", "tokio1", "tokio1-rustls-tls"] }
 sqlx = { version = "0.8", default-features = false, features = ["runtime-tokio-rustls", "sqlite", "macros", "chrono"] }
 axum = { version = "0.7", features = ["http2"] }
 reqwest = { version = "0.12", default-features = false, features = ["stream", "rustls-tls"] }

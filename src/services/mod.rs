@@ -7,6 +7,7 @@
 pub mod database;
 pub mod deps;
 pub mod docs;
+pub mod emails;
 pub mod index;
 pub mod rustsec;
 pub mod storage;

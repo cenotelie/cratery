@@ -24,6 +24,7 @@ use crate::model::stats::{DownloadStats, GlobalStats};
 use crate::model::{CrateAndVersion, JobCrate};
 use crate::services::database::Database;
 use crate::services::deps::{DepsChecker, DepsCheckerData};
+use crate::services::emails::EmailSender;
 use crate::services::index::Index;
 use crate::services::rustsec::{RustSecChecker, RustSecData};
 use crate::services::storage::Storage;
@@ -135,6 +136,11 @@ impl Application {
             index: &self.index,
             rustsec: self.get_service_rustsec(),
         }
+    }
+
+    /// Gets the service to send emails
+    pub fn get_service_email_sender(&self) -> EmailSender {
+        EmailSender::new(&self.configuration)
     }
 
     /// Creates the application with transaction

@@ -5,6 +5,7 @@
 //! Service to fetch data about dependency crates
 
 use std::collections::HashMap;
+use std::fmt::Write;
 use std::io::{BufRead, BufReader};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
@@ -24,6 +25,7 @@ use crate::model::config::{Configuration, ExternalRegistryProtocol};
 use crate::model::deps::{DepAdvisory, DepsAnalysis, DepsGraph, DepsGraphCrateOrigin, BUILTIN_CRATES_REGISTRY_URI};
 use crate::model::JobCrate;
 use crate::services::database::Database;
+use crate::services::emails::EmailSender;
 use crate::services::index::Index;
 use crate::utils::apierror::{error_backend_failure, error_not_found, specialize, ApiError};
 use crate::utils::db::in_transaction;
@@ -90,7 +92,7 @@ async fn deps_worker_job(
         return Ok(());
     }
 
-    let crates = {
+    let jobs = {
         let mut connection = pool.acquire().await?;
         in_transaction(&mut connection, |transaction| async move {
             let database = Database::new(transaction);
@@ -98,28 +100,121 @@ async fn deps_worker_job(
         })
         .await?
     };
-    for JobCrate { name, version, targets } in crates {
-        info!("checking deps for {name} {version}");
-        let access = DepsChecker {
-            data: &deps_data,
+    let checker = DepsChecker {
+        data: &deps_data,
+        configuration,
+        index: &index,
+        rustsec: RustSecChecker {
+            data: &rustsec_data,
             configuration,
-            index: &index,
-            rustsec: RustSecChecker {
-                data: &rustsec_data,
-                configuration,
-            },
-        };
-        let analysis = access.check_crate(&name, &version, &targets).await?;
-        let has_outdated = analysis.direct_dependencies.iter().any(|info| info.is_outdated);
-        let has_cves = !analysis.advisories.is_empty();
+        },
+    };
+    for job in jobs {
+        deps_worker_job_on_crate_version(configuration, &checker, pool, &job).await?;
+    }
+    Ok(())
+}
+
+async fn deps_worker_job_on_crate_version(
+    configuration: &Configuration,
+    checker: &DepsChecker<'_>,
+    pool: &Pool<Sqlite>,
+    job: &JobCrate,
+) -> Result<(), ApiError> {
+    info!("checking deps for {} {}", job.name, job.version);
+    let analysis = checker.check_crate(&job.name, &job.version, &job.targets).await?;
+    let has_outdated = analysis.direct_dependencies.iter().any(|info| info.is_outdated);
+    let has_cves = !analysis.advisories.is_empty();
+    let (old_has_outdated, old_has_cves) = {
         let mut connection = pool.acquire().await?;
         in_transaction(&mut connection, |transaction| async move {
             let database = Database::new(transaction);
             database
-                .set_crate_deps_analysis(&name, &version, has_outdated, has_cves)
+                .set_crate_deps_analysis(&job.name, &job.version, has_outdated, has_cves)
                 .await
         })
-        .await?;
+        .await?
+    };
+    if (has_outdated != old_has_outdated && configuration.deps_notify_outdated)
+        || (has_cves != old_has_cves && configuration.deps_notify_cves)
+    {
+        // must send some notification
+        let owners = {
+            let mut connection = pool.acquire().await?;
+            in_transaction(&mut connection, |transaction| async move {
+                let database = Database::new(transaction);
+                database.get_crate_owners(&job.name).await
+            })
+            .await?
+        };
+        let owners = owners.users.into_iter().map(|owner| owner.email).collect::<Vec<_>>();
+        if has_outdated != old_has_outdated {
+            // new outdated dependencies ...
+            let mut body = String::new();
+            writeln!(
+                body,
+                "New outdated dependencies have been found for {} {}",
+                job.name, job.version
+            )
+            .unwrap();
+            writeln!(
+                body,
+                "See {}/crates/{}/{}",
+                configuration.web_public_uri, job.name, job.version
+            )
+            .unwrap();
+            writeln!(body).unwrap();
+            for dep in &analysis.direct_dependencies {
+                if dep.is_outdated {
+                    writeln!(
+                        body,
+                        "- {}, required {}, latest is {}",
+                        dep.package, dep.required, dep.last_version
+                    )
+                    .unwrap();
+                }
+            }
+            EmailSender::new(configuration)
+                .send_email(
+                    &owners,
+                    &format!("Cratery - outdated dependencies for {} {}", job.name, job.version),
+                    body,
+                )
+                .await?;
+        }
+        if has_cves != old_has_cves {
+            // new CVEs ...
+            let mut body = String::new();
+            writeln!(
+                body,
+                "New vulnerable dependencies have been found for {} {}",
+                job.name, job.version
+            )
+            .unwrap();
+            writeln!(
+                body,
+                "See {}/crates/{}/{}",
+                configuration.web_public_uri, job.name, job.version
+            )
+            .unwrap();
+            writeln!(body).unwrap();
+            for adv in &analysis.advisories {
+                writeln!(
+                    body,
+                    "- {} resolved version {} is vulnerable to CVE https://rustsec.org/advisories/{}.html",
+                    adv.package, adv.version, adv.content.id
+                )
+                .unwrap();
+                writeln!(body, "  => {}", adv.content.summary).unwrap();
+            }
+            EmailSender::new(configuration)
+                .send_email(
+                    &owners,
+                    &format!("Cratery - vulnerable dependencies for {} {}", job.name, job.version),
+                    body,
+                )
+                .await?;
+        }
     }
     Ok(())
 }
