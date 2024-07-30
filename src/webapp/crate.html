@@ -218,7 +218,7 @@
     if (currentVersion.depsHasOutdated || currentVersion.depsHasCVEs) {
       document.getElementById("header-dependencies-warn").style.display = "inline-block";
       if (currentVersion.depsHasCVEs) {
-        document.getElementById("header-dependencies-warn-icon").attributes.setNamedItem("stroke", "red");
+        document.getElementById("header-dependencies-warn-icon").setAttribute("stroke", "red");
       }
     }
     document.getElementById("meta-name").appendChild(document.createTextNode(currentVersion.index.name));
@@ -431,7 +431,7 @@
       if (depsHasOutdated || depsHasCVEs) {
         document.getElementById("header-dependencies-warn").style.display = "inline-block";
         if (depsHasCVEs) {
-          document.getElementById("header-dependencies-warn-icon").attributes.setNamedItem("stroke", "red");
+          document.getElementById("header-dependencies-warn-icon").setAttribute("stroke", "red");
         }
       }
     }
@@ -493,12 +493,14 @@
     if (dep.registry === null) {
       link.href = `/crates/${dep.name}`;
     } else if (dep.registry === "https://github.com/rust-lang/crates.io-index") {
+      link.target = "_blank";
       link.href = `https://crates.io/crates/${dep.name}`;
     } else {
       let reg = dep.registry;
       if (!reg.endsWith("/")) {
         reg += "/";
       }
+      link.target = "_blank";
       link.href = `${reg}crates/${dep.name}`;
     }
     link.appendChild(document.createTextNode(dep.name));
@@ -551,6 +553,7 @@
     const color = "red";
     const card = document.createElement("a");
     card.className = `block m-2 p-2 bg-white border border-${color}-200 rounded-lg shadow hover:bg-${color}-100 dark:bg-${color}-800 dark:border-${color}-700 dark:hover:bg-${color}-700`;
+    card.target = "_blank";
     card.href = `https://rustsec.org/advisories/${advisory.content.id}.html`;
     const title = document.createElement("h5");
     title.className = `mb-1 text-xl font-bold tracking-tight text-${color}-900 dark:text-${color}-100`;
