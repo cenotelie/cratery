@@ -138,7 +138,14 @@ When performing dependency analysis, Cratery will access `crates.io` and other e
 
 * `REGISTRY_DEPS_STALE_REGISTRY`: Number of milliseconds after which the local data about an external registry are deemed stale and must be pulled again. Defaults to 60000 (1 minute).
 * `REGISTRY_DEPS_STALE_ANALYSIS`: Number of minutes after which the saved analysis for a crate becomes stale. Defaults to 1 day. A negative number deactivates background analysis of crates.
-
+* `REGISTRY_DEPS_NOTIFY_OUTDATED`: Whether to send a notification by email to the owners of a crate when some of its dependencies become outdated, defaults to `false`. To activate, set to `true`.
+* `REGISTRY_DEPS_NOTIFY_CVES`: Whether to send a notification by email to the owners of a crate when CVEs are discovered in its dependencies, defaults to `false`. To activate, set to `true`.
+* `REGISTRY_EMAIL_SMTP_HOST`: The host for sending mails.
+* `REGISTRY_EMAIL_SMTP_PORT`: The port for sending mails.
+* `REGISTRY_EMAIL_SMTP_LOGIN`: The login to connect to the SMTP host.
+* `REGISTRY_EMAIL_SMTP_PASSWORD`: The password to connect to the SMTP host
+* `REGISTRY_EMAIL_SENDER`: The address to use a sender for mails
+* `REGISTRY_EMAIL_CC`: The address to always CC for mails
 
 ## Contributing
 

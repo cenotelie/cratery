@@ -1,4 +1,3 @@
-version: '3'
 services:
   server:
     build:
@@ -45,4 +44,12 @@ services:
       REGISTRY_OAUTH_CLIENT_SCOPE: openid profile email
       # REGISTRY_DEPS_STALE_REGISTRY: 60000
       # REGISTRY_DEPS_STALE_ANALYSIS: 1440
+      # REGISTRY_DEPS_NOTIFY_OUTDATED: "false"
+      # REGISTRY_DEPS_NOTIFY_CVES: "false"
+      # REGISTRY_EMAIL_SMTP_HOST:
+      # REGISTRY_EMAIL_SMTP_PORT: 465
+      # REGISTRY_EMAIL_SMTP_LOGIN:
+      # REGISTRY_EMAIL_SMTP_PASSWORD:
+      # REGISTRY_EMAIL_SENDER:
+      # REGISTRY_EMAIL_CC:
       # REGISTRY_SELF_LOCAL_NAME: localhost

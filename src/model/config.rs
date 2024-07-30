@@ -183,6 +183,54 @@ pub struct IndexPublicConfig {
     pub auth_required: bool,
 }
 
+/// The SMTP configuration to use to send emails
+#[derive(Debug, Default, Serialize, Deserialize, Clone)]
+pub struct SmtpConfig {
+    /// The host for sending mails
+    pub host: String,
+    /// The port for sending mails
+    pub port: u16,
+    /// The login to connect to the SMTP host
+    pub login: String,
+    /// The password to connect to the SMTP host
+    pub password: String,
+}
+
+impl SmtpConfig {
+    /// Loads the configuration for a registry from the environment
+    fn from_env() -> Result<Self, MissingEnvVar> {
+        Ok(Self {
+            host: get_var("REGISTRY_EMAIL_SMTP_HOST")?,
+            port: get_var("REGISTRY_EMAIL_SMTP_PORT")
+                .map(|s| s.parse().expect("invalid REGISTRY_EMAIL_SMTP_PORT"))
+                .unwrap_or(465),
+            login: get_var("REGISTRY_EMAIL_SMTP_LOGIN")?,
+            password: get_var("REGISTRY_EMAIL_SMTP_PASSWORD")?,
+        })
+    }
+}
+
+#[derive(Debug, Default, Serialize, Deserialize, Clone)]
+pub struct EmailConfig {
+    /// The SMTP configuration to use to send emails
+    pub smtp: SmtpConfig,
+    /// The address to use a sender for mails
+    pub sender: String,
+    /// The address to always CC for mails
+    pub cc: String,
+}
+
+impl EmailConfig {
+    /// Loads the configuration for a registry from the environment
+    fn from_env() -> Result<Self, MissingEnvVar> {
+        Ok(Self {
+            smtp: SmtpConfig::from_env()?,
+            sender: get_var("REGISTRY_EMAIL_SENDER")?,
+            cc: get_var("REGISTRY_EMAIL_CC").unwrap_or_default(),
+        })
+    }
+}
+
 /// A configuration for the registry
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct Configuration {
@@ -255,6 +303,14 @@ pub struct Configuration {
     /// A negative number deactivates background analysis of crates
     #[serde(rename = "depsStaleAnalysis")]
     pub deps_stale_analysis: i64,
+    /// Whether to send a notification by email to the owners of a crate when some of its dependencies become outdated
+    #[serde(rename = "depsNotifyOutdated")]
+    pub deps_notify_outdated: bool,
+    /// Whether to send a notification by email to the owners of a crate when CVEs are discovered in its dependencies
+    #[serde(rename = "depsNotifyCVEs")]
+    pub deps_notify_cves: bool,
+    /// The configuration for sending emails
+    pub email: EmailConfig,
     /// The name to use for the local registry in cargo and git config
     #[serde(rename = "selfLocalName")]
     pub self_local_name: String,
@@ -298,6 +354,13 @@ impl Configuration {
         };
         let index = IndexConfig::from_env(&data_dir, &web_public_uri)?;
         let storage = StorageConfig::from_env()?;
+        let deps_notify_outdated = get_var("REGISTRY_DEPS_NOTIFY_OUTDATED").map(|v| v == "true").unwrap_or(false);
+        let deps_notify_cves = get_var("REGISTRY_DEPS_NOTIFY_CVES").map(|v| v == "true").unwrap_or(false);
+        let email = if deps_notify_outdated || deps_notify_cves {
+            EmailConfig::from_env()?
+        } else {
+            EmailConfig::default()
+        };
         let mut external_registries = Vec::new();
         let mut external_registry_index = 1;
         while let Some(registry) = ExternalRegistry::from_env(external_registry_index)? {
@@ -342,6 +405,9 @@ impl Configuration {
             deps_stale_analysis: get_var("REGISTRY_DEPS_STALE_ANALYSIS")
                 .map(|s| s.parse().expect("invalid REGISTRY_DEPS_STALE_ANALYSIS"))
                 .unwrap_or(24 * 60), // 24 hours
+            deps_notify_outdated,
+            deps_notify_cves,
+            email,
             self_local_name,
             self_service_login: super::generate_token(16),
             self_service_token: super::generate_token(64),
