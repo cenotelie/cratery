@@ -541,14 +541,14 @@ impl Application {
         version: &str,
     ) -> Result<DepsAnalysis, ApiError> {
         let mut connection: sqlx::pool::PoolConnection<Sqlite> = self.db_pool.acquire().await?;
-        in_transaction(&mut connection, |transaction| async move {
+        let targets = in_transaction(&mut connection, |transaction| async move {
             let app = self.with_transaction(transaction);
             let _principal = app.authenticate(auth_data).await?;
             app.database.check_crate_exists(package, version).await?;
-            let targets = app.database.get_crate_targets(package).await?;
-            self.get_service_deps_checker().check_crate(package, version, &targets).await
+            app.database.get_crate_targets(package).await
         })
-        .await
+        .await?;
+        self.get_service_deps_checker().check_crate(package, version, &targets).await
     }
 }
 
