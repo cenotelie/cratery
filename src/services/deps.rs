@@ -121,8 +121,8 @@ pub struct DepsChecker<'a> {
 
 /// The URI identifying crates.io as the registry for a dependency
 const CRATES_IO_REGISTRY_URI: &str = "https://github.com/rust-lang/crates.io-index";
-/// The prefis URI for the index for dependencies on crates.io
-const CRATES_IO_INDEX_URI: &str = "https://index.crates.io/";
+/// The prefixs URI for the index for dependencies on crates.io
+const _CRATES_IO_INDEX_SPARSE_URI: &str = "https://index.crates.io/";
 /// Registry name for crates.io
 const CRATES_IO_NAME: &str = "crates.io";
 /// Name of the sub-directory to use within the data directory
@@ -146,12 +146,12 @@ impl<'a> DepsChecker<'a> {
                 for simple in simples {
                     if advisories
                         .iter()
-                        .all(|a: &DepAdvisory| a.package != dep.name && a.version != version && a.advisory.id != simple.id)
+                        .all(|a: &DepAdvisory| a.package != dep.name && a.version != version && a.content.id != simple.id)
                     {
                         advisories.push(DepAdvisory {
                             package: dep.name.clone(),
                             version: version.clone(),
-                            advisory: simple,
+                            content: simple,
                         });
                     }
                 }
@@ -192,7 +192,7 @@ impl<'a> DepsChecker<'a> {
             if registry == BUILTIN_CRATES_REGISTRY_URI {
                 Ok(Self::generate_for_built_in(name, &self.configuration.self_toolchain_version))
             } else if registry == CRATES_IO_REGISTRY_URI {
-                self.get_dependency_info_sparse(name, CRATES_IO_NAME, CRATES_IO_INDEX_URI, None)
+                self.get_dependency_info_git(name, CRATES_IO_NAME, CRATES_IO_REGISTRY_URI)
                     .await
             } else if let Some(registry) = self
                 .configuration

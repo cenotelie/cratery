@@ -85,7 +85,7 @@ pub struct DepAdvisory {
     /// The resolved version
     pub version: SemverVersion,
     /// The advisory itself
-    pub advisory: SimpleAdvisory,
+    pub content: SimpleAdvisory,
 }
 
 impl IndexCrateMetadata {

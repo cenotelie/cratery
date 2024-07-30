@@ -50,7 +50,14 @@
           <a id="header-features" class="inline-block p-4 rounded-t-lg hover:text-gray-600 hover:bg-gray-50 dark:hover:bg-gray-800 dark:hover:text-gray-300" style="cursor: pointer;" onclick="onClickTab(2)">Features</a>
         </li>
         <li class="me-2">
-            <a id="header-dependencies" class="inline-block p-4 rounded-t-lg hover:text-gray-600 hover:bg-gray-50 dark:hover:bg-gray-800 dark:hover:text-gray-300" style="cursor: pointer;" onclick="onClickTab(3)">Dependencies</a>
+          <a id="header-dependencies" class="inline-block p-4 rounded-t-lg hover:text-gray-600 hover:bg-gray-50 dark:hover:bg-gray-800 dark:hover:text-gray-300" style="cursor: pointer;" onclick="onClickTab(3)">
+            <span id="header-dependencies-warn" style="display: none; vertical-align: middle;">
+              <svg id="header-dependencies-warn-icon" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="#B8860B" class="size-6" style="width: 20px; height: 20px;">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M12 9v3.75m9-.75a9 9 0 1 1-18 0 9 9 0 0 1 18 0Zm-9 3.75h.008v.008H12v-.008Z" />
+              </svg>
+            </span>
+            <span style="display: inline-block; vertical-align: middle;">Dependencies</span>
+          </a>
         </li>
         <li class="me-2">
             <a id="header-admin" class="inline-block p-4 rounded-t-lg hover:text-gray-600 hover:bg-gray-50 dark:hover:bg-gray-800 dark:hover:text-gray-300" style="cursor: pointer;" onclick="onClickTab(4)">Settings</a>
@@ -121,7 +128,12 @@
       <div id="tab-dependencies" class="m-4" style="display: none;">
       </div>
       <div id="tab-admin" class="m-4" style="display: none;">
-        <h5 class="text-xl font-bold tracking-tight text-gray-900 dark:text-white mt-8">Owners <button id="button-add-owner" type="button" class="text-white bg-blue-700 hover:bg-blue-800 focus:ring-4 focus:ring-blue-300 font-medium rounded-lg text-xs px-3 py-2 me-1 mb-2 dark:bg-blue-600 dark:hover:bg-blue-700 focus:outline-none dark:focus:ring-blue-800">add</button></h5>
+        <div id="tab-admin-owners" class="m-4">
+          <h5 class="text-xl font-bold tracking-tight text-gray-900 dark:text-white mt-8">Owners <button id="button-add-owner" type="button" class="text-white bg-blue-700 hover:bg-blue-800 focus:ring-4 focus:ring-blue-300 font-medium rounded-lg text-xs px-3 py-2 me-1 mb-2 dark:bg-blue-600 dark:hover:bg-blue-700 focus:outline-none dark:focus:ring-blue-800">add</button></h5>
+        </div>
+        <div id="tab-admin-targets" class="m-4">
+          <h5 class="text-xl font-bold tracking-tight text-gray-900 dark:text-white mt-8">Targets <button id="button-add-owner" type="button" class="text-white bg-blue-700 hover:bg-blue-800 focus:ring-4 focus:ring-blue-300 font-medium rounded-lg text-xs px-3 py-2 me-1 mb-2 dark:bg-blue-600 dark:hover:bg-blue-700 focus:outline-none dark:focus:ring-blue-800">add</button></h5>
+        </div>
       </div>
     </div>
   </section>
@@ -203,6 +215,12 @@
     const domainParts = window.location.hostname.split(".");
     const regName = domainParts.length >= 2 ? domainParts[domainParts.length - 2] : domainParts[0];
     const currentVersion = version === undefined ? crate.versions[crate.versions.length - 1] : crate.versions.find(meta => meta.index.vers === version);
+    if (currentVersion.depsHasOutdated || currentVersion.depsHasCVEs) {
+      document.getElementById("header-dependencies-warn").style.display = "inline-block";
+      if (currentVersion.depsHasCVEs) {
+        document.getElementById("header-dependencies-warn-icon").attributes.setNamedItem("stroke", "red");
+      }
+    }
     document.getElementById("meta-name").appendChild(document.createTextNode(currentVersion.index.name));
     document.getElementById("meta-name-link").setAttribute("href", `/crates/${currentVersion.index.name}`);
     document.getElementById("meta-version").appendChild(document.createTextNode(`v${currentVersion.index.vers}`));
@@ -248,12 +266,17 @@
     const canAdmin = currentUser.roles.includes("admin") || owners.users.find(u => u.id === currentUser.id) !== undefined;
     if (canAdmin) {
       document.getElementById("header-admin").parentElement.style.display = null;
-      const tabAdminEl = document.getElementById("tab-admin");
+      const tabAdminOwnersEl = document.getElementById("tab-admin-owners");
       for (const owner of owners.users) {
-        tabAdminEl.appendChild(renderAdminOwnerRow(currentVersion.index.name, owner));
+        tabAdminOwnersEl.appendChild(renderAdminOwnerRow(currentVersion.index.name, owner));
       }
       const buttonAddOwnerEl = document.getElementById("button-add-owner");
       buttonAddOwnerEl.addEventListener("click", () => openAddOwner(currentVersion.index.name));
+
+      const tabAdminTargetsEl = document.getElementById("tab-admin-targets");
+      for (const target of crate.targets) {
+        // TODO render targets here
+      }
     }
 
     hljs.highlightAll();
@@ -401,6 +424,26 @@
     if (buildDeps.length > 0) {
       renderDependenciesCategory(tabDependencies, "Build dependencies", buildDeps);
     }
+    // reapply tab head rendering
+    if (analysis !== null) {
+      const depsHasOutdated = analysis.directDependencies.reduce((acc, dep) => acc || dep.isOutdated, false);
+      const depsHasCVEs = analysis.advisories.length > 0;
+      if (depsHasOutdated || depsHasCVEs) {
+        document.getElementById("header-dependencies-warn").style.display = "inline-block";
+        if (depsHasCVEs) {
+          document.getElementById("header-dependencies-warn-icon").attributes.setNamedItem("stroke", "red");
+        }
+      }
+    }
+    if (analysis !== null && analysis.advisories.length > 0) {
+      const title = document.createElement("h5");
+      title.className = "text-xl font-bold tracking-tight text-gray-900 dark:text-white my-10";
+      title.appendChild(document.createTextNode("Security Vulnerabilities"));
+      tabDependencies.appendChild(title);
+      for (const advisory of analysis.advisories) {
+        tabDependencies.appendChild(renderAdvisory(advisory));
+      }
+    }
   }
 
   function renderDependenciesCategory(tabDependencies, name, depsWithInfo) {
@@ -502,6 +545,22 @@
     }
     row.appendChild(cellStatus);
     return row;
+  }
+
+  function renderAdvisory(advisory) {
+    const color = "red";
+    const card = document.createElement("a");
+    card.className = `block m-2 p-2 bg-white border border-${color}-200 rounded-lg shadow hover:bg-${color}-100 dark:bg-${color}-800 dark:border-${color}-700 dark:hover:bg-${color}-700`;
+    card.href = `https://rustsec.org/advisories/${advisory.content.id}.html`;
+    const title = document.createElement("h5");
+    title.className = `mb-1 text-xl font-bold tracking-tight text-${color}-900 dark:text-${color}-100`;
+    title.appendChild(document.createTextNode(`${advisory.content.id}: ${advisory.package} - ${advisory.version}`));
+    card.appendChild(title);
+    const sub = document.createElement("p");
+    sub.className = `font-normal text-${color}-700 dark:text-${color}-400`;
+    sub.appendChild(document.createTextNode(advisory.content.summary));
+    card.appendChild(sub);
+    return card;
   }
 
   function onClickTab(index) {

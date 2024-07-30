@@ -128,6 +128,8 @@ pub struct SimpleAdvisory {
     pub published: String,
     /// Datetime on last modification
     pub modified: String,
+    /// The sumary for the advisory
+    pub summary: String,
     /// The affected ranges
     pub ranges: Vec<SimpleAdvisoryRange>,
     /// The affected versions
@@ -182,6 +184,7 @@ impl TryFrom<Advisory> for SimpleAdvisory {
             id: advisory.id,
             published: advisory.published,
             modified: advisory.modified,
+            summary: advisory.summary,
             ranges,
             versions,
         })
