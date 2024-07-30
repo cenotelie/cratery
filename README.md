@@ -39,10 +39,43 @@ On creation, a popup appear with information about how to register this token fo
 
 ## Features
 
-- Authentication with OAuth
-- Fine-grained administration on hosted crates
-- Automatic documentation generation (docs.rs like)
+### Authentication
 
+Authentication is handled using OAuth out of the box.
+Simply connect your organisation's provider.
+On the default configuration, Google is configured as a provider.
+This is only appropriate for demonstration purposes.
+
+### Administration
+
+Administrate owners for hosted crates.
+
+![Screenshot of the admin panel for setting a crate's owner](https://raw.githubusercontent.com/cenotelie/cratery/master/docs/capture-owners.png)
+
+### Docs generation
+
+Cratery automatically generates and serves the documentation for published crates.
+
+![Screenshot of a piece of documentation](https://raw.githubusercontent.com/cenotelie/cratery/master/docs/capture-docs.png)
+
+### Dependency analysis
+
+Cratery automatically scans the dependency graph of the latest versions (for each major version) of hosted crates.
+Cratery detects outdated direct dependencies and gives the latest version number to use instead.
+Cratery also audits the complete dependency graph to find dependencies, direct or indirect, that are affected by vulnerabilities published by the [RustSec group](https://rustsec.org/).
+
+Cratery can send notifications by emails to the crates' owners when a issue is discovered.
+Analysis are also performed on-demand on the each crate's page.
+
+![Screenshot of warning about outdated dependencies](https://raw.githubusercontent.com/cenotelie/cratery/master/docs/capture-deps-outdated.png)
+
+![Screenshot of warning about vulnerable dependencies](https://raw.githubusercontent.com/cenotelie/cratery/master/docs/capture-deps-cves.png)
+
+### Statistics
+
+Cratery also tracks downloads to give you statistics about the usage of your crates.
+
+![Screenshot of download statistics for a crate](https://raw.githubusercontent.com/cenotelie/cratery/master/docs/capture-crate-stats.png)
 
 ## Configuration
 
