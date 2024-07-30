@@ -49,6 +49,8 @@ pub struct Application {
 
 /// The empty database
 const DB_EMPTY: &[u8] = include_bytes!("empty.db");
+/// Maximum number of concurrent connections
+const DB_MAX_CONNECTIONS: u32 = 16;
 
 impl Application {
     /// Creates a new application
@@ -66,7 +68,7 @@ impl Application {
             tokio::fs::write(&db_filename, DB_EMPTY).await?;
         }
         let db_pool = SqlitePoolOptions::new()
-            .max_connections(1)
+            .max_connections(DB_MAX_CONNECTIONS)
             .connect_lazy(&configuration.get_database_url())?;
         // migrate the database, if appropriate
         crate::migrations::migrate_to_last(&mut *db_pool.acquire().await?).await?;
