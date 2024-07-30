@@ -37,6 +37,30 @@ pub fn create_deps_worker(
     index: Arc<Mutex<Index>>,
     pool: Pool<Sqlite>,
 ) {
+    let _handle = tokio::spawn({
+        let configuration = configuration.clone();
+        let deps_data = deps_data.clone();
+        let rustsec_data = rustsec_data.clone();
+        let index = index.clone();
+        async move {
+            info!("precaching crates.io index");
+            let access = DepsChecker {
+                data: &deps_data,
+                configuration: &configuration,
+                index: &index,
+                rustsec: RustSecChecker {
+                    data: &rustsec_data,
+                    configuration: &configuration,
+                },
+            };
+            if let Err(e) = access.precache_crate_io().await {
+                error!("{e}");
+                if let Some(backtrace) = &e.backtrace {
+                    error!("{backtrace}");
+                }
+            }
+        }
+    });
     let _handle = tokio::spawn(async move {
         // every minute
         let mut interval = tokio::time::interval(Duration::from_secs(60));
@@ -129,6 +153,13 @@ const CRATES_IO_NAME: &str = "crates.io";
 const DATA_SUB_DIR: &str = "deps";
 
 impl<'a> DepsChecker<'a> {
+    /// Ensures that a local cache for crates.io exists
+    async fn precache_crate_io(&self) -> Result<(), ApiError> {
+        self.get_dependency_info_git("rand", CRATES_IO_NAME, CRATES_IO_REGISTRY_URI)
+            .await?;
+        Ok(())
+    }
+
     /// Checks the dependencies of a local crate
     pub async fn check_crate(&self, package: &str, version: &str, targets: &[String]) -> Result<DepsAnalysis, ApiError> {
         let metadata = self.index.lock().await.get_crate_data(package).await?;
