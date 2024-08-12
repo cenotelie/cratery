@@ -6,8 +6,6 @@
 
 use std::path::{Path, PathBuf};
 
-use tokio::io::{AsyncReadExt, AsyncWriteExt};
-
 use super::Storage;
 use crate::model::cargo::CrateMetadata;
 use crate::utils::apierror::{error_not_found, ApiError};
@@ -43,9 +41,7 @@ impl<'config> FsStorage<'config> {
     async fn write_to_file(&self, path: &str, content: &[u8]) -> Result<(), ApiError> {
         let full_path = PathBuf::from(format!("{}/{path}", self.data_dir));
         tokio::fs::create_dir_all(full_path.parent().unwrap()).await?;
-        let file = tokio::fs::File::create(&full_path).await?;
-        let mut writer = tokio::io::BufWriter::new(file);
-        writer.write_all(content).await?;
+        tokio::fs::write(full_path, content).await?;
         Ok(())
     }
 
@@ -61,11 +57,8 @@ impl<'config> FsStorage<'config> {
                 return Err(error_not_found());
             }
         }
-        let file = tokio::fs::File::open(&full_path).await?;
-        let mut reader = tokio::io::BufReader::new(file);
-        let mut buffer = Vec::new();
-        reader.read_to_end(&mut buffer).await?;
-        Ok(buffer)
+
+        Ok(tokio::fs::read(full_path).await?)
     }
 }
 
