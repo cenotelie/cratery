@@ -23,6 +23,22 @@ impl<'config> S3Storage<'config> {
     pub fn new(params: &'config S3Params, bucket: &'config str) -> S3Storage<'config> {
         Self { params, bucket }
     }
+
+    fn crate_file_key(name: &str, version: &str, filename: &str) -> String {
+        format!("crates/{name}/{version}/{filename}")
+    }
+
+    fn data_key(name: &str, version: &str) -> String {
+        Self::crate_file_key(name, version, "data")
+    }
+
+    fn metadata_key(name: &str, version: &str) -> String {
+        Self::crate_file_key(name, version, "metadata")
+    }
+
+    fn readme_key(name: &str, version: &str) -> String {
+        Self::crate_file_key(name, version, "readme")
+    }
 }
 
 impl<'config> Storage for S3Storage<'config> {
@@ -30,6 +46,9 @@ impl<'config> Storage for S3Storage<'config> {
     async fn store_crate(&self, metadata: &CrateMetadata, content: Vec<u8>) -> Result<(), ApiError> {
         let readme = super::extract_readme(&content)?;
         let buckets = crate::utils::s3::list_all_buckets(self.params).await?;
+        let name = &metadata.name;
+        let version = &metadata.vers;
+
         if buckets.into_iter().all(|b| b != self.bucket) {
             // bucket does not exist => create it
             crate::utils::s3::create_bucket(self.params, self.bucket).await?;
@@ -37,7 +56,7 @@ impl<'config> Storage for S3Storage<'config> {
         crate::utils::s3::upload_object_raw(
             self.params,
             self.bucket,
-            &format!("crates/{}/{}", metadata.name, metadata.vers),
+            &Self::data_key(name, version),
             content,
         )
         .await?;
@@ -45,14 +64,14 @@ impl<'config> Storage for S3Storage<'config> {
         crate::utils::s3::upload_object_raw(
             self.params,
             self.bucket,
-            &format!("crates/{}/{}/metadata", metadata.name, metadata.vers),
+            &Self::metadata_key(name, version),
             serde_json::to_vec(metadata)?,
         )
         .await?;
         crate::utils::s3::upload_object_raw(
             self.params,
             self.bucket,
-            &format!("crates/{}/{}/readme", metadata.name, metadata.vers),
+            &Self::readme_key(name, version),
             readme,
         )
         .await?;
@@ -61,14 +80,14 @@ impl<'config> Storage for S3Storage<'config> {
 
     /// Downloads a crate
     async fn download_crate(&self, name: &str, version: &str) -> Result<Vec<u8>, ApiError> {
-        let object_key = format!("crates/{name}/{version}");
+        let object_key = Self::data_key(name, version);
         let data = crate::utils::s3::get_object(self.params, self.bucket, &object_key).await?;
         Ok(data)
     }
 
     /// Downloads the last metadata for a crate
     async fn download_crate_metadata(&self, name: &str, version: &str) -> Result<Option<CrateMetadata>, ApiError> {
-        let object_key = format!("crates/{name}/{version}/metadata");
+        let object_key = Self::metadata_key(name, version);
         if let Ok(data) = crate::utils::s3::get_object(self.params, self.bucket, &object_key).await {
             Ok(Some(serde_json::from_slice(&data)?))
         } else {
@@ -78,7 +97,7 @@ impl<'config> Storage for S3Storage<'config> {
 
     /// Downloads the last README for a crate
     async fn download_crate_readme(&self, name: &str, version: &str) -> Result<Vec<u8>, ApiError> {
-        let object_key = format!("crates/{name}/{version}/readme");
+        let object_key = Self::readme_key(name, version);
         let data = crate::utils::s3::get_object(self.params, self.bucket, &object_key).await?;
         Ok(data)
     }

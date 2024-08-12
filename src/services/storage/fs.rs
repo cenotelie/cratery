@@ -23,6 +23,22 @@ impl<'config> FsStorage<'config> {
         Self { data_dir }
     }
 
+    fn crate_file_key(name: &str, version: &str, filename: &str) -> String {
+        format!("crates/{name}/{version}/{filename}")
+    }
+
+    fn data_path(name: &str, version: &str) -> String {
+        Self::crate_file_key(name, version, "data")
+    }
+
+    fn metadata_path(name: &str, version: &str) -> String {
+        Self::crate_file_key(name, version, "metadata")
+    }
+
+    fn readme_path(name: &str, version: &str) -> String {
+        Self::crate_file_key(name, version, "readme")
+    }
+
     /// Write to a file
     async fn write_to_file(&self, path: &str, content: &[u8]) -> Result<(), ApiError> {
         let full_path = PathBuf::from(format!("{}/{path}", self.data_dir));
@@ -58,26 +74,29 @@ impl<'config> Storage for FsStorage<'config> {
     async fn store_crate(&self, metadata: &CrateMetadata, content: Vec<u8>) -> Result<(), ApiError> {
         let readme = super::extract_readme(&content)?;
         let metadata_json = serde_json::to_vec(metadata)?;
-        self.write_to_file(&format!("crates/{}/{}", metadata.name, metadata.vers), &content)
+        let name = &metadata.name;
+        let version = &metadata.vers;
+
+        self.write_to_file(&Self::data_path(name, version), &content)
             .await?;
         self.write_to_file(
-            &format!("crates/{}/{}/metadata", metadata.name, metadata.vers),
+            &Self::metadata_path(name, version),
             &metadata_json,
         )
         .await?;
-        self.write_to_file(&format!("crates/{}/{}/readme", metadata.name, metadata.vers), &readme)
+        self.write_to_file(&Self::readme_path(name, version), &readme)
             .await?;
         Ok(())
     }
 
     /// Downloads a crate
     async fn download_crate(&self, name: &str, version: &str) -> Result<Vec<u8>, ApiError> {
-        self.read_from_file(&format!("{name}/{version}")).await
+        self.read_from_file(&Self::data_path(name, version)).await
     }
 
     /// Downloads the last metadata for a crate
     async fn download_crate_metadata(&self, name: &str, version: &str) -> Result<Option<CrateMetadata>, ApiError> {
-        if let Ok(data) = self.read_from_file(&format!("crates/{name}/{version}/metadata")).await {
+        if let Ok(data) = self.read_from_file(&Self::metadata_path(name, version)).await {
             Ok(Some(serde_json::from_slice(&data)?))
         } else {
             Ok(None)
@@ -86,7 +105,7 @@ impl<'config> Storage for FsStorage<'config> {
 
     /// Downloads the last README for a crate
     async fn download_crate_readme(&self, name: &str, version: &str) -> Result<Vec<u8>, ApiError> {
-        self.read_from_file(&format!("crates/{name}/{version}/readme")).await
+        self.read_from_file(&Self::readme_path(name, version)).await
     }
 
     /// Stores a documentation file
