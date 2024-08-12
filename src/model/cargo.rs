@@ -173,7 +173,7 @@ pub struct CrateMetadata {
     pub license_file: Option<String>,
     /// String of the URL to the website for the source repository of this package.
     /// May be null.
-    pub repository: String,
+    pub repository: Option<String>,
     /// Optional object of "status" badges. Each value is an object of
     /// arbitrary string to string mappings.
     /// crates.io has special interpretation of the format of the badges.
