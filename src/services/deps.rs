@@ -268,7 +268,7 @@ impl<'a> DepsChecker<'a> {
         for dep in &graph.crates {
             for resolution in &dep.resolutions {
                 let version = dep.versions[resolution.version_index].semver.clone();
-                let simples = self.rustsec.check_crate(&dep.name, &version.0).await?;
+                let simples = self.rustsec.check_crate(&dep.name, &version).await?;
                 for simple in simples {
                     if advisories
                         .iter()

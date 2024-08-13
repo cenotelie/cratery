@@ -4,9 +4,8 @@
 
 //! Data types around CVEs
 
+use semver::Version;
 use serde_derive::{Deserialize, Serialize};
-
-use super::semver::SemverVersion;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AdvisorySeverity {
@@ -97,22 +96,22 @@ pub struct Advisory {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SimpleAdvisoryRange {
     /// Minimal affected version
-    pub introduced: SemverVersion,
+    pub introduced: Version,
     /// The minimal fixing version
-    pub fixed: Option<SemverVersion>,
+    pub fixed: Option<Version>,
     /// The last affected version
-    pub last_affected: Option<SemverVersion>,
+    pub last_affected: Option<Version>,
 }
 
 impl SimpleAdvisoryRange {
     /// Gets whether the specified version is affected by this range
-    pub fn affects(&self, version: &semver::Version) -> bool {
+    pub fn affects(&self, version: &Version) -> bool {
         if let Some(fixed) = self.fixed.as_ref() {
-            version >= &self.introduced.0 && version < &fixed.0
+            version >= &self.introduced && version < fixed
         } else if let Some(last_affected) = self.last_affected.as_ref() {
-            version >= &self.introduced.0 && version <= &last_affected.0
+            version >= &self.introduced && version <= last_affected
         } else {
-            version >= &self.introduced.0
+            version >= &self.introduced
         }
     }
 }
@@ -133,13 +132,13 @@ pub struct SimpleAdvisory {
     /// The affected ranges
     pub ranges: Vec<SimpleAdvisoryRange>,
     /// The affected versions
-    pub versions: Vec<SemverVersion>,
+    pub versions: Vec<Version>,
 }
 
 impl SimpleAdvisory {
     /// Gets whether the specified version is affected by this advisory
-    pub fn affects(&self, version: &semver::Version) -> bool {
-        if self.versions.iter().any(|v| &v.0 == version) {
+    pub fn affects(&self, version: &Version) -> bool {
+        if self.versions.iter().any(|v| v == version) {
             return true;
         }
         self.ranges.iter().any(|range| range.affects(version))

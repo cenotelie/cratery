@@ -5,11 +5,11 @@
 //! Data types around dependency analysis
 
 use log::error;
+use semver::{Version, VersionReq};
 use serde_derive::{Deserialize, Serialize};
 
 use super::cargo::{DependencyKind, IndexCrateDependency, IndexCrateMetadata};
 use super::osv::SimpleAdvisory;
-use super::semver::{SemverVersion, SemverVersionReq};
 use crate::utils::apierror::ApiError;
 use crate::utils::push_if_not_present;
 
@@ -83,7 +83,7 @@ pub struct DepAdvisory {
     /// The name of the package
     pub package: String,
     /// The resolved version
-    pub version: SemverVersion,
+    pub version: Version,
     /// The advisory itself
     pub content: SimpleAdvisory,
 }
@@ -247,7 +247,7 @@ impl DepsGraphCrateOrigin {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct DepsGraphCrateVersion {
     /// The semver version
-    pub semver: SemverVersion,
+    pub semver: Version,
     /// The index metadata
     pub metadata: IndexCrateMetadata,
     /// Whether this version is outdated
@@ -281,11 +281,11 @@ pub struct DepsGraphCrate {
     pub versions: Vec<DepsGraphCrateVersion>,
     /// The version number of latest
     #[serde(rename = "lastVersion")]
-    pub last_version: SemverVersion,
+    pub last_version: Version,
     /// The resolved versions of this crate, actually appearing in the dependency graph
     pub resolutions: Vec<DepsGraphCrateResolution>,
     /// The list of unresolved requirements for this crate
-    pub unresolved: Vec<SemverVersionReq>,
+    pub unresolved: Vec<VersionReq>,
 }
 
 impl DepsGraphCrate {
@@ -293,7 +293,7 @@ impl DepsGraphCrate {
     pub fn new(package: &IndexCrateDependency, versions: Vec<IndexCrateMetadata>) -> Result<Self, semver::Error> {
         let semvers = versions
             .iter()
-            .map(|v| v.vers.parse::<SemverVersion>())
+            .map(|v| v.vers.parse::<Version>())
             .collect::<Result<Vec<_>, _>>()?;
         let last_version = semvers.iter().max().unwrap().clone();
         let versions = semvers
@@ -323,12 +323,12 @@ impl DepsGraphCrate {
         features: &[String],
         origins: &[DepsGraphCrateOrigin],
     ) -> Option<usize> {
-        let semver = dep.req.parse::<SemverVersionReq>().unwrap();
+        let semver = dep.req.parse::<VersionReq>().unwrap();
         let version_index = self
             .versions
             .iter()
             .enumerate()
-            .filter(|(_, version)| semver.0.matches(&version.semver.0))
+            .filter(|(_, version)| semver.matches(&version.semver))
             .max_by(|(_, v1), (_, v2)| v1.semver.cmp(&v2.semver))
             .map(|(i, _)| i);
         let Some(version_index) = version_index else {

@@ -12,6 +12,7 @@ use std::time::{Duration, Instant};
 use futures::lock::Mutex;
 use futures::StreamExt;
 use log::error;
+use semver::Version;
 use tokio_stream::wrappers::ReadDirStream;
 
 use crate::model::config::Configuration;
@@ -105,7 +106,7 @@ pub struct RustSecChecker<'a> {
 
 impl<'a> RustSecChecker<'a> {
     /// Gets the advisories against a crate
-    pub async fn check_crate(&self, package: &str, version: &semver::Version) -> Result<Vec<SimpleAdvisory>, ApiError> {
+    pub async fn check_crate(&self, package: &str, version: &Version) -> Result<Vec<SimpleAdvisory>, ApiError> {
         let mut data = self.data.lock().await;
         data.update_data(self.configuration).await?;
         let db = data.db.lock().unwrap();
