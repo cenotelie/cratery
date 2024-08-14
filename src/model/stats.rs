@@ -20,7 +20,7 @@ pub struct GlobalStats {
     /// Total number of crates
     #[serde(rename = "totalCrates")]
     pub total_crates: i64,
-    /// The newests crate in the registry
+    /// The newest crate in the registry
     #[serde(rename = "cratesNewest")]
     pub crates_newest: Vec<CrateAndVersion>,
     /// The most downloaded crates in the registry
@@ -103,7 +103,7 @@ impl DownloadStats {
         self.versions.sort_unstable_by(|a, b| b.version_semver.cmp(&a.version_semver));
         let other = 4;
         if self.versions.len() > other {
-            // collaped all remaining version into one
+            // collapsed all remaining version into one
             self.versions[other].version = String::from("Others");
             for i in (other + 1)..self.versions.len() {
                 self.versions[other].total += self.versions[i].total;

@@ -19,7 +19,7 @@ pub const BUILTIN_CRATES_REGISTRY_URI: &str = "<builtin>";
 /// The list of built-in crates
 pub const BUILTIN_CRATES_LIST: &[&str] = &["core", "alloc", "std"];
 
-/// The complete dependendency analysis
+/// The complete dependency analysis
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct DepsAnalysis {
     /// The direct dependencies
@@ -91,7 +91,7 @@ pub struct DepAdvisory {
 impl IndexCrateMetadata {
     /// Assumes this is the metadata for a crate in an external registry, including crates.io
     /// Find and rewrite the registry for built-in crates
-    pub fn rewrite_buitin_deps(mut self, parent_registry: &Option<String>) -> Self {
+    pub fn rewrite_builtin_deps(mut self, parent_registry: &Option<String>) -> Self {
         for d in &mut self.deps {
             if d.registry.is_none() {
                 if BUILTIN_CRATES_LIST.contains(&d.get_name()) {
@@ -302,7 +302,7 @@ impl DepsGraphCrate {
             .map(|(semver, metadata)| DepsGraphCrateVersion {
                 is_outdated: semver != last_version,
                 semver,
-                metadata: metadata.rewrite_buitin_deps(&package.registry),
+                metadata: metadata.rewrite_builtin_deps(&package.registry),
             })
             .collect();
         Ok(Self {

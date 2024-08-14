@@ -265,7 +265,7 @@ pub async fn api_v1_get_current_user(auth_data: AuthData, State(state): State<Ar
     response(state.application.get_current_user(&auth_data).await)
 }
 
-/// Attemps to login using an OAuth code
+/// Attempts to login using an OAuth code
 pub async fn api_v1_login_with_oauth_code(
     mut auth_data: AuthData,
     State(state): State<Arc<AxumState>>,

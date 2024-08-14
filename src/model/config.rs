@@ -34,7 +34,7 @@ pub fn get_var<T: AsRef<str>>(name: T) -> Result<String, MissingEnvVar> {
 pub enum ExternalRegistryProtocol {
     /// The git protocol
     Git,
-    /// The sparse protcol
+    /// The sparse protocol
     Sparse,
 }
 
@@ -373,7 +373,7 @@ impl Configuration {
                 .unwrap_or_else(|_| String::from("[%Y-%m-%d %H:%M:%S]")),
             web_listenon_ip: get_var("REGISTRY_WEB_LISTENON_IP").map_or_else(
                 |_| IpAddr::V4(Ipv4Addr::new(0, 0, 0, 0)),
-                |s| IpAddr::from_str(&s).expect("invalud REGISTRY_WEB_LISTENON_IP"),
+                |s| IpAddr::from_str(&s).expect("invalid REGISTRY_WEB_LISTENON_IP"),
             ),
             web_listenon_port: get_var("REGISTRY_WEB_LISTENON_PORT")
                 .map(|s| s.parse().expect("invalid REGISTRY_WEB_LISTENON_PORT"))

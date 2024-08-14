@@ -260,9 +260,9 @@ pub struct CrateMetadataDependency {
     pub version_req: String,
     /// Array of features (as strings) enabled for this dependency
     pub features: Vec<String>,
-    /// Boolean of whether or not this is an optional dependency
+    /// Boolean of whether this is an optional dependency
     pub optional: bool,
-    /// Boolean of whether or not default features are enabled
+    /// Boolean of whether default features are enabled
     pub default_features: bool,
     /// The target platform for the dependency.
     /// null if not a target dependency.
@@ -358,7 +358,7 @@ pub struct IndexCrateMetadata {
     /// Set of features defined for the package.
     /// Each feature maps to an array of features or dependencies it enables.
     pub features: HashMap<String, Vec<String>>,
-    /// Boolean of whether or not this version has been yanked.
+    /// Boolean of whether this version has been yanked.
     pub yanked: bool,
     /// The `links` string value from the package's manifest, or null if not
     /// specified. This field is optional and defaults to null.
@@ -429,9 +429,9 @@ pub struct IndexCrateDependency {
     pub req: String,
     /// Array of features (as strings) enabled for this dependency
     pub features: Vec<String>,
-    /// Boolean of whether or not this is an optional dependency
+    /// Boolean of whether this is an optional dependency
     pub optional: bool,
-    /// Boolean of whether or not default features are enabled
+    /// Boolean of whether default features are enabled
     pub default_features: bool,
     /// The target platform for the dependency.
     /// null if not a target dependency.

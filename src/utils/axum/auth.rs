@@ -128,7 +128,7 @@ impl AuthData {
         builder.build()
     }
 
-    /// Makes a cokoie private by encrypting it using the private cookie jar
+    /// Makes a private cookie by encrypting it using the private cookie jar
     /// Returns the encrypted cooke
     fn make_private_cookie(&mut self, name: &str, cookie: Cookie<'static>) -> Cookie<'static> {
         self.cookie_jar.private_mut(&self.cookie_key).add(cookie);
@@ -145,7 +145,7 @@ impl AuthData {
         }
     }
 
-    /// Creates an expired cookie to be return on the HTTP response to unset the it
+    /// Creates an expired cookie to be return on the HTTP response to unset it
     pub fn create_expired_cookie(&mut self, name: &str, is_private: bool) -> Cookie<'static> {
         let cookie = AuthData::build_cookie(&self.cookie_domain, Cow::Borrowed(name), Cow::Borrowed(""), true);
         if is_private {

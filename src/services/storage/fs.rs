@@ -11,7 +11,7 @@ use crate::model::cargo::CrateMetadata;
 use crate::utils::apierror::{error_not_found, ApiError};
 use crate::utils::FaillibleFuture;
 
-/// An storage implementation that uses the file system
+/// Storage implementation that uses the file system
 pub struct FsStorage {
     /// The data directory in the configuration
     data_dir: String,

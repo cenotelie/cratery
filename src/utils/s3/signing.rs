@@ -30,7 +30,7 @@ pub fn sign_request(
 ) {
     let now = Local::now().naive_utc();
 
-    // add inital headers
+    // add initial headers
     headers.insert(
         "x-amz-date",
         HeaderValue::from_str(&now.format("%Y%m%dT%H%M%SZ").to_string()).unwrap(),

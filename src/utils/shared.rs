@@ -23,10 +23,10 @@ impl Display for StillSharedError {
 
 impl std::error::Error for StillSharedError {}
 
-/// An access to a shared resource
+/// Access to a shared resource
 #[derive(Debug)]
 pub struct ResourceLock<'r, R> {
-    /// The inner reference to the shared resurce, through a locked mutex
+    /// The inner reference to the shared resource, through a locked mutex
     inner: MutexGuard<'r, R>,
 }
 
@@ -66,7 +66,7 @@ impl<R> SharedResource<R> {
         }
     }
 
-    /// Gets an access to the resource
+    /// Gets access to the resource
     pub async fn borrow(&self) -> ResourceLock<'_, R> {
         let lock = self.inner.lock().await;
         ResourceLock { inner: lock }

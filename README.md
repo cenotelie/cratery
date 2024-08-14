@@ -28,7 +28,7 @@ Then, connect to [http://localhost/](http://localhost/).
 In the default configuration, a Google account must be used.
 
 The first ever user to log in automatically obtains administration rights.
-He/she is then reponsible to setup an admin team.
+He/she is then responsible to setup an admin team.
 
 Once connected, a token for CLI usage in Cargo can be obtained by going to [http://localhost/webapp/account.html](http://localhost/webapp/account.html) and clicking on the `Create new token` button.
 Tokens can be restricted to read access, e.g. for CI purposes.
@@ -65,7 +65,7 @@ Cratery detects outdated direct dependencies and gives the latest version number
 Cratery also audits the complete dependency graph to find dependencies, direct or indirect, that are affected by vulnerabilities published by the [RustSec group](https://rustsec.org/).
 
 Cratery can send notifications by emails to the crates' owners when a issue is discovered.
-Analysis are also performed on-demand on the each crate's page.
+Analysis are also performed on-demand on each crate's page.
 
 ![Screenshot of warning about outdated dependencies](https://raw.githubusercontent.com/cenotelie/cratery/master/docs/capture-deps-outdated.png)
 
@@ -89,12 +89,12 @@ See [docker-compose.yml](docker-compose.yml) for all values.
 
 ### Authentication
 
-Authentication on `cratery` is achived with OAuth and configured with the `REGISTRY_OAUTH_*` environment variables.
+Authentication on `cratery` is archived with OAuth and configured with the `REGISTRY_OAUTH_*` environment variables.
 The [docker-compose.yml](docker-compose.yml) file contains the basic configuration to use Google as the authentication provider.
 This is allowed only for `cratery` instances exposed on `localhost` for evaluation and testing purposes.
 This configuration must be changed to use your own OAuth identity provider.
 
-* `REGISTRY_OAUTH_LOGIN_URI`: URI to redirect to the when attempting to log in.
+* `REGISTRY_OAUTH_LOGIN_URI`: URI to redirect to when attempting to log in.
 * `REGISTRY_OAUTH_CALLBACK_URI`: URI on `cratery` the user will be redirected to on successful login on the identity provider.
 * `REGISTRY_OAUTH_TOKEN_URI`: URI `cratery` will connect to for obtaining an authorization token from the identity provider.
 * `REGISTRY_OAUTH_USERINFO_URI`: URI `cratery` will connect to for obtaining the user information from the identity provider when a user logged in.
@@ -112,7 +112,7 @@ The persisted data for `cratery` is:
 * The actual crates packages and metadata,
 * The generated documentation of stored crates.
 
-By default, all data is stored in a single directory specificed by the `REGISTRY_DATA_DIR` environment variable.
+By default, all data is stored in a single directory specified by the `REGISTRY_DATA_DIR` environment variable.
 The default value is a `/data` folder, expected to be mounted into the docker container.
 
 The crates data and their generated documentation can be stored on S3 instead.
@@ -126,7 +126,7 @@ This is controlled by the following configuration :
 * `REGISTRY_S3_SECRET_KEY`: The secret key to use
 * `REGISTRY_S3_BUCKET`: The S3 bucket to use for storage. It will be created if it does not exist.
 
-The domain for the S3 bucket is interpolated as follow (`REGISTRY_S3_SERVICE` can be left empty):
+The domain for the S3 bucket is interpolated as following (`REGISTRY_S3_SERVICE` can be left empty):
 `{REGISTRY_S3_BUCKET}.{REGISTRY_S3_SERVICE}.{REGISTRY_S3_REGION}.{REGISTRY_S3_URI}`.
 
 ### Index

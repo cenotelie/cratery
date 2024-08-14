@@ -60,7 +60,7 @@ impl<'c> Database<'c> {
         maybe_row.ok_or_else(error_not_found)
     }
 
-    /// Attemps to login using an OAuth code
+    /// Attempts to login using an OAuth code
     pub async fn login_with_oauth_code(&self, configuration: &Configuration, code: &str) -> Result<RegistryUser, ApiError> {
         let client = reqwest::Client::new();
         // retrieve the token
