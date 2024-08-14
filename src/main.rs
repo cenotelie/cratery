@@ -53,72 +53,72 @@ async fn main_serve_app(application: Arc<Application>, cookie_key: Key) -> Resul
         webapp_resources,
     });
     let app = Router::new()
-        .route("/", get(crate::routes::get_root))
+        .route("/", get(routes::get_root))
         // special handling for git
-        .route("/info/refs", get(crate::routes::index_serve_info_refs))
-        .route("/git-upload-pack", post(crate::routes::index_serve_git_upload_pack))
+        .route("/info/refs", get(routes::index_serve_info_refs))
+        .route("/git-upload-pack", post(routes::index_serve_git_upload_pack))
         // web resources
-        .route("/favicon.png", get(crate::routes::get_favicon))
-        .route("/crates/:package/:version", get(crate::routes::get_redirection_crate_version))
-        .route("/crates/:package", get(crate::routes::get_redirection_crate))
-        .route("/webapp/*path", get(crate::routes::get_webapp_resource))
+        .route("/favicon.png", get(routes::get_favicon))
+        .route("/crates/:package/:version", get(routes::get_redirection_crate_version))
+        .route("/crates/:package", get(routes::get_redirection_crate))
+        .route("/webapp/*path", get(routes::get_webapp_resource))
         // api version
-        .route("/version", get(crate::routes::get_version))
+        .route("/version", get(routes::get_version))
         // special handling for cargo login
-        .route("/me", get(crate::routes::webapp_me))
+        .route("/me", get(routes::webapp_me))
         // serve the documentation
-        .route("/docs/*path", get(crate::routes::get_docs_resource))
+        .route("/docs/*path", get(routes::get_docs_resource))
         // API
         .nest(
             "/api/v1",
             Router::new()
-                .route("/me", get(crate::routes::api_v1_get_current_user))
-                .route("/oauth/code", post(crate::routes::api_v1_login_with_oauth_code))
-                .route("/logout", post(crate::routes::api_v1_logout))
+                .route("/me", get(routes::api_v1_get_current_user))
+                .route("/oauth/code", post(routes::api_v1_login_with_oauth_code))
+                .route("/logout", post(routes::api_v1_logout))
                 .nest(
                     "/tokens",
                     Router::new()
-                        .route("/", get(crate::routes::api_v1_get_tokens))
-                        .route("/", put(crate::routes::api_v1_create_token))
-                        .route("/:token_id", delete(crate::routes::api_v1_revoke_token)),
+                        .route("/", get(routes::api_v1_get_tokens))
+                        .route("/", put(routes::api_v1_create_token))
+                        .route("/:token_id", delete(routes::api_v1_revoke_token)),
                 )
                 .nest(
                     "/users",
                     Router::new()
-                        .route("/", get(crate::routes::api_v1_get_users))
-                        .route("/:target", patch(crate::routes::api_v1_update_user))
-                        .route("/:target", delete(crate::routes::api_v1_delete_user))
-                        .route("/:target/deactivate", post(crate::routes::api_v1_deactivate_user))
-                        .route("/:target/reactivate", post(crate::routes::api_v1_reactivate_user)),
+                        .route("/", get(routes::api_v1_get_users))
+                        .route("/:target", patch(routes::api_v1_update_user))
+                        .route("/:target", delete(routes::api_v1_delete_user))
+                        .route("/:target/deactivate", post(routes::api_v1_deactivate_user))
+                        .route("/:target/reactivate", post(routes::api_v1_reactivate_user)),
                 )
                 .nest(
                     "/crates",
                     Router::new()
-                        .route("/", get(crate::routes::api_v1_cargo_search))
-                        .route("/stats", get(crate::routes::api_v1_get_crates_stats))
-                        .route("/outdated", get(crate::routes::api_v1_get_crates_outdated_heads))
-                        .route("/new", put(crate::routes::api_v1_cargo_publish_crate_version))
-                        .route("/:package", get(crate::routes::api_v1_get_crate_info))
-                        .route("/:package/readme", get(crate::routes::api_v1_get_crate_last_readme))
-                        .route("/:package/:version/readme", get(crate::routes::api_v1_get_crate_readme))
-                        .route("/:package/:version/download", get(crate::routes::api_v1_download_crate))
-                        .route("/:package/:version/yank", delete(crate::routes::api_v1_cargo_yank))
-                        .route("/:package/:version/unyank", put(crate::routes::api_v1_cargo_unyank))
+                        .route("/", get(routes::api_v1_cargo_search))
+                        .route("/stats", get(routes::api_v1_get_crates_stats))
+                        .route("/outdated", get(routes::api_v1_get_crates_outdated_heads))
+                        .route("/new", put(routes::api_v1_cargo_publish_crate_version))
+                        .route("/:package", get(routes::api_v1_get_crate_info))
+                        .route("/:package/readme", get(routes::api_v1_get_crate_last_readme))
+                        .route("/:package/:version/readme", get(routes::api_v1_get_crate_readme))
+                        .route("/:package/:version/download", get(routes::api_v1_download_crate))
+                        .route("/:package/:version/yank", delete(routes::api_v1_cargo_yank))
+                        .route("/:package/:version/unyank", put(routes::api_v1_cargo_unyank))
                         .route(
                             "/:package/:version/docsregen",
-                            post(crate::routes::api_v1_regen_crate_version_doc),
+                            post(routes::api_v1_regen_crate_version_doc),
                         )
-                        .route("/:package/:version/checkdeps", get(crate::routes::api_v1_check_crate_version))
-                        .route("/:package/dlstats", get(crate::routes::api_v1_get_crate_dl_stats))
-                        .route("/:package/owners", get(crate::routes::api_v1_cargo_get_crate_owners))
-                        .route("/:package/owners", put(crate::routes::api_v1_cargo_add_crate_owners))
-                        .route("/:package/owners", delete(crate::routes::api_v1_cargo_remove_crate_owners))
-                        .route("/:package/targets", get(crate::routes::api_v1_get_crate_targets))
-                        .route("/:package/targets", patch(crate::routes::api_v1_set_crate_targets)),
+                        .route("/:package/:version/checkdeps", get(routes::api_v1_check_crate_version))
+                        .route("/:package/dlstats", get(routes::api_v1_get_crate_dl_stats))
+                        .route("/:package/owners", get(routes::api_v1_cargo_get_crate_owners))
+                        .route("/:package/owners", put(routes::api_v1_cargo_add_crate_owners))
+                        .route("/:package/owners", delete(routes::api_v1_cargo_remove_crate_owners))
+                        .route("/:package/targets", get(routes::api_v1_get_crate_targets))
+                        .route("/:package/targets", patch(routes::api_v1_set_crate_targets)),
                 ),
         )
         // fall back to serving the index
-        .fallback(crate::routes::index_serve)
+        .fallback(routes::index_serve)
         .layer(DefaultBodyLimit::max(body_limit))
         .with_state(state);
     axum::serve(
@@ -161,7 +161,7 @@ async fn main() {
     setup_log();
     info!("{} commit={} tag={}", CRATE_NAME, GIT_HASH, GIT_TAG);
 
-    let application = crate::application::Application::launch().await.unwrap();
+    let application = Application::launch().await.unwrap();
 
     let cookie_key = Key::from(
         std::env::var("REGISTRY_WEB_COOKIE_SECRET")

@@ -222,9 +222,9 @@ pub async fn upload_object_file<P: AsRef<Path>>(
     object: &str,
     path: P,
 ) -> Result<(), ApiError> {
-    let file = tokio::fs::File::open(path).await?;
+    let file = File::open(path).await?;
     let metadata = file.metadata().await?;
-    let reader = tokio::io::BufReader::new(file);
+    let reader = BufReader::new(file);
     upload_object_stream(params, bucket, object, TokioFileAdapter::wrap(reader), metadata.len()).await
 }
 
