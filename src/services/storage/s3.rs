@@ -53,13 +53,7 @@ impl<'config> Storage for S3Storage<'config> {
             // bucket does not exist => create it
             crate::utils::s3::create_bucket(self.params, self.bucket).await?;
         }
-        crate::utils::s3::upload_object_raw(
-            self.params,
-            self.bucket,
-            &Self::data_key(name, version),
-            content,
-        )
-        .await?;
+        crate::utils::s3::upload_object_raw(self.params, self.bucket, &Self::data_key(name, version), content).await?;
         // version data
         crate::utils::s3::upload_object_raw(
             self.params,
@@ -68,13 +62,7 @@ impl<'config> Storage for S3Storage<'config> {
             serde_json::to_vec(metadata)?,
         )
         .await?;
-        crate::utils::s3::upload_object_raw(
-            self.params,
-            self.bucket,
-            &Self::readme_key(name, version),
-            readme,
-        )
-        .await?;
+        crate::utils::s3::upload_object_raw(self.params, self.bucket, &Self::readme_key(name, version), readme).await?;
         Ok(())
     }
 

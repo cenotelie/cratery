@@ -70,15 +70,10 @@ impl<'config> Storage for FsStorage<'config> {
         let name = &metadata.name;
         let version = &metadata.vers;
 
-        self.write_to_file(&Self::data_path(name, version), &content)
+        self.write_to_file(&Self::data_path(name, version), &content).await?;
+        self.write_to_file(&Self::metadata_path(name, version), &metadata_json)
             .await?;
-        self.write_to_file(
-            &Self::metadata_path(name, version),
-            &metadata_json,
-        )
-        .await?;
-        self.write_to_file(&Self::readme_path(name, version), &readme)
-            .await?;
+        self.write_to_file(&Self::readme_path(name, version), &readme).await?;
         Ok(())
     }
 
