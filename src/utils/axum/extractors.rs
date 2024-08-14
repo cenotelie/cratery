@@ -88,6 +88,16 @@ impl<'de> Visitor<'de> for Base64Visitor {
         write!(formatter, "a base64 string")
     }
 
+    fn visit_str<E>(self, value: &str) -> Result<Self::Value, E>
+    where
+        E: serde::de::Error,
+    {
+        match BASE64_URL_SAFE.decode(value).map(String::from_utf8) {
+            Ok(Ok(s)) => Ok(Base64(s)),
+            _ => Err(serde::de::Error::invalid_type(serde::de::Unexpected::Str(value), &self)),
+        }
+    }
+
     fn visit_borrowed_str<E>(self, v: &'de str) -> Result<Self::Value, E>
     where
         E: serde::de::Error,
@@ -100,16 +110,6 @@ impl<'de> Visitor<'de> for Base64Visitor {
         E: serde::de::Error,
     {
         self.visit_str(&v)
-    }
-
-    fn visit_str<E>(self, value: &str) -> Result<Self::Value, E>
-    where
-        E: serde::de::Error,
-    {
-        match BASE64_URL_SAFE.decode(value).map(String::from_utf8) {
-            Ok(Ok(s)) => Ok(Base64(s)),
-            _ => Err(serde::de::Error::invalid_type(serde::de::Unexpected::Str(value), &self)),
-        }
     }
 }
 
