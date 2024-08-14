@@ -179,7 +179,7 @@ impl<'c> Database<'c> {
         }
         let now = Local::now().naive_local();
         // create the version
-        let description = package.metadata.description.as_ref().map_or("", std::string::String::as_str);
+        let description = package.metadata.description.as_ref().map_or("", String::as_str);
         sqlx::query!(
             "INSERT INTO PackageVersion (package, version, description, upload, uploadedBy, yanked, hasDocs, docGenAttempted, downloadCount, downloads, depsLastCheck, depsHasOutdated, depsHasCVEs) VALUES ($1, $2, $3, $4, $5, false, false, false, 0, NULL, 0, false, false)",
             package.metadata.name,
@@ -543,8 +543,8 @@ impl<'c> Database<'c> {
         .ok_or_else(error_not_found)?;
         let mut downloads = row
             .downloads
-            .unwrap_or_else(|| vec![0; std::mem::size_of::<u32>() * SERIES_LENGTH]);
-        let day_index = (Local::now().naive_local().ordinal0() as usize % SERIES_LENGTH) * std::mem::size_of::<u32>();
+            .unwrap_or_else(|| vec![0; size_of::<u32>() * SERIES_LENGTH]);
+        let day_index = (Local::now().naive_local().ordinal0() as usize % SERIES_LENGTH) * size_of::<u32>();
         let count = byteorder::NativeEndian::read_u32(&downloads[day_index..]);
         byteorder::NativeEndian::write_u32(&mut downloads[day_index..], count + 1);
 

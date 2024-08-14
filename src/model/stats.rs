@@ -82,12 +82,12 @@ impl DownloadStats {
         let mut total = 0;
         if let Some(data) = data {
             let today = Local::now().naive_local().date();
-            let mut index = ((today.ordinal0() + 1) as usize % SERIES_LENGTH) * std::mem::size_of::<u32>();
+            let mut index = ((today.ordinal0() + 1) as usize % SERIES_LENGTH) * size_of::<u32>();
             for count in &mut counts {
                 let v = byteorder::NativeEndian::read_u32(&data[index..]);
                 total += v;
                 *count = v;
-                index = (index + std::mem::size_of::<u32>()) % data.len();
+                index = (index + size_of::<u32>()) % data.len();
             }
         }
         self.versions.push(DownloadStatsForVersion {

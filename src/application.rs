@@ -91,7 +91,7 @@ impl Application {
         {
             let service_docs_generator = service_docs_generator.clone();
             let mut connection = service_db_pool.acquire().await?;
-            crate::utils::db::in_transaction(&mut connection, |transaction| async move {
+            in_transaction(&mut connection, |transaction| async move {
                 let app = Database::new(transaction);
                 let jobs = app.get_undocumented_crates().await?;
                 for job in jobs {

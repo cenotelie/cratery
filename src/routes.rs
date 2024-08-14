@@ -660,7 +660,7 @@ pub async fn index_serve_info_refs(
     }
     index_serve_check_auth(&state.application, &auth_data).await?;
 
-    if query.get("service").map(std::string::String::as_str) == Some("git-upload-pack") {
+    if query.get("service").map(String::as_str) == Some("git-upload-pack") {
         // smart server response
         let data = state
             .application
