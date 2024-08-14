@@ -160,7 +160,7 @@ impl Application {
         .await
     }
 
-    /// Attemps to login using an OAuth code
+    /// Attempts to login using an OAuth code
     pub async fn login_with_oauth_code(&self, code: &str) -> Result<RegistryUser, ApiError> {
         let mut connection = self.service_db_pool.acquire().await?;
         in_transaction(&mut connection, |transaction| async move {

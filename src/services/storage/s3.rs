@@ -11,7 +11,7 @@ use crate::model::cargo::CrateMetadata;
 use crate::utils::s3::S3Params;
 use crate::utils::FaillibleFuture;
 
-/// An storage implementation that uses S3
+/// Storage implementation that uses S3
 pub struct S3Storage {
     /// The S3 connection parameters
     params: S3Params,

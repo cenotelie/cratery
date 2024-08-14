@@ -127,7 +127,7 @@ pub struct SimpleAdvisory {
     pub published: String,
     /// Datetime on last modification
     pub modified: String,
-    /// The sumary for the advisory
+    /// The summary for the advisory
     pub summary: String,
     /// The affected ranges
     pub ranges: Vec<SimpleAdvisoryRange>,

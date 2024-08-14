@@ -35,7 +35,7 @@ mod webapp;
 pub const CRATE_NAME: &str = env!("CARGO_PKG_NAME");
 /// The commit that was used to build the application
 pub const GIT_HASH: &str = env!("GIT_HASH");
-/// The git tag tag that was used to build the application
+/// The git tag that was used to build the application
 pub const GIT_TAG: &str = env!("GIT_TAG");
 
 /// Main payload for serving the application
@@ -54,7 +54,7 @@ async fn main_serve_app(application: Arc<Application>, cookie_key: Key) -> Resul
     });
     let app = Router::new()
         .route("/", get(crate::routes::get_root))
-        // special handlings for git
+        // special handling for git
         .route("/info/refs", get(crate::routes::index_serve_info_refs))
         .route("/git-upload-pack", post(crate::routes::index_serve_git_upload_pack))
         // web resources
@@ -137,8 +137,8 @@ fn setup_log() {
         .map(|v| log::LevelFilter::from_str(&v).expect("invalid REGISTRY_LOG_LEVEL"))
         .unwrap_or(log::LevelFilter::Info);
     fern::Dispatch::new()
-        .filter(move |metdata| {
-            let target = metdata.target();
+        .filter(move |metadata| {
+            let target = metadata.target();
             target.starts_with("cratery") || target.starts_with("cenotelie")
         })
         .format(move |out, message, record| {

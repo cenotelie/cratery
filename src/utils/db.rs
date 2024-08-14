@@ -87,7 +87,7 @@ where
 pub struct Migration<'a> {
     /// The target version
     pub target: &'a str,
-    /// The implementatino of this migration
+    /// The implementation of this migration
     pub content: MigrationContent<'a>,
 }
 
@@ -156,7 +156,7 @@ pub enum MigrationError {
     InvalidVersion(InvalidVersionNumber),
     /// An SQL error
     Sql(sqlx::Error),
-    /// The transaction was still shared when a it terminated
+    /// The transaction was still shared when a migration is terminated
     SharedTransaction(StillSharedError),
 }
 
