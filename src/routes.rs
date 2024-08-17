@@ -578,11 +578,11 @@ pub async fn api_v1_set_crate_targets(
 }
 
 pub async fn index_serve_inner(
-    index: &Index,
+    index: &(dyn Index + Send + Sync),
     path: &str,
 ) -> Result<(impl Stream<Item = Result<impl Into<Bytes>, impl Into<BoxError>>>, HeaderValue), ApiError> {
     let file_path: PathBuf = path.parse()?;
-    let file_path = index.get_index_file(&file_path).ok_or_else(error_not_found)?;
+    let file_path = index.get_index_file(&file_path).await?.ok_or_else(error_not_found)?;
     let file = File::open(file_path).await.map_err(|_e| error_not_found())?;
     let stream = ReaderStream::new(file);
     if std::path::Path::new(path)
@@ -635,8 +635,9 @@ pub async fn index_serve(
         return Err(map_err(error_not_found()));
     }
     index_serve_check_auth(&state.application, &auth_data).await?;
-    let index = state.application.index.lock().await;
-    let (stream, content_type) = index_serve_inner(&index, path).await.map_err(map_err)?;
+    let (stream, content_type) = index_serve_inner(state.application.get_service_index(), path)
+        .await
+        .map_err(map_err)?;
     let body = Body::from_stream(stream);
     Ok((
         StatusCode::OK,
@@ -658,11 +659,15 @@ pub async fn index_serve_info_refs(
         return Err(map_err(error_not_found()));
     }
     index_serve_check_auth(&state.application, &auth_data).await?;
-    let index = state.application.index.lock().await;
 
     if query.get("service").map(std::string::String::as_str) == Some("git-upload-pack") {
         // smart server response
-        let data = index.get_upload_pack_info_refs().await.map_err(map_err)?;
+        let data = state
+            .application
+            .get_service_index()
+            .get_upload_pack_info_refs()
+            .await
+            .map_err(map_err)?;
         Ok((
             StatusCode::OK,
             [
@@ -690,8 +695,12 @@ pub async fn index_serve_git_upload_pack(
         return Err(map_err(error_not_found()));
     }
     index_serve_check_auth(&state.application, &auth_data).await?;
-    let index = state.application.index.lock().await;
-    let data = index.get_upload_pack_for(&body).await.map_err(map_err)?;
+    let data = state
+        .application
+        .get_service_index()
+        .get_upload_pack_for(&body)
+        .await
+        .map_err(map_err)?;
     Ok((
         StatusCode::OK,
         [

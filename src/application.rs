@@ -7,7 +7,6 @@
 use std::sync::Arc;
 
 use futures::channel::mpsc::UnboundedSender;
-use futures::lock::Mutex;
 use futures::SinkExt;
 use log::info;
 use sqlx::sqlite::SqlitePoolOptions;
@@ -23,10 +22,10 @@ use crate::model::packages::CrateInfo;
 use crate::model::stats::{DownloadStats, GlobalStats};
 use crate::model::{CrateAndVersion, JobCrate};
 use crate::services::database::Database;
-use crate::services::deps::{DepsChecker, DepsCheckerData};
+use crate::services::deps::DepsChecker;
 use crate::services::emails::EmailSender;
 use crate::services::index::Index;
-use crate::services::rustsec::{RustSecChecker, RustSecData};
+use crate::services::rustsec::RustSecChecker;
 use crate::services::storage::Storage;
 use crate::utils::apierror::{error_invalid_request, error_unauthorized, specialize, ApiError};
 use crate::utils::axum::auth::{AuthData, Token};
@@ -41,13 +40,14 @@ pub struct Application {
     /// The storage layer
     service_storage: Arc<dyn Storage + Send + Sync>,
     /// Service to index the metadata of crates
-    pub index: Arc<Mutex<Index>>,
+    service_index: Arc<dyn Index + Send + Sync>,
+    /// The `RustSec` checker service
+    #[allow(dead_code)]
+    service_rustsec: Arc<dyn RustSecChecker + Send + Sync>,
     /// Service to check the dependencies of a crate
-    pub deps_checker: Arc<Mutex<DepsCheckerData>>,
-    /// The `RustSec` data
-    pub rustsec: Arc<Mutex<RustSecData>>,
+    service_deps_checker: Arc<dyn DepsChecker + Send + Sync>,
     /// Sender of documentation generation jobs
-    pub docs_worker_sender: UnboundedSender<JobCrate>,
+    docs_worker_sender: UnboundedSender<JobCrate>,
 }
 
 /// The empty database
@@ -70,21 +70,24 @@ impl Application {
             info!("db file is inaccessible => attempt to create an empty one");
             tokio::fs::write(&db_filename, DB_EMPTY).await?;
         }
-        let db_pool = SqlitePoolOptions::new()
+        let service_db_pool = SqlitePoolOptions::new()
             .max_connections(DB_MAX_CONNECTIONS)
             .connect_lazy(&configuration.get_database_url())?;
         // migrate the database, if appropriate
-        crate::migrations::migrate_to_last(&mut *db_pool.acquire().await?).await?;
+        crate::migrations::migrate_to_last(&mut *service_db_pool.acquire().await?).await?;
 
-        // prepare the index
-        let index = Arc::new(Mutex::new(Index::on_launch(configuration.get_index_git_config()).await?));
+        let service_storage = crate::services::storage::get_storage(&configuration);
+        let service_index = crate::services::index::get_index(&configuration).await?;
+        let service_rustsec = crate::services::rustsec::get_rustsec(&configuration);
+        let service_deps_checker =
+            crate::services::deps::get_deps_checker(configuration.clone(), service_index.clone(), service_rustsec.clone());
 
         // docs worker
-        let docs_worker_sender = crate::services::docs::create_docs_worker(configuration.clone(), db_pool.clone());
+        let docs_worker_sender = crate::services::docs::create_docs_worker(configuration.clone(), service_db_pool.clone());
         // check undocumented packages
         {
             let mut docs_worker_sender = docs_worker_sender.clone();
-            let mut connection = db_pool.acquire().await?;
+            let mut connection = service_db_pool.acquire().await?;
             crate::utils::db::in_transaction(&mut connection, |transaction| async move {
                 let app = Database::new(transaction);
                 let jobs = app.get_undocumented_crates().await?;
@@ -97,23 +100,15 @@ impl Application {
         }
 
         // deps worker
-        let rustsec = Arc::new(Mutex::new(RustSecData::default()));
-        let deps_checker = Arc::new(Mutex::new(DepsCheckerData::default()));
-        crate::services::deps::create_deps_worker(
-            configuration.clone(),
-            deps_checker.clone(),
-            rustsec.clone(),
-            index.clone(),
-            db_pool.clone(),
-        );
+        crate::services::deps::create_deps_worker(configuration.clone(), service_deps_checker.clone(), service_db_pool.clone());
 
         Ok(Arc::new(Self {
-            service_storage: crate::services::storage::get_storage(&configuration),
             configuration,
-            service_db_pool: db_pool,
-            index,
-            deps_checker,
-            rustsec,
+            service_db_pool,
+            service_storage,
+            service_index,
+            service_rustsec,
+            service_deps_checker,
             docs_worker_sender,
         }))
     }
@@ -123,22 +118,9 @@ impl Application {
         self.service_storage.as_ref()
     }
 
-    /// Gets the service to check for advisories using `RustSec`
-    pub fn get_service_rustsec(&self) -> RustSecChecker {
-        RustSecChecker {
-            data: &self.rustsec,
-            configuration: &self.configuration,
-        }
-    }
-
-    /// Gets the service to check the dependencies of a crate
-    pub fn get_service_deps_checker(&self) -> DepsChecker {
-        DepsChecker {
-            data: &self.deps_checker,
-            configuration: &self.configuration,
-            index: &self.index,
-            rustsec: self.get_service_rustsec(),
-        }
+    /// Gets the index service
+    pub fn get_service_index(&self) -> &(dyn Index + Send + Sync) {
+        self.service_index.as_ref()
     }
 
     /// Gets the service to send emails
@@ -288,12 +270,9 @@ impl Application {
             let package = CrateUploadData::new(content)?;
             let index_data = package.build_index_data();
             // publish
-            let index = self.index.lock().await;
             let r = app.database.publish_crate_version(&principal, &package).await?;
-            self.get_service_storage()
-                .store_crate(&package.metadata, package.content)
-                .await?;
-            index.publish_crate_version(&index_data).await?;
+            self.service_storage.store_crate(&package.metadata, package.content).await?;
+            self.service_index.publish_crate_version(&index_data).await?;
             let targets = app.database.get_crate_targets(&package.metadata.name).await?;
             // generate the doc
             self.docs_worker_sender
@@ -317,10 +296,10 @@ impl Application {
             let _principal = app.authenticate(auth_data).await?;
             let versions = app
                 .database
-                .get_crate_versions(package, self.index.lock().await.get_crate_data(package).await?)
+                .get_crate_versions(package, self.service_index.get_crate_data(package).await?)
                 .await?;
             let metadata = self
-                .get_service_storage()
+                .service_storage
                 .download_crate_metadata(package, &versions.last().unwrap().index.vers)
                 .await?;
             let targets = app.database.get_crate_targets(package).await?;
@@ -340,7 +319,7 @@ impl Application {
             let app = self.with_transaction(transaction);
             let _principal = app.authenticate(auth_data).await?;
             let version = app.database.get_crate_last_version(package).await?;
-            let readme = self.get_service_storage().download_crate_readme(package, &version).await?;
+            let readme = self.service_storage.download_crate_readme(package, &version).await?;
             Ok(readme)
         })
         .await
@@ -352,7 +331,7 @@ impl Application {
         in_transaction(&mut connection, |transaction| async move {
             let app = self.with_transaction(transaction);
             let _principal = app.authenticate(auth_data).await?;
-            let readme = self.get_service_storage().download_crate_readme(package, version).await?;
+            let readme = self.service_storage.download_crate_readme(package, version).await?;
             Ok(readme)
         })
         .await
@@ -366,7 +345,7 @@ impl Application {
             let _principal = app.authenticate(auth_data).await?;
             app.database.check_crate_exists(package, version).await?;
             app.database.increment_crate_version_dl_count(package, version).await?;
-            let content = self.get_service_storage().download_crate(package, version).await?;
+            let content = self.service_storage.download_crate(package, version).await?;
             Ok(content)
         })
         .await
@@ -559,7 +538,7 @@ impl Application {
             app.database.get_crate_targets(package).await
         })
         .await?;
-        self.get_service_deps_checker().check_crate(package, version, &targets).await
+        self.service_deps_checker.check_crate(package, version, &targets).await
     }
 }
 

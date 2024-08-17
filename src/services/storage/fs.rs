@@ -6,9 +6,10 @@
 
 use std::path::{Path, PathBuf};
 
-use super::{Storage, StorageFuture};
+use super::Storage;
 use crate::model::cargo::CrateMetadata;
 use crate::utils::apierror::{error_not_found, ApiError};
+use crate::utils::FaillibleFuture;
 
 /// An storage implementation that uses the file system
 pub struct FsStorage {
@@ -65,7 +66,7 @@ impl FsStorage {
 
 impl Storage for FsStorage {
     /// Stores the data for a crate
-    fn store_crate<'a>(&'a self, metadata: &'a CrateMetadata, content: Vec<u8>) -> StorageFuture<'a, ()> {
+    fn store_crate<'a>(&'a self, metadata: &'a CrateMetadata, content: Vec<u8>) -> FaillibleFuture<'a, ()> {
         Box::pin(async move {
             let readme = super::extract_readme(&content)?;
             let metadata_json = serde_json::to_vec(metadata)?;
@@ -81,12 +82,12 @@ impl Storage for FsStorage {
     }
 
     /// Downloads a crate
-    fn download_crate<'a>(&'a self, name: &'a str, version: &'a str) -> StorageFuture<'a, Vec<u8>> {
+    fn download_crate<'a>(&'a self, name: &'a str, version: &'a str) -> FaillibleFuture<'a, Vec<u8>> {
         Box::pin(async move { self.read_from_file(&Self::data_path(name, version)).await })
     }
 
     /// Downloads the last metadata for a crate
-    fn download_crate_metadata<'a>(&'a self, name: &'a str, version: &'a str) -> StorageFuture<'a, Option<CrateMetadata>> {
+    fn download_crate_metadata<'a>(&'a self, name: &'a str, version: &'a str) -> FaillibleFuture<'a, Option<CrateMetadata>> {
         Box::pin(async move {
             if let Ok(data) = self.read_from_file(&Self::metadata_path(name, version)).await {
                 Ok(Some(serde_json::from_slice(&data)?))
@@ -97,12 +98,12 @@ impl Storage for FsStorage {
     }
 
     /// Downloads the last README for a crate
-    fn download_crate_readme<'a>(&'a self, name: &'a str, version: &'a str) -> StorageFuture<'a, Vec<u8>> {
+    fn download_crate_readme<'a>(&'a self, name: &'a str, version: &'a str) -> FaillibleFuture<'a, Vec<u8>> {
         Box::pin(async move { self.read_from_file(&Self::readme_path(name, version)).await })
     }
 
     /// Stores a documentation file
-    fn store_doc_file<'a>(&'a self, path: &'a str, file: &'a Path) -> StorageFuture<'a, ()> {
+    fn store_doc_file<'a>(&'a self, path: &'a str, file: &'a Path) -> FaillibleFuture<'a, ()> {
         Box::pin(async move {
             let full_path = PathBuf::from(format!("{}/docs/{path}", self.data_dir));
             tokio::fs::create_dir_all(full_path.parent().unwrap()).await?;
@@ -112,7 +113,7 @@ impl Storage for FsStorage {
     }
 
     /// Stores a documentation file
-    fn store_doc_data<'a>(&'a self, path: &'a str, content: Vec<u8>) -> StorageFuture<'a, ()> {
+    fn store_doc_data<'a>(&'a self, path: &'a str, content: Vec<u8>) -> FaillibleFuture<'a, ()> {
         Box::pin(async move {
             self.write_to_file(&format!("docs/{path}"), &content).await?;
             Ok(())
@@ -120,7 +121,7 @@ impl Storage for FsStorage {
     }
 
     /// Gets the content of a documentation file
-    fn download_doc_file<'a>(&'a self, path: &'a str) -> StorageFuture<'a, Vec<u8>> {
+    fn download_doc_file<'a>(&'a self, path: &'a str) -> FaillibleFuture<'a, Vec<u8>> {
         Box::pin(async move { self.read_from_file(&format!("docs/{path}")).await })
     }
 }

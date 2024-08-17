@@ -2,30 +2,68 @@
  * Copyright (c) 2024 Cénotélie Opérations SAS (cenotelie.fr)
  ******************************************************************************/
 
-//! API for index manipulation
+//! Implementation of an index using a local git repository
 
 use std::path::{Path, PathBuf};
-use std::process::Stdio;
 
 use log::info;
-use tokio::fs::{self, create_dir_all, File, OpenOptions};
+use tokio::fs::{create_dir_all, File, OpenOptions};
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
-use tokio::process::Command;
+use tokio::sync::Mutex;
 
+use super::{build_package_file_path, Index};
 use crate::model::cargo::IndexCrateMetadata;
 use crate::model::config::IndexConfig;
 use crate::utils::apierror::{error_backend_failure, error_not_found, specialize, ApiError};
+use crate::utils::{execute_at_location, execute_git, FaillibleFuture};
 
 /// Manages the index on git
-pub struct Index {
+pub struct GitIndex {
+    inner: Mutex<GitIndexImpl>,
+}
+
+impl GitIndex {
+    /// When the application is launched
+    pub async fn new(config: IndexConfig) -> Result<Self, ApiError> {
+        let inner = GitIndexImpl::new(config).await?;
+        Ok(Self {
+            inner: Mutex::new(inner),
+        })
+    }
+}
+
+impl Index for GitIndex {
+    fn get_index_file<'a>(&'a self, file_path: &'a Path) -> FaillibleFuture<'a, Option<PathBuf>> {
+        Box::pin(async move { Ok(self.inner.lock().await.get_index_file(file_path)) })
+    }
+
+    fn get_upload_pack_info_refs(&self) -> FaillibleFuture<'_, Vec<u8>> {
+        Box::pin(async move { self.inner.lock().await.get_upload_pack_info_refs().await })
+    }
+
+    fn get_upload_pack_for<'a>(&'a self, input: &'a [u8]) -> FaillibleFuture<'a, Vec<u8>> {
+        Box::pin(async move { self.inner.lock().await.get_upload_pack_for(input).await })
+    }
+
+    fn publish_crate_version<'a>(&'a self, metadata: &'a IndexCrateMetadata) -> FaillibleFuture<'a, ()> {
+        Box::pin(async move { self.inner.lock().await.publish_crate_version(metadata).await })
+    }
+
+    fn get_crate_data<'a>(&'a self, package: &'a str) -> FaillibleFuture<'a, Vec<IndexCrateMetadata>> {
+        Box::pin(async move { self.inner.lock().await.get_crate_data(package).await })
+    }
+}
+
+/// Manages the index on git
+struct GitIndexImpl {
     /// The configuration
     config: IndexConfig,
 }
 
-impl Index {
+impl GitIndexImpl {
     /// When the application is launched
-    pub async fn on_launch(config: IndexConfig) -> Result<Index, ApiError> {
-        let index = Index { config };
+    async fn new(config: IndexConfig) -> Result<Self, ApiError> {
+        let index = Self { config };
 
         // check for the SSH key
         if let Some(file_name) = &index.config.remote_ssh_key_file_name {
@@ -43,10 +81,10 @@ impl Index {
         // check that the git folder exists
         let location = PathBuf::from(&index.config.location);
         if !location.exists() {
-            fs::create_dir_all(&location).await?;
+            tokio::fs::create_dir_all(&location).await?;
         }
 
-        let mut content = fs::read_dir(&location).await?;
+        let mut content = tokio::fs::read_dir(&location).await?;
         if content.next_entry().await?.is_none() {
             // the folder is empty
             info!("index: initializing on empty index");
@@ -107,7 +145,7 @@ impl Index {
     }
 
     /// Gets the full path to a file in the bare git repository
-    pub fn get_index_file(&self, file_path: &Path) -> Option<PathBuf> {
+    fn get_index_file(&self, file_path: &Path) -> Option<PathBuf> {
         let mut full_path = PathBuf::from(&self.config.location);
         if file_path.iter().nth(1).is_some_and(|elem| elem == ".git") {
             // exclude .git folder
@@ -124,7 +162,7 @@ impl Index {
     }
 
     /// Gets the upload pack advertisement for /info/refs
-    pub async fn get_upload_pack_info_refs(&self) -> Result<Vec<u8>, ApiError> {
+    async fn get_upload_pack_info_refs(&self) -> Result<Vec<u8>, ApiError> {
         let location = PathBuf::from(&self.config.location);
         let mut data = execute_at_location(&location, "git-upload-pack", &["--http-backend-info-refs", ".git"], &[]).await?;
         let mut response = String::from("001e# service=git-upload-pack\n0000").into_bytes();
@@ -134,13 +172,13 @@ impl Index {
     }
 
     /// Gets the response for a upload pack request
-    pub async fn get_upload_pack_for(&self, input: &[u8]) -> Result<Vec<u8>, ApiError> {
+    async fn get_upload_pack_for(&self, input: &[u8]) -> Result<Vec<u8>, ApiError> {
         let location = PathBuf::from(&self.config.location);
         execute_at_location(&location, "git-upload-pack", &["--stateless-rpc", ".git"], input).await
     }
 
     /// Publish a new version for a crate
-    pub async fn publish_crate_version(&self, metadata: &IndexCrateMetadata) -> Result<(), ApiError> {
+    async fn publish_crate_version(&self, metadata: &IndexCrateMetadata) -> Result<(), ApiError> {
         let file_name = build_package_file_path(PathBuf::from(&self.config.location), &metadata.name);
         create_dir_all(file_name.parent().unwrap()).await?;
         let buffer = serde_json::to_vec(metadata)?;
@@ -165,7 +203,7 @@ impl Index {
     }
 
     ///  Gets the data for a crate
-    pub async fn get_crate_data(&self, package: &str) -> Result<Vec<IndexCrateMetadata>, ApiError> {
+    async fn get_crate_data(&self, package: &str) -> Result<Vec<IndexCrateMetadata>, ApiError> {
         let file_name = build_package_file_path(PathBuf::from(&self.config.location), package);
         if !file_name.exists() {
             return Err(specialize(
@@ -182,51 +220,4 @@ impl Index {
         }
         Ok(results)
     }
-}
-
-/// Execute a git command
-pub async fn execute_git(location: &Path, args: &[&str]) -> Result<(), ApiError> {
-    execute_at_location(location, "git", args, &[]).await.map(|_| ())
-}
-
-/// Execute a git command
-async fn execute_at_location(location: &Path, command: &str, args: &[&str], input: &[u8]) -> Result<Vec<u8>, ApiError> {
-    let mut child = Command::new(command)
-        .current_dir(location)
-        .args(args)
-        .stdin(Stdio::piped())
-        .stdout(Stdio::piped())
-        .spawn()?;
-    child.stdin.as_mut().unwrap().write_all(input).await?;
-    let output = child.wait_with_output().await?;
-    if output.status.success() {
-        Ok(output.stdout)
-    } else {
-        Err(specialize(error_backend_failure(), String::from_utf8(output.stdout)?))
-    }
-}
-
-/// Gets path elements for a package in the file system
-pub fn package_file_path(lowercase: &str) -> (&str, Option<&str>) {
-    match lowercase.len() {
-        0 => panic!("Empty name is not possible"),
-        1 => ("1", None),
-        2 => ("2", None),
-        3 => ("3", Some(&lowercase[..1])),
-        _ => (&lowercase[0..2], Some(&lowercase[2..4])),
-    }
-}
-
-/// Produce the path elements that contains the metadata for the crate
-pub fn build_package_file_path(mut root: PathBuf, name: &str) -> PathBuf {
-    let lowercase = name.to_ascii_lowercase();
-    let (first, second) = package_file_path(&lowercase);
-
-    root.push(first);
-    if let Some(second) = second {
-        root.push(second);
-    }
-    root.push(lowercase);
-
-    root
 }

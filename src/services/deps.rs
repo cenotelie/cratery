@@ -19,7 +19,6 @@ use sqlx::{Pool, Sqlite};
 use tokio::fs::File;
 use tokio::io::AsyncBufReadExt;
 
-use super::rustsec::{RustSecChecker, RustSecData};
 use crate::model::cargo::{IndexCrateDependency, IndexCrateMetadata};
 use crate::model::config::{Configuration, ExternalRegistryProtocol};
 use crate::model::deps::{DepAdvisory, DepsAnalysis, DepsGraph, DepsGraphCrateOrigin, BUILTIN_CRATES_REGISTRY_URI};
@@ -27,35 +26,22 @@ use crate::model::JobCrate;
 use crate::services::database::Database;
 use crate::services::emails::EmailSender;
 use crate::services::index::Index;
+use crate::services::rustsec::RustSecChecker;
 use crate::utils::apierror::{error_backend_failure, error_not_found, specialize, ApiError};
 use crate::utils::db::in_transaction;
-use crate::utils::stale_instant;
+use crate::utils::{stale_instant, FaillibleFuture};
 
 /// Creates a worker for the continuous check of dependencies for head crates
 pub fn create_deps_worker(
     configuration: Arc<Configuration>,
-    deps_data: Arc<Mutex<DepsCheckerData>>,
-    rustsec_data: Arc<Mutex<RustSecData>>,
-    index: Arc<Mutex<Index>>,
+    service_deps_checker: Arc<dyn DepsChecker + Send + Sync>,
     pool: Pool<Sqlite>,
 ) {
     let _handle = tokio::spawn({
-        let configuration = configuration.clone();
-        let deps_data = deps_data.clone();
-        let rustsec_data = rustsec_data.clone();
-        let index = index.clone();
+        let service_deps_checker = service_deps_checker.clone();
         async move {
             info!("precaching crates.io index");
-            let access = DepsChecker {
-                data: &deps_data,
-                configuration: &configuration,
-                index: &index,
-                rustsec: RustSecChecker {
-                    data: &rustsec_data,
-                    configuration: &configuration,
-                },
-            };
-            if let Err(e) = access.precache_crate_io().await {
+            if let Err(e) = service_deps_checker.precache_crate_io().await {
                 error!("{e}");
                 if let Some(backtrace) = &e.backtrace {
                     error!("{backtrace}");
@@ -68,8 +54,7 @@ pub fn create_deps_worker(
         let mut interval = tokio::time::interval(Duration::from_secs(60));
         loop {
             let _instant = interval.tick().await;
-            if let Err(e) = deps_worker_job(&configuration, deps_data.clone(), rustsec_data.clone(), index.clone(), &pool).await
-            {
+            if let Err(e) = deps_worker_job(&configuration, service_deps_checker.clone(), &pool).await {
                 error!("{e}");
                 if let Some(backtrace) = &e.backtrace {
                     error!("{backtrace}");
@@ -82,9 +67,7 @@ pub fn create_deps_worker(
 /// A job for the worker
 async fn deps_worker_job(
     configuration: &Configuration,
-    deps_data: Arc<Mutex<DepsCheckerData>>,
-    rustsec_data: Arc<Mutex<RustSecData>>,
-    index: Arc<Mutex<Index>>,
+    service_deps_checker: Arc<dyn DepsChecker + Send + Sync>,
     pool: &Pool<Sqlite>,
 ) -> Result<(), ApiError> {
     if configuration.deps_stale_analysis <= 0 {
@@ -100,29 +83,22 @@ async fn deps_worker_job(
         })
         .await?
     };
-    let checker = DepsChecker {
-        data: &deps_data,
-        configuration,
-        index: &index,
-        rustsec: RustSecChecker {
-            data: &rustsec_data,
-            configuration,
-        },
-    };
     for job in jobs {
-        deps_worker_job_on_crate_version(configuration, &checker, pool, &job).await?;
+        deps_worker_job_on_crate_version(configuration, service_deps_checker.as_ref(), pool, &job).await?;
     }
     Ok(())
 }
 
 async fn deps_worker_job_on_crate_version(
     configuration: &Configuration,
-    checker: &DepsChecker<'_>,
+    service_deps_checker: &(dyn DepsChecker + Send + Sync),
     pool: &Pool<Sqlite>,
     job: &JobCrate,
 ) -> Result<(), ApiError> {
     info!("checking deps for {} {}", job.name, job.version);
-    let analysis = checker.check_crate(&job.name, &job.version, &job.targets).await?;
+    let analysis = service_deps_checker
+        .check_crate(&job.name, &job.version, &job.targets)
+        .await?;
     let has_outdated = analysis.direct_dependencies.iter().any(|info| info.is_outdated);
     let has_cves = !analysis.advisories.is_empty();
     let (old_has_outdated, old_has_cves) = {
@@ -219,23 +195,51 @@ async fn deps_worker_job_on_crate_version(
     Ok(())
 }
 
+/// Service to check the dependencies of a crate
+pub trait DepsChecker {
+    /// Ensures that a local cache for crates.io exists
+    fn precache_crate_io(&self) -> FaillibleFuture<'_, ()>;
+
+    /// Checks the dependencies of a local crate
+    fn check_crate<'a>(
+        &'a self,
+        package: &'a str,
+        version: &'a str,
+        targets: &'a [String],
+    ) -> FaillibleFuture<'a, DepsAnalysis>;
+}
+
+/// Gets the dependencies checker service
+pub fn get_deps_checker(
+    configuration: Arc<Configuration>,
+    service_index: Arc<dyn Index + Send + Sync>,
+    service_rustsec: Arc<dyn RustSecChecker + Send + Sync>,
+) -> Arc<dyn DepsChecker + Send + Sync> {
+    Arc::new(DepsCheckerImpl {
+        data: Mutex::new(DepsCheckerData::default()),
+        configuration,
+        service_index,
+        service_rustsec,
+    })
+}
+
 /// Data for the service to check the dependencies of a crate
 #[derive(Debug, Clone, Default)]
-pub struct DepsCheckerData {
+struct DepsCheckerData {
     /// The last time a piece of data was touched
     last_touch: HashMap<String, Instant>,
 }
 
 /// Service to check the dependencies of a crate
-pub struct DepsChecker<'a> {
+struct DepsCheckerImpl {
     /// The data for the service
-    pub data: &'a Mutex<DepsCheckerData>,
+    data: Mutex<DepsCheckerData>,
     /// The app configuration
-    pub configuration: &'a Configuration,
+    configuration: Arc<Configuration>,
     /// Access to the index
-    pub index: &'a Mutex<Index>,
+    service_index: Arc<dyn Index + Send + Sync>,
     /// The `RustSec` service
-    pub rustsec: RustSecChecker<'a>,
+    service_rustsec: Arc<dyn RustSecChecker + Send + Sync>,
 }
 
 /// The URI identifying crates.io as the registry for a dependency
@@ -247,17 +251,34 @@ const CRATES_IO_NAME: &str = "crates.io";
 /// Name of the sub-directory to use within the data directory
 const DATA_SUB_DIR: &str = "deps";
 
-impl<'a> DepsChecker<'a> {
+impl DepsChecker for DepsCheckerImpl {
     /// Ensures that a local cache for crates.io exists
-    async fn precache_crate_io(&self) -> Result<(), ApiError> {
+    fn precache_crate_io(&self) -> FaillibleFuture<'_, ()> {
+        Box::pin(async move { self.do_precache_crate_io().await })
+    }
+
+    /// Checks the dependencies of a local crate
+    fn check_crate<'a>(
+        &'a self,
+        package: &'a str,
+        version: &'a str,
+        targets: &'a [String],
+    ) -> FaillibleFuture<'a, DepsAnalysis> {
+        Box::pin(async move { self.do_check_crate(package, version, targets).await })
+    }
+}
+
+impl DepsCheckerImpl {
+    /// Ensures that a local cache for crates.io exists
+    async fn do_precache_crate_io(&self) -> Result<(), ApiError> {
         self.get_dependency_info_git("rand", CRATES_IO_NAME, CRATES_IO_REGISTRY_URI)
             .await?;
         Ok(())
     }
 
     /// Checks the dependencies of a local crate
-    pub async fn check_crate(&self, package: &str, version: &str, targets: &[String]) -> Result<DepsAnalysis, ApiError> {
-        let metadata = self.index.lock().await.get_crate_data(package).await?;
+    async fn do_check_crate(&self, package: &str, version: &str, targets: &[String]) -> Result<DepsAnalysis, ApiError> {
+        let metadata = self.service_index.get_crate_data(package).await?;
         let metadata = metadata
             .iter()
             .find(|meta| meta.vers == version)
@@ -268,7 +289,7 @@ impl<'a> DepsChecker<'a> {
         for dep in &graph.crates {
             for resolution in &dep.resolutions {
                 let version = dep.versions[resolution.version_index].semver.clone();
-                let simples = self.rustsec.check_crate(&dep.name, &version).await?;
+                let simples = self.service_rustsec.check_crate(&dep.name, &version).await?;
                 for simple in simples {
                     if advisories
                         .iter()
@@ -343,7 +364,7 @@ impl<'a> DepsChecker<'a> {
             }
         } else {
             // same registry, lookup in internal intex
-            self.index.lock().await.get_crate_data(name).await
+            self.service_index.get_crate_data(name).await
         }
     }
 
@@ -374,10 +395,10 @@ impl<'a> DepsChecker<'a> {
         reg_location.push(reg_name);
         if is_stale {
             if tokio::fs::try_exists(&reg_location).await? {
-                super::index::execute_git(&reg_location, &["pull", "origin", "master"]).await?;
+                crate::utils::execute_git(&reg_location, &["pull", "origin", "master"]).await?;
             } else {
                 tokio::fs::create_dir_all(&reg_location).await?;
-                super::index::execute_git(&reg_location, &["clone", index_uri, "."]).await?;
+                crate::utils::execute_git(&reg_location, &["clone", index_uri, "."]).await?;
             }
             data.last_touch.insert(reg_name.to_string(), now);
         }
@@ -399,7 +420,7 @@ impl<'a> DepsChecker<'a> {
         let mut reg_location = PathBuf::from(&self.configuration.data_dir);
         reg_location.push(DATA_SUB_DIR);
         reg_location.push(reg_name);
-        let file_path = super::index::build_package_file_path(reg_location, dep_name);
+        let file_path = crate::services::index::build_package_file_path(reg_location, dep_name);
         tokio::fs::create_dir_all(file_path.parent().unwrap()).await?;
         Ok(file_path)
     }
@@ -407,7 +428,7 @@ impl<'a> DepsChecker<'a> {
     /// Build the target URI to be used to retrieve the last data and store the access timestamp
     fn get_dependency_info_sparse_target_uri(dep_name: &str, index_uri: &str) -> String {
         let lowercase = dep_name.to_ascii_lowercase();
-        let (first, second) = super::index::package_file_path(&lowercase);
+        let (first, second) = crate::services::index::package_file_path(&lowercase);
         // expect `index_uri` to end with a trailing /
         let mut target_uri = format!("{index_uri}{first}");
         if let Some(second) = second {

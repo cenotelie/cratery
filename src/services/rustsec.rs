@@ -19,11 +19,54 @@ use crate::model::config::Configuration;
 use crate::model::osv::{Advisory, SimpleAdvisory};
 use crate::utils::apierror::ApiError;
 use crate::utils::concurrent::n_at_a_time_stream;
-use crate::utils::stale_instant;
+use crate::utils::{stale_instant, FaillibleFuture};
+
+/// Service to use the [RustSec](https://github.com/rustsec) data about crates
+pub trait RustSecChecker {
+    /// Gets the advisories against a crate
+    fn check_crate<'a>(&'a self, package: &'a str, version: &'a Version) -> FaillibleFuture<'a, Vec<SimpleAdvisory>>;
+}
+
+/// Gets the rustsec service
+pub fn get_rustsec(config: &Configuration) -> Arc<dyn RustSecChecker + Send + Sync> {
+    Arc::new(RustSecCheckerImpl {
+        data: Mutex::new(RustSecData::new(config.data_dir.clone(), config.deps_stale_registry)),
+    })
+}
+
+struct RustSecCheckerImpl {
+    /// The data for the service
+    data: Mutex<RustSecData>,
+}
+
+impl RustSecChecker for RustSecCheckerImpl {
+    /// Gets the advisories against a crate
+    fn check_crate<'a>(&'a self, package: &'a str, version: &'a Version) -> FaillibleFuture<'a, Vec<SimpleAdvisory>> {
+        Box::pin(async move {
+            let mut data = self.data.lock().await;
+            data.update_data().await?;
+            let db = data.db.lock().unwrap();
+            Ok(db
+                .get(package)
+                .map(|advisories| {
+                    advisories
+                        .iter()
+                        .filter(|advisory| advisory.affects(version))
+                        .cloned()
+                        .collect::<Vec<_>>()
+                })
+                .unwrap_or_default())
+        })
+    }
+}
 
 /// Service to use the [RustSec](https://github.com/rustsec) data about crates
 #[derive(Debug, Clone)]
-pub struct RustSecData {
+struct RustSecData {
+    /// The data directory
+    data_dir: String,
+    /// Number of milliseconds after which the local data about an external registry are deemed stale and must be pulled again
+    stale_registry: u64,
     /// The last time the data was updated
     last_touch: Instant,
     /// The known advisories
@@ -37,29 +80,28 @@ const RUSTSEC_DB_GIT_BRANCH: &str = "osv";
 /// Name of the sub-directory to use within the data directory
 const DATA_SUB_DIR: &str = "rustsec";
 
-impl Default for RustSecData {
-    fn default() -> Self {
-        RustSecData {
-            // last_touch set as 7 days before
+impl RustSecData {
+    fn new(data_dir: String, stale_registry: u64) -> Self {
+        Self {
+            data_dir,
+            stale_registry,
             last_touch: stale_instant(),
             db: Arc::new(std::sync::Mutex::new(HashMap::new())),
         }
     }
-}
 
-impl RustSecData {
     /// Updates the data
-    async fn update_data(&mut self, config: &Configuration) -> Result<(), ApiError> {
+    async fn update_data(&mut self) -> Result<(), ApiError> {
         let now = Instant::now();
-        let is_stale = now.duration_since(self.last_touch) > Duration::from_millis(config.deps_stale_registry);
-        let mut reg_location = PathBuf::from(&config.data_dir);
+        let is_stale = now.duration_since(self.last_touch) > Duration::from_millis(self.stale_registry);
+        let mut reg_location = PathBuf::from(&self.data_dir);
         reg_location.push(DATA_SUB_DIR);
         if is_stale {
             if tokio::fs::try_exists(&reg_location).await? {
-                super::index::execute_git(&reg_location, &["pull", "origin", RUSTSEC_DB_GIT_BRANCH]).await?;
+                crate::utils::execute_git(&reg_location, &["pull", "origin", RUSTSEC_DB_GIT_BRANCH]).await?;
             } else {
                 tokio::fs::create_dir_all(&reg_location).await?;
-                super::index::execute_git(
+                crate::utils::execute_git(
                     &reg_location,
                     &["clone", "--branch", RUSTSEC_DB_GIT_BRANCH, RUSTSEC_DB_GIT_URI, "."],
                 )
@@ -94,31 +136,5 @@ impl RustSecData {
             .await;
         }
         Ok(())
-    }
-}
-
-pub struct RustSecChecker<'a> {
-    /// The data for the service
-    pub data: &'a Mutex<RustSecData>,
-    /// The app configuration
-    pub configuration: &'a Configuration,
-}
-
-impl<'a> RustSecChecker<'a> {
-    /// Gets the advisories against a crate
-    pub async fn check_crate(&self, package: &str, version: &Version) -> Result<Vec<SimpleAdvisory>, ApiError> {
-        let mut data = self.data.lock().await;
-        data.update_data(self.configuration).await?;
-        let db = data.db.lock().unwrap();
-        Ok(db
-            .get(package)
-            .map(|advisories| {
-                advisories
-                    .iter()
-                    .filter(|advisory| advisory.affects(version))
-                    .cloned()
-                    .collect::<Vec<_>>()
-            })
-            .unwrap_or_default())
     }
 }

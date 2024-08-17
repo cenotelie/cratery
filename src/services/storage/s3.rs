@@ -6,9 +6,10 @@
 
 use std::path::Path;
 
-use super::{Storage, StorageFuture};
+use super::Storage;
 use crate::model::cargo::CrateMetadata;
 use crate::utils::s3::S3Params;
+use crate::utils::FaillibleFuture;
 
 /// An storage implementation that uses S3
 pub struct S3Storage {
@@ -43,7 +44,7 @@ impl S3Storage {
 
 impl Storage for S3Storage {
     /// Stores the data for a crate
-    fn store_crate<'a>(&'a self, metadata: &'a CrateMetadata, content: Vec<u8>) -> StorageFuture<'a, ()> {
+    fn store_crate<'a>(&'a self, metadata: &'a CrateMetadata, content: Vec<u8>) -> FaillibleFuture<'a, ()> {
         Box::pin(async move {
             let readme = super::extract_readme(&content)?;
             let buckets = crate::utils::s3::list_all_buckets(&self.params).await?;
@@ -69,7 +70,7 @@ impl Storage for S3Storage {
     }
 
     /// Downloads a crate
-    fn download_crate<'a>(&'a self, name: &'a str, version: &'a str) -> StorageFuture<'a, Vec<u8>> {
+    fn download_crate<'a>(&'a self, name: &'a str, version: &'a str) -> FaillibleFuture<'a, Vec<u8>> {
         Box::pin(async move {
             let object_key = Self::data_key(name, version);
             let data = crate::utils::s3::get_object(&self.params, &self.bucket, &object_key).await?;
@@ -78,7 +79,7 @@ impl Storage for S3Storage {
     }
 
     /// Downloads the last metadata for a crate
-    fn download_crate_metadata<'a>(&'a self, name: &'a str, version: &'a str) -> StorageFuture<'a, Option<CrateMetadata>> {
+    fn download_crate_metadata<'a>(&'a self, name: &'a str, version: &'a str) -> FaillibleFuture<'a, Option<CrateMetadata>> {
         Box::pin(async move {
             let object_key = Self::metadata_key(name, version);
             if let Ok(data) = crate::utils::s3::get_object(&self.params, &self.bucket, &object_key).await {
@@ -90,7 +91,7 @@ impl Storage for S3Storage {
     }
 
     /// Downloads the last README for a crate
-    fn download_crate_readme<'a>(&'a self, name: &'a str, version: &'a str) -> StorageFuture<'a, Vec<u8>> {
+    fn download_crate_readme<'a>(&'a self, name: &'a str, version: &'a str) -> FaillibleFuture<'a, Vec<u8>> {
         Box::pin(async move {
             let object_key = Self::readme_key(name, version);
             let data = crate::utils::s3::get_object(&self.params, &self.bucket, &object_key).await?;
@@ -99,7 +100,7 @@ impl Storage for S3Storage {
     }
 
     /// Stores a documentation file
-    fn store_doc_file<'a>(&'a self, path: &'a str, file: &'a Path) -> StorageFuture<'a, ()> {
+    fn store_doc_file<'a>(&'a self, path: &'a str, file: &'a Path) -> FaillibleFuture<'a, ()> {
         Box::pin(async move {
             let object_key = format!("docs/{path}");
             crate::utils::s3::upload_object_file(&self.params, &self.bucket, &object_key, file).await?;
@@ -108,7 +109,7 @@ impl Storage for S3Storage {
     }
 
     /// Stores a documentation file
-    fn store_doc_data<'a>(&'a self, path: &'a str, content: Vec<u8>) -> StorageFuture<'a, ()> {
+    fn store_doc_data<'a>(&'a self, path: &'a str, content: Vec<u8>) -> FaillibleFuture<'a, ()> {
         Box::pin(async move {
             let object_key = format!("docs/{path}");
             crate::utils::s3::upload_object_raw(&self.params, &self.bucket, &object_key, content).await?;
@@ -117,7 +118,7 @@ impl Storage for S3Storage {
     }
 
     /// Gets the content of a documentation file
-    fn download_doc_file<'a>(&'a self, path: &'a str) -> StorageFuture<'a, Vec<u8>> {
+    fn download_doc_file<'a>(&'a self, path: &'a str) -> FaillibleFuture<'a, Vec<u8>> {
         Box::pin(async move {
             let object_key = format!("docs/{path}");
             let data = crate::utils::s3::get_object(&self.params, &self.bucket, &object_key).await?;
