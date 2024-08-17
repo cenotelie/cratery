@@ -30,7 +30,6 @@ use crate::model::packages::CrateInfo;
 use crate::model::stats::{DownloadStats, GlobalStats};
 use crate::model::{generate_token, AppVersion, CrateAndVersion};
 use crate::services::index::Index;
-use crate::services::storage::Storage;
 use crate::utils::apierror::{error_invalid_request, error_not_found, specialize, ApiError};
 use crate::utils::axum::auth::{AuthData, AxumStateForCookies};
 use crate::utils::axum::embedded::Resources;

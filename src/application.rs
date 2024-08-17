@@ -38,6 +38,8 @@ pub struct Application {
     pub configuration: Arc<Configuration>,
     /// The database connection
     pub db_pool: Pool<Sqlite>,
+    /// The storage layer
+    pub service_storage: Arc<dyn Storage + Send + Sync>,
     /// Service to index the metadata of crates
     pub index: Arc<Mutex<Index>>,
     /// Service to check the dependencies of a crate
@@ -106,6 +108,7 @@ impl Application {
         );
 
         Ok(Arc::new(Self {
+            service_storage: crate::services::storage::get_storage(&configuration),
             configuration,
             db_pool,
             index,
@@ -116,8 +119,8 @@ impl Application {
     }
 
     /// Gets the storage service
-    pub fn get_service_storage(&self) -> impl Storage + '_ {
-        crate::services::storage::get_storage(&self.configuration)
+    pub fn get_service_storage(&self) -> &(dyn Storage + Send + Sync) {
+        self.service_storage.as_ref()
     }
 
     /// Gets the service to check for advisories using `RustSec`

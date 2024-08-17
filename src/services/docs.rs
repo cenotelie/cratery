@@ -20,7 +20,6 @@ use crate::model::config::Configuration;
 use crate::model::JobCrate;
 use crate::services::database::Database;
 use crate::services::storage;
-use crate::services::storage::Storage;
 use crate::utils::apierror::{error_backend_failure, specialize, ApiError};
 use crate::utils::concurrent::n_at_a_time;
 use crate::utils::db::in_transaction;
