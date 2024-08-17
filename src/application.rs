@@ -46,6 +46,9 @@ pub struct Application {
     service_rustsec: Arc<dyn RustSecChecker + Send + Sync>,
     /// Service to check the dependencies of a crate
     service_deps_checker: Arc<dyn DepsChecker + Send + Sync>,
+    /// The service to send emails
+    #[allow(dead_code)]
+    service_email_sender: Arc<dyn EmailSender + Send + Sync>,
     /// Sender of documentation generation jobs
     docs_worker_sender: UnboundedSender<JobCrate>,
 }
@@ -81,6 +84,7 @@ impl Application {
         let service_rustsec = crate::services::rustsec::get_rustsec(&configuration);
         let service_deps_checker =
             crate::services::deps::get_deps_checker(configuration.clone(), service_index.clone(), service_rustsec.clone());
+        let service_email_sender = crate::services::emails::get_deps_checker(configuration.clone());
 
         // docs worker
         let docs_worker_sender = crate::services::docs::create_docs_worker(configuration.clone(), service_db_pool.clone());
@@ -100,7 +104,12 @@ impl Application {
         }
 
         // deps worker
-        crate::services::deps::create_deps_worker(configuration.clone(), service_deps_checker.clone(), service_db_pool.clone());
+        crate::services::deps::create_deps_worker(
+            configuration.clone(),
+            service_deps_checker.clone(),
+            service_email_sender.clone(),
+            service_db_pool.clone(),
+        );
 
         Ok(Arc::new(Self {
             configuration,
@@ -109,6 +118,7 @@ impl Application {
             service_index,
             service_rustsec,
             service_deps_checker,
+            service_email_sender,
             docs_worker_sender,
         }))
     }
@@ -121,11 +131,6 @@ impl Application {
     /// Gets the index service
     pub fn get_service_index(&self) -> &(dyn Index + Send + Sync) {
         self.service_index.as_ref()
-    }
-
-    /// Gets the service to send emails
-    pub fn get_service_email_sender(&self) -> EmailSender {
-        EmailSender::new(&self.configuration)
     }
 
     /// Creates the application with transaction

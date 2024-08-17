@@ -35,6 +35,7 @@ use crate::utils::{stale_instant, FaillibleFuture};
 pub fn create_deps_worker(
     configuration: Arc<Configuration>,
     service_deps_checker: Arc<dyn DepsChecker + Send + Sync>,
+    service_email_sender: Arc<dyn EmailSender + Send + Sync>,
     pool: Pool<Sqlite>,
 ) {
     let _handle = tokio::spawn({
@@ -54,7 +55,14 @@ pub fn create_deps_worker(
         let mut interval = tokio::time::interval(Duration::from_secs(60));
         loop {
             let _instant = interval.tick().await;
-            if let Err(e) = deps_worker_job(&configuration, service_deps_checker.clone(), &pool).await {
+            if let Err(e) = deps_worker_job(
+                &configuration,
+                service_deps_checker.clone(),
+                service_email_sender.clone(),
+                &pool,
+            )
+            .await
+            {
                 error!("{e}");
                 if let Some(backtrace) = &e.backtrace {
                     error!("{backtrace}");
@@ -68,6 +76,7 @@ pub fn create_deps_worker(
 async fn deps_worker_job(
     configuration: &Configuration,
     service_deps_checker: Arc<dyn DepsChecker + Send + Sync>,
+    service_email_sender: Arc<dyn EmailSender + Send + Sync>,
     pool: &Pool<Sqlite>,
 ) -> Result<(), ApiError> {
     if configuration.deps_stale_analysis <= 0 {
@@ -84,7 +93,14 @@ async fn deps_worker_job(
         .await?
     };
     for job in jobs {
-        deps_worker_job_on_crate_version(configuration, service_deps_checker.as_ref(), pool, &job).await?;
+        deps_worker_job_on_crate_version(
+            configuration,
+            service_deps_checker.as_ref(),
+            service_email_sender.as_ref(),
+            pool,
+            &job,
+        )
+        .await?;
     }
     Ok(())
 }
@@ -92,6 +108,7 @@ async fn deps_worker_job(
 async fn deps_worker_job_on_crate_version(
     configuration: &Configuration,
     service_deps_checker: &(dyn DepsChecker + Send + Sync),
+    service_email_sender: &(dyn EmailSender + Send + Sync),
     pool: &Pool<Sqlite>,
     job: &JobCrate,
 ) -> Result<(), ApiError> {
@@ -150,7 +167,7 @@ async fn deps_worker_job_on_crate_version(
                     .unwrap();
                 }
             }
-            EmailSender::new(configuration)
+            service_email_sender
                 .send_email(
                     &owners,
                     &format!("Cratery - outdated dependencies for {} {}", job.name, job.version),
@@ -183,7 +200,7 @@ async fn deps_worker_job_on_crate_version(
                 .unwrap();
                 writeln!(body, "  => {}", adv.content.summary).unwrap();
             }
-            EmailSender::new(configuration)
+            service_email_sender
                 .send_email(
                     &owners,
                     &format!("Cratery - vulnerable dependencies for {} {}", job.name, job.version),

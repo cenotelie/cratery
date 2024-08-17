@@ -4,6 +4,8 @@
 
 //! Service to send emails
 
+use std::sync::Arc;
+
 use lettre::message::header::ContentType;
 use lettre::message::{MessageBuilder, SinglePartBuilder};
 use lettre::transport::smtp::authentication::Credentials;
@@ -12,23 +14,36 @@ use lettre::{AsyncSmtpTransport, AsyncTransport, Message, Tokio1Executor};
 
 use crate::model::config::Configuration;
 use crate::utils::apierror::ApiError;
+use crate::utils::FaillibleFuture;
+
+/// The service to send emails
+pub trait EmailSender {
+    /// Sends an email
+    fn send_email<'a>(&'a self, to: &'a [String], subject: &'a str, body: String) -> FaillibleFuture<'a, ()>;
+}
+
+/// Gets the email sender service
+pub fn get_deps_checker(config: Arc<Configuration>) -> Arc<dyn EmailSender + Send + Sync> {
+    Arc::new(EmailSenderImpl { config })
+}
 
 /// The service to send emails
 #[derive(Debug, Clone)]
-pub struct EmailSender<'a> {
+struct EmailSenderImpl {
     /// The configuration
-    config: &'a Configuration,
+    config: Arc<Configuration>,
 }
 
-impl<'a> EmailSender<'a> {
-    /// Creates the service
-    #[must_use]
-    pub fn new(config: &'a Configuration) -> Self {
-        Self { config }
-    }
-
+impl EmailSender for EmailSenderImpl {
     /// Sends an email
-    pub async fn send_email(&self, to: &[String], subject: &str, body: String) -> Result<(), ApiError> {
+    fn send_email<'a>(&'a self, to: &'a [String], subject: &'a str, body: String) -> FaillibleFuture<'a, ()> {
+        Box::pin(async move { self.do_send_email(to, subject, body).await })
+    }
+}
+
+impl EmailSenderImpl {
+    /// Sends an email
+    async fn do_send_email(&self, to: &[String], subject: &str, body: String) -> Result<(), ApiError> {
         let mut builder = MessageBuilder::new().message_id(Some(self.generate_msg_id()));
         for to in to {
             builder = builder.to(to.parse()?);
