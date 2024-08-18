@@ -6,8 +6,6 @@
 
 use std::sync::Arc;
 
-use futures::channel::mpsc::UnboundedSender;
-use futures::SinkExt;
 use log::info;
 use sqlx::sqlite::SqlitePoolOptions;
 use sqlx::{Pool, Sqlite};
@@ -23,6 +21,7 @@ use crate::model::stats::{DownloadStats, GlobalStats};
 use crate::model::{CrateAndVersion, JobCrate};
 use crate::services::database::Database;
 use crate::services::deps::DepsChecker;
+use crate::services::docs::DocsGenerator;
 use crate::services::emails::EmailSender;
 use crate::services::index::Index;
 use crate::services::rustsec::RustSecChecker;
@@ -49,8 +48,8 @@ pub struct Application {
     /// The service to send emails
     #[allow(dead_code)]
     service_email_sender: Arc<dyn EmailSender + Send + Sync>,
-    /// Sender of documentation generation jobs
-    docs_worker_sender: UnboundedSender<JobCrate>,
+    /// The service to generator documentation
+    service_docs_generator: Arc<dyn DocsGenerator + Send + Sync>,
 }
 
 /// The empty database
@@ -85,18 +84,18 @@ impl Application {
         let service_deps_checker =
             crate::services::deps::get_deps_checker(configuration.clone(), service_index.clone(), service_rustsec.clone());
         let service_email_sender = crate::services::emails::get_deps_checker(configuration.clone());
+        let service_docs_generator =
+            crate::services::docs::get_docs_generator(configuration.clone(), service_db_pool.clone(), service_storage.clone());
 
-        // docs worker
-        let docs_worker_sender = crate::services::docs::create_docs_worker(configuration.clone(), service_db_pool.clone());
         // check undocumented packages
         {
-            let mut docs_worker_sender = docs_worker_sender.clone();
+            let service_docs_generator = service_docs_generator.clone();
             let mut connection = service_db_pool.acquire().await?;
             crate::utils::db::in_transaction(&mut connection, |transaction| async move {
                 let app = Database::new(transaction);
                 let jobs = app.get_undocumented_crates().await?;
                 for job in jobs {
-                    docs_worker_sender.send(job).await?;
+                    service_docs_generator.queue(job)?;
                 }
                 Ok::<_, ApiError>(())
             })
@@ -119,7 +118,7 @@ impl Application {
             service_rustsec,
             service_deps_checker,
             service_email_sender,
-            docs_worker_sender,
+            service_docs_generator,
         }))
     }
 
@@ -280,14 +279,11 @@ impl Application {
             self.service_index.publish_crate_version(&index_data).await?;
             let targets = app.database.get_crate_targets(&package.metadata.name).await?;
             // generate the doc
-            self.docs_worker_sender
-                .clone()
-                .send(JobCrate {
-                    name: package.metadata.name.clone(),
-                    version: package.metadata.vers.clone(),
-                    targets,
-                })
-                .await?;
+            self.service_docs_generator.queue(JobCrate {
+                name: package.metadata.name.clone(),
+                version: package.metadata.vers.clone(),
+                targets,
+            })?;
             Ok(r)
         })
         .await
@@ -396,14 +392,11 @@ impl Application {
             let principal = app.authenticate(auth_data).await?;
             app.database.regen_crate_version_doc(&principal, package, version).await?;
             let targets = app.database.get_crate_targets(package).await?;
-            self.docs_worker_sender
-                .clone()
-                .send(JobCrate {
-                    name: package.to_string(),
-                    version: version.to_string(),
-                    targets,
-                })
-                .await?;
+            self.service_docs_generator.queue(JobCrate {
+                name: package.to_string(),
+                version: version.to_string(),
+                targets,
+            })?;
             Ok(())
         })
         .await
