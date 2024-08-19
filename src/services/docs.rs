@@ -110,7 +110,7 @@ impl DocsGeneratorImpl {
         let mut connection = self.service_db_pool.acquire().await?;
         in_transaction(&mut connection, |transaction| async move {
             let database = Database::new(transaction);
-            database.set_crate_documention(&job.name, &job.version, gen_is_ok).await
+            database.set_crate_documentation(&job.name, &job.version, gen_is_ok).await
         })
         .await?;
         tokio::fs::remove_dir_all(&temp_folder).await?;
