@@ -351,7 +351,7 @@ impl<'c> Database<'c> {
     }
 
     /// Sets a package as having documentation
-    pub async fn set_crate_documention(&self, package: &str, version: &str, has_docs: bool) -> Result<(), ApiError> {
+    pub async fn set_crate_documentation(&self, package: &str, version: &str, has_docs: bool) -> Result<(), ApiError> {
         sqlx::query!(
             "UPDATE PackageVersion SET docGenAttempted = TRUE, hasDocs = $3 WHERE package = $1 AND version = $2",
             package,
