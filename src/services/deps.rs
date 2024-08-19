@@ -50,9 +50,12 @@ pub fn create_deps_worker(
             }
         }
     });
+
+    let deps_check_period = configuration.deps_check_period.clone();
+
     let _handle = tokio::spawn(async move {
         // every minute
-        let mut interval = tokio::time::interval(Duration::from_secs(60));
+        let mut interval = tokio::time::interval(Duration::from_secs(deps_check_period));
         loop {
             let _instant = interval.tick().await;
             if let Err(e) = deps_worker_job(
