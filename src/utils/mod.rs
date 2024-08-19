@@ -17,6 +17,7 @@ pub mod apierror;
 pub mod axum;
 pub mod concurrent;
 pub mod db;
+pub mod hashes;
 pub mod s3;
 pub mod shared;
 pub mod sigterm;
