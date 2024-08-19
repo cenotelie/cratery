@@ -28,6 +28,7 @@ cookie = { version = "0.18", features = ["secure", "percent-encode"] }
 data-encoding = "2.1"
 flate2 ="1.0"
 mime = "0.3"
+opendal = { version = "0.49", features = ["services-fs", "services-s3"] }
 quick-xml = "0.36"
 rand = "0.8"
 ring = "0.17"

@@ -4,6 +4,7 @@
 
 //! Main application
 
+use std::ops::Deref;
 use std::sync::Arc;
 
 use log::info;
@@ -37,7 +38,7 @@ pub struct Application {
     /// The database pool
     service_db_pool: Pool<Sqlite>,
     /// The storage layer
-    service_storage: Arc<dyn Storage + Send + Sync>,
+    service_storage: Arc<Storage>,
     /// Service to index the metadata of crates
     service_index: Arc<dyn Index + Send + Sync>,
     /// The `RustSec` checker service
@@ -78,7 +79,7 @@ impl Application {
         // migrate the database, if appropriate
         crate::migrations::migrate_to_last(&mut *service_db_pool.acquire().await?).await?;
 
-        let service_storage = crate::services::storage::get_storage(&configuration);
+        let service_storage = Arc::new(crate::services::storage::Storage::from(&configuration.deref().clone()));
         let service_index = crate::services::index::get_index(&configuration).await?;
         let service_rustsec = crate::services::rustsec::get_rustsec(&configuration);
         let service_deps_checker =
@@ -123,8 +124,8 @@ impl Application {
     }
 
     /// Gets the storage service
-    pub fn get_service_storage(&self) -> &(dyn Storage + Send + Sync) {
-        self.service_storage.as_ref()
+    pub fn get_service_storage(&self) -> Arc<Storage> {
+        self.service_storage.clone()
     }
 
     /// Gets the index service

@@ -18,7 +18,6 @@ use tokio::process::Command;
 
 use crate::model::errors::MissingEnvVar;
 use crate::utils::apierror::ApiError;
-use crate::utils::s3::S3Params;
 
 /// Gets the value for an environment variable
 pub fn get_var<T: AsRef<str>>(name: T) -> Result<String, MissingEnvVar> {
@@ -107,7 +106,7 @@ impl StorageConfig {
                 params: S3Params {
                     uri: get_var("REGISTRY_S3_URI")?,
                     region: get_var("REGISTRY_S3_REGION")?,
-                    service: get_var("REGISTRY_S3_SERVICE").ok(),
+                    //service: get_var("REGISTRY_S3_SERVICE").ok(),
                     access_key: get_var("REGISTRY_S3_ACCESS_KEY")?,
                     secret_key: get_var("REGISTRY_S3_SECRET_KEY")?,
                 },
@@ -117,6 +116,21 @@ impl StorageConfig {
             _ => panic!("invalid REGISTRY_STORAGE"),
         })
     }
+}
+
+/// The S3 parameters
+#[derive(Debug, Serialize, Deserialize, Clone, Default)]
+pub struct S3Params {
+    /// The base URI for S3
+    pub uri: String,
+    /// The region to target
+    pub region: String,
+    /// The account access key
+    #[serde(rename = "accessKey")]
+    pub access_key: String,
+    /// The account secret key
+    #[serde(rename = "secretKey")]
+    pub secret_key: String,
 }
 
 /// The configuration in the index
