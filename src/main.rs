@@ -104,10 +104,7 @@ async fn main_serve_app(application: Arc<Application>, cookie_key: Key) -> Resul
                         .route("/:package/:version/download", get(routes::api_v1_download_crate))
                         .route("/:package/:version/yank", delete(routes::api_v1_cargo_yank))
                         .route("/:package/:version/unyank", put(routes::api_v1_cargo_unyank))
-                        .route(
-                            "/:package/:version/docsregen",
-                            post(routes::api_v1_regen_crate_version_doc),
-                        )
+                        .route("/:package/:version/docsregen", post(routes::api_v1_regen_crate_version_doc))
                         .route("/:package/:version/checkdeps", get(routes::api_v1_check_crate_version))
                         .route("/:package/dlstats", get(routes::api_v1_get_crate_dl_stats))
                         .route("/:package/owners", get(routes::api_v1_cargo_get_crate_owners))

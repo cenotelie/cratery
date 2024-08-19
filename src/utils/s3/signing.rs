@@ -6,12 +6,12 @@
 
 use std::borrow::Cow;
 
+use super::S3Params;
+use crate::utils::hashes::sha256;
 use chrono::{Local, NaiveDateTime};
 use data_encoding::HEXLOWER;
 use reqwest::header::{HeaderMap, HeaderValue};
 use ring::hmac::{self, HMAC_SHA256};
-use crate::utils::hashes::sha256;
-use super::S3Params;
 
 /// Computes the HMAC-SHA256 for a message
 fn hmac_sha256(key: &[u8], message: &[u8]) -> hmac::Tag {
