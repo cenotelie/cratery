@@ -541,9 +541,7 @@ impl<'c> Database<'c> {
         .fetch_optional(&mut *self.transaction.borrow().await)
         .await?
         .ok_or_else(error_not_found)?;
-        let mut downloads = row
-            .downloads
-            .unwrap_or_else(|| vec![0; size_of::<u32>() * SERIES_LENGTH]);
+        let mut downloads = row.downloads.unwrap_or_else(|| vec![0; size_of::<u32>() * SERIES_LENGTH]);
         let day_index = (Local::now().naive_local().ordinal0() as usize % SERIES_LENGTH) * size_of::<u32>();
         let count = byteorder::NativeEndian::read_u32(&downloads[day_index..]);
         byteorder::NativeEndian::write_u32(&mut downloads[day_index..], count + 1);
