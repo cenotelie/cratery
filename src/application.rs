@@ -56,7 +56,7 @@ pub struct Application {
 /// The empty database
 const DB_EMPTY: &[u8] = include_bytes!("empty.db");
 /// Maximum number of concurrent connections
-const DB_MAX_CONNECTIONS: u32 = 16;
+const DB_MAX_CONNECTIONS: u32 = 1;
 
 impl Application {
     /// Creates a new application
