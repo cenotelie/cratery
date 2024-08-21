@@ -27,6 +27,11 @@ pub struct AppVersion {
     pub tag: String,
 }
 
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct RegistryInformation {
+    pub registry_name: String,
+}
+
 /// Generates a token
 pub fn generate_token(length: usize) -> String {
     let rng = thread_rng();

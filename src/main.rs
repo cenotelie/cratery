@@ -64,6 +64,7 @@ async fn main_serve_app(application: Arc<Application>, cookie_key: Key) -> Resul
         .route("/webapp/*path", get(routes::get_webapp_resource))
         // api version
         .route("/version", get(routes::get_version))
+        .route("/registry-information", get(routes::api_v1_get_registry_information))
         // special handling for cargo login
         .route("/me", get(routes::webapp_me))
         // serve the documentation

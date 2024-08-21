@@ -200,6 +200,10 @@
             table.appendChild(renderToken(token));
           }
         });
+
+        apiGetRegistryInformation().then((registryInformation) => {
+          window.localStorage.setItem("cratery-registry-name", registryInformation.registry_name);
+        })
       });
     }
 
@@ -289,8 +293,7 @@
 
     function openTokenCreatedModal(secret) {
       const user = JSON.parse(window.localStorage.getItem("cratery-user"));
-      const domainParts = window.location.hostname.split(".");
-      const regName = domainParts.length >= 2 ? domainParts[domainParts.length - 2] : domainParts[0];
+      const regName = window.localStorage.getItem("cratery-registry-name");
       const gitCredEl = document.getElementById("modal-token-created-git-cred");
       gitCredEl.value = `${window.location.protocol}//${user.login}:${secret}@${window.location.hostname}`;
       const cargoCredEl = document.getElementById("modal-token-created-cargo-cred");
