@@ -19,7 +19,7 @@ use crate::model::config::Configuration;
 use crate::model::deps::DepsAnalysis;
 use crate::model::packages::CrateInfo;
 use crate::model::stats::{DownloadStats, GlobalStats};
-use crate::model::{CrateAndVersion, JobCrate};
+use crate::model::{CrateAndVersion, JobCrate, RegistryInformation};
 use crate::services::database::Database;
 use crate::services::deps::DepsChecker;
 use crate::services::docs::DocsGenerator;
@@ -148,6 +148,13 @@ impl Application {
             self.with_transaction(transaction).authenticate(auth_data).await
         })
         .await
+    }
+
+    /// Gets the registry configuration
+    pub async fn get_registry_information(&self) -> Result<RegistryInformation, ApiError> {
+        Ok(RegistryInformation {
+            registry_name: self.configuration.self_local_name.to_owned(),
+        })
     }
 
     /// Gets the data about the current user

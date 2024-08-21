@@ -28,7 +28,7 @@ use crate::model::cargo::{
 use crate::model::deps::DepsAnalysis;
 use crate::model::packages::CrateInfo;
 use crate::model::stats::{DownloadStats, GlobalStats};
-use crate::model::{generate_token, AppVersion, CrateAndVersion};
+use crate::model::{generate_token, AppVersion, CrateAndVersion, RegistryInformation};
 use crate::services::index::Index;
 use crate::utils::apierror::{error_invalid_request, error_not_found, specialize, ApiError};
 use crate::utils::axum::auth::{AuthData, AxumStateForCookies};
@@ -258,6 +258,11 @@ fn get_content_type(name: &str) -> &'static str {
         Some("ico") => "image/x-icon",
         _ => "application/octet-stream",
     }
+}
+
+/// Get server configuration
+pub async fn api_v1_get_registry_information(State(state): State<Arc<AxumState>>) -> ApiResult<RegistryInformation> {
+    response(state.application.get_registry_information().await)
 }
 
 /// Get the current user

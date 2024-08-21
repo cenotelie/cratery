@@ -417,8 +417,8 @@ impl Configuration {
             oauth_client_secret: get_var("REGISTRY_OAUTH_CLIENT_SECRET")?,
             oauth_client_scope: get_var("REGISTRY_OAUTH_CLIENT_SCOPE")?,
             deps_check_period: get_var("REGISTRY_DEPS_CHECK_PERIOD")
-              .map(|s| s.parse().expect("invalid REGISTRY_DEPS_CHECK_PERIOD"))
-              .unwrap_or(60), // 1 minute
+                .map(|s| s.parse().expect("invalid REGISTRY_DEPS_CHECK_PERIOD"))
+                .unwrap_or(60), // 1 minute
             deps_stale_registry: get_var("REGISTRY_DEPS_STALE_REGISTRY")
                 .map(|s| s.parse().expect("invalid REGISTRY_DEPS_STALE_REGISTRY"))
                 .unwrap_or(60 * 1000), // 1 minute
