@@ -21,7 +21,7 @@ impl<'c> Database<'c> {
             .fetch_one(&mut *self.transaction.borrow().await)
             .await?
             .total_downloads
-            .unwrap();
+            .unwrap_or_default();
 
         let rows = sqlx::query!(
             "SELECT name, version, upload
