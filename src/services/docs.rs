@@ -145,8 +145,8 @@ impl DocsGeneratorImpl {
             .arg("build.rustdocflags=[\"-Zunstable-options\",\"--extern-html-root-takes-precedence\"]")
             .arg("--config")
             .arg(format!(
-                "doc.extern-map.registries.local=\"{}/docs\"",
-                self.configuration.web_public_uri
+                "doc.extern-map.registries.{}=\"{}/docs\"",
+                self.configuration.self_local_name, self.configuration.web_public_uri
             ));
         for external in &self.configuration.external_registries {
             command.arg("--config").arg(format!(
