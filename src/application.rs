@@ -151,10 +151,10 @@ impl Application {
     }
 
     /// Gets the registry configuration
-    pub async fn get_registry_information(&self) -> Result<RegistryInformation, ApiError> {
-        Ok(RegistryInformation {
-            registry_name: self.configuration.self_local_name.to_owned(),
-        })
+    pub fn get_registry_information(&self) -> RegistryInformation {
+        RegistryInformation {
+            registry_name: self.configuration.self_local_name.clone(),
+        }
     }
 
     /// Gets the data about the current user

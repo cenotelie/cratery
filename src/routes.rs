@@ -34,7 +34,7 @@ use crate::utils::apierror::{error_invalid_request, error_not_found, specialize,
 use crate::utils::axum::auth::{AuthData, AxumStateForCookies};
 use crate::utils::axum::embedded::Resources;
 use crate::utils::axum::extractors::Base64;
-use crate::utils::axum::{response, response_error, ApiResult};
+use crate::utils::axum::{response, response_error, response_ok, ApiResult};
 
 /// The state of this application for axum
 pub struct AxumState {
@@ -262,7 +262,7 @@ fn get_content_type(name: &str) -> &'static str {
 
 /// Get server configuration
 pub async fn api_v1_get_registry_information(State(state): State<Arc<AxumState>>) -> ApiResult<RegistryInformation> {
-    response(state.application.get_registry_information().await)
+    Ok(response_ok(state.application.get_registry_information()))
 }
 
 /// Get the current user

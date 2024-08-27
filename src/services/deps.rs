@@ -51,7 +51,7 @@ pub fn create_deps_worker(
         }
     });
 
-    let deps_check_period = configuration.deps_check_period.clone();
+    let deps_check_period = configuration.deps_check_period;
 
     let _handle = tokio::spawn(async move {
         // every minute
