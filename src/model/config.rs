@@ -106,7 +106,6 @@ impl StorageConfig {
                 params: S3Params {
                     uri: get_var("REGISTRY_S3_URI")?,
                     region: get_var("REGISTRY_S3_REGION")?,
-                    //service: get_var("REGISTRY_S3_SERVICE").ok(),
                     access_key: get_var("REGISTRY_S3_ACCESS_KEY")?,
                     secret_key: get_var("REGISTRY_S3_SECRET_KEY")?,
                 },

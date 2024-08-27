@@ -121,13 +121,9 @@ This is controlled by the following configuration :
 * `REGISTRY_STORAGE_TIMEOUT`: Timeout (in milli-seconds) to use when interacting with the storage, defaults to 3000
 * `REGISTRY_S3_URI`: Top-level domain for the S3 service.
 * `REGISTRY_S3_REGION`: Sub-domain for the region.
-* `REGISTRY_S3_SERVICE`: Can be left empty ; the sub-domain for the S3 service, if any
 * `REGISTRY_S3_ACCESS_KEY`: The access key to use
 * `REGISTRY_S3_SECRET_KEY`: The secret key to use
 * `REGISTRY_S3_BUCKET`: The S3 bucket to use for storage. It will be created if it does not exist.
-
-The domain for the S3 bucket is interpolated as following (`REGISTRY_S3_SERVICE` can be left empty):
-`{REGISTRY_S3_BUCKET}.{REGISTRY_S3_SERVICE}.{REGISTRY_S3_REGION}.{REGISTRY_S3_URI}`.
 
 ### Index
 
@@ -169,6 +165,7 @@ This is specified with the following environment variables.
 
 When performing dependency analysis, Cratery will access `crates.io` and other external registries.
 
+* `REGISTRY_DEPS_CHECK_PERIOD`: Period in seconds to wait between checking for crates that need to be analyzed.
 * `REGISTRY_DEPS_STALE_REGISTRY`: Number of milliseconds after which the local data about an external registry are deemed stale and must be pulled again. Defaults to 60000 (1 minute).
 * `REGISTRY_DEPS_STALE_ANALYSIS`: Number of minutes after which the saved analysis for a crate becomes stale. Defaults to 1 day. A negative number deactivates background analysis of crates.
 * `REGISTRY_DEPS_NOTIFY_OUTDATED`: Whether to send a notification by email to the owners of a crate when some of its dependencies become outdated, defaults to `false`. To activate, set to `true`.
