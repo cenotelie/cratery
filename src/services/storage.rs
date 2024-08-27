@@ -4,14 +4,17 @@
 
 //! Storage implementations for crates data and documentation
 
+use std::io::Read;
+use std::path::Path;
+
+use flate2::bufread::GzDecoder;
+use opendal::layers::LoggingLayer;
+use opendal::Operator;
+use tar::Archive;
+
 use crate::model::cargo::CrateMetadata;
 use crate::model::config::{Configuration, StorageConfig};
 use crate::utils::apierror::ApiError;
-use flate2::bufread::GzDecoder;
-use opendal::{layers::LoggingLayer, Operator};
-use std::io::Read;
-use std::path::Path;
-use tar::Archive;
 
 /// Backing storage
 pub struct Storage {
