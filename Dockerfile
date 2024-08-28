@@ -16,7 +16,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 		ssh
 
 # add custom user
-RUN usermod -l cratery -d /home/cratery ubuntu && mv /home/ubuntu /home/cratery
+RUN groupmod -n cratery ubuntu && usermod -l cratery -d /home/cratery ubuntu && mv /home/ubuntu /home/cratery
 ENV HOME=/home/cratery
 USER cratery
 # Add support for Rust
