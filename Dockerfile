@@ -9,8 +9,6 @@ LABEL maintainer="Laurent Wouters <lwouters@cenotelie.fr>" vendor="Cénotélie O
 RUN apt-get update && apt-get install -y --no-install-recommends \
 		build-essential \
 		pkg-config \
-		libssl-dev \
-		libpq-dev \
 		libsqlite3-0 \
 		libsqlite3-dev \
 		musl-tools \
