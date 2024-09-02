@@ -104,7 +104,7 @@ impl StorageConfig {
         Ok(match storage_kind.as_str() {
             "s3" | "S3" => StorageConfig::S3 {
                 params: S3Params {
-                    uri: get_var("REGISTRY_S3_URI")?,
+                    endpoint: get_var("REGISTRY_S3_URI")?,
                     region: get_var("REGISTRY_S3_REGION")?,
                     access_key: get_var("REGISTRY_S3_ACCESS_KEY")?,
                     secret_key: get_var("REGISTRY_S3_SECRET_KEY")?,
@@ -120,8 +120,8 @@ impl StorageConfig {
 /// The S3 parameters
 #[derive(Debug, Serialize, Deserialize, Clone, Default)]
 pub struct S3Params {
-    /// The base URI for S3
-    pub uri: String,
+    /// Endpoint base URI for the S3 service
+    pub endpoint: String,
     /// The region to target
     pub region: String,
     /// The account access key
