@@ -268,6 +268,9 @@ pub struct Configuration {
     /// The maximum size for the body of incoming requests
     #[serde(rename = "webBodyLimit")]
     pub web_body_limit: usize,
+    /// The path to the local resources to serve as the web app
+    #[serde(rename = "webHotReloadPath")]
+    pub web_hot_reload_path: Option<String>,
     /// The data directory
     #[serde(rename = "dataDir")]
     pub data_dir: String,
@@ -399,6 +402,7 @@ impl Configuration {
             web_body_limit: get_var("REGISTRY_WEB_BODY_LIMIT")
                 .map(|s| s.parse().expect("invalid REGISTRY_WEB_BODY_LIMIT"))
                 .unwrap_or(10 * 1024 * 1024),
+            web_hot_reload_path: get_var("REGISTRY_WEB_HOT_RELOAD_PATH").ok(),
             data_dir,
             index,
             storage,

@@ -32,7 +32,7 @@ use crate::model::{generate_token, AppVersion, CrateAndVersion, RegistryInformat
 use crate::services::index::Index;
 use crate::utils::apierror::{error_invalid_request, error_not_found, specialize, ApiError};
 use crate::utils::axum::auth::{AuthData, AxumStateForCookies};
-use crate::utils::axum::embedded::Resources;
+use crate::utils::axum::embedded::{EmbeddedResources, WebappResource};
 use crate::utils::axum::extractors::Base64;
 use crate::utils::axum::{response, response_error, response_ok, ApiResult};
 
@@ -43,7 +43,7 @@ pub struct AxumState {
     /// Key to access private cookies
     pub cookie_key: Key,
     /// The static resources for the web app
-    pub webapp_resources: Resources,
+    pub webapp_resources: EmbeddedResources,
 }
 
 impl AxumStateForCookies for AxumState {
@@ -57,6 +57,28 @@ impl AxumStateForCookies for AxumState {
 
     fn get_cookie_key(&self) -> &Key {
         &self.cookie_key
+    }
+}
+
+impl AxumState {
+    /// Gets the resource in the web app for the specified path
+    async fn get_webapp_resource(&self, path: &str) -> Option<WebappResource> {
+        if let Some(hot_reload_path) = self.application.configuration.web_hot_reload_path.as_ref() {
+            let mut final_path = PathBuf::from(hot_reload_path);
+            for element in path.split('/') {
+                final_path.push(element);
+            }
+            let file_name = final_path.file_name().and_then(|n| n.to_str()).unwrap();
+            let content_type = get_content_type(file_name);
+            let data = tokio::fs::read(&final_path).await.ok()?;
+            Some(WebappResource::HotReload {
+                content_type: content_type.to_string(),
+                data,
+            })
+        } else {
+            let resource = self.webapp_resources.get(path).cloned()?;
+            Some(WebappResource::Embedded(resource))
+        }
     }
 }
 
@@ -157,7 +179,7 @@ pub async fn get_webapp_resource(
     auth_data: AuthData,
     State(state): State<Arc<AxumState>>,
     request: Request<Body>,
-) -> Result<(StatusCode, [(HeaderName, HeaderValue); 2], &'static [u8]), StatusCode> {
+) -> Result<(StatusCode, [(HeaderName, HeaderValue); 2], Cow<'static, [u8]>), StatusCode> {
     let path = request.uri().path();
     let path = &path["/webapp/".len()..];
 
@@ -170,7 +192,7 @@ pub async fn get_webapp_resource(
                 (header::LOCATION, HeaderValue::from_str(&target).unwrap()),
                 (header::CACHE_CONTROL, HeaderValue::from_static("max-age=3600")),
             ],
-            &[],
+            Cow::Borrowed(&[]),
         ));
     }
 
@@ -178,19 +200,19 @@ pub async fn get_webapp_resource(
         let is_authenticated = state.application.authenticate(&auth_data).await.is_ok();
         if !is_authenticated {
             let (code, headers) = get_auth_redirect(&state);
-            return Ok((code, headers, &[]));
+            return Ok((code, headers, Cow::Borrowed(&[])));
         }
     }
 
-    let resource = state.webapp_resources.get(path);
+    let resource = state.get_webapp_resource(path).await;
     match resource {
         Some(resource) => Ok((
             StatusCode::OK,
             [
-                (header::CONTENT_TYPE, HeaderValue::from_static(resource.content_type)),
+                (header::CONTENT_TYPE, HeaderValue::from_str(resource.content_type()).unwrap()),
                 (header::CACHE_CONTROL, HeaderValue::from_static("max-age=3600")),
             ],
-            resource.content,
+            resource.into_data(),
         )),
         None => Err(StatusCode::NOT_FOUND),
     }
