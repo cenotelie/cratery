@@ -230,9 +230,10 @@
     document.getElementById("meta-uploaded-by").href = `mailto:${currentVersion.uploadedBy.email}`;
     document.getElementById("meta-install").appendChild(document.createTextNode(`${currentVersion.index.name} = { version = "${currentVersion.index.vers}", registry = "${regName}" }`));
     if (currentVersion.hasDocs) {
+      const crateRustName = currentVersion.index.name.replaceAll("-", "_");
       const link = document.createElement("a");
       link.appendChild(document.createTextNode(`v${currentVersion.index.vers}`));
-      link.setAttribute("href", `/docs/${currentVersion.index.name}/${currentVersion.index.vers}/${currentVersion.index.name}/index.html`);
+      link.setAttribute("href", `/docs/${currentVersion.index.name}/${currentVersion.index.vers}/${crateRustName}/index.html`);
       document.getElementById("meta-docs").appendChild(link);
     } else {
       // TODO: add regen button here
