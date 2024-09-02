@@ -62,9 +62,6 @@ async fn main_serve_app(application: Arc<Application>, cookie_key: Key) -> Resul
         .route("/crates/:package/:version", get(routes::get_redirection_crate_version))
         .route("/crates/:package", get(routes::get_redirection_crate))
         .route("/webapp/*path", get(routes::get_webapp_resource))
-        // api version
-        .route("/version", get(routes::get_version))
-        .route("/registry-information", get(routes::api_v1_get_registry_information))
         // special handling for cargo login
         .route("/me", get(routes::webapp_me))
         // serve the documentation
@@ -73,6 +70,8 @@ async fn main_serve_app(application: Arc<Application>, cookie_key: Key) -> Resul
         .nest(
             "/api/v1",
             Router::new()
+                .route("/version", get(routes::get_version))
+                .route("/registry-information", get(routes::api_v1_get_registry_information))
                 .route("/me", get(routes::api_v1_get_current_user))
                 .route("/oauth/code", post(routes::api_v1_login_with_oauth_code))
                 .route("/logout", post(routes::api_v1_logout))

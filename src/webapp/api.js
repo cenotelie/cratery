@@ -1,5 +1,5 @@
 function apiGetVersion() {
-  return fetch("/version").then((response) => {
+  return fetch("/api/v1/version").then((response) => {
     if (response.status !== 200) {
       throw response.text();
     } else {
@@ -9,7 +9,7 @@ function apiGetVersion() {
 }
 
 function apiGetRegistryInformation() {
-  return fetch("/registry-information").then((response) => {
+  return fetch("/api/v1/registry-information").then((response) => {
     if (response.status !== 200) {
       throw response.text();
     } else {

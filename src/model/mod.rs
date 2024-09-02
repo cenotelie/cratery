@@ -27,8 +27,11 @@ pub struct AppVersion {
     pub tag: String,
 }
 
+/// Information about the registry, as exposed on the web API
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct RegistryInformation {
+    /// The name to use for the registry in cargo and git config
+    #[serde(rename = "registryName")]
     pub registry_name: String,
 }
 
