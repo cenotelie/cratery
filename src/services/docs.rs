@@ -35,7 +35,7 @@ pub trait DocsGenerator {
 pub fn get_docs_generator(
     configuration: Arc<Configuration>,
     service_db_pool: Pool<Sqlite>,
-    service_storage: Arc<Storage>,
+    service_storage: Arc<dyn Storage + Send + Sync>,
 ) -> Arc<dyn DocsGenerator + Send + Sync> {
     let (sender, receiver) = tokio::sync::mpsc::unbounded_channel();
     let service = Arc::new(DocsGeneratorImpl {
@@ -59,7 +59,7 @@ struct DocsGeneratorImpl {
     /// The database pool
     service_db_pool: Pool<Sqlite>,
     /// The storage layer
-    service_storage: Arc<Storage>,
+    service_storage: Arc<dyn Storage + Send + Sync>,
     /// The queue of waiting jobs
     queue: UnboundedSender<JobCrate>,
 }

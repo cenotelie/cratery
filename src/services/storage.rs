@@ -6,6 +6,7 @@
 
 use std::io::Read;
 use std::path::Path;
+use std::sync::Arc;
 
 use flate2::bufread::GzDecoder;
 use opendal::layers::LoggingLayer;
@@ -15,13 +16,43 @@ use tar::Archive;
 use crate::model::cargo::CrateMetadata;
 use crate::model::config::{Configuration, StorageConfig};
 use crate::utils::apierror::ApiError;
+use crate::utils::FaillibleFuture;
+
+/// Backing storage implementations
+pub trait Storage {
+    /// Stores the data for a crate
+    fn store_crate<'a>(&'a self, metadata: &'a CrateMetadata, content: Vec<u8>) -> FaillibleFuture<'a, ()>;
+
+    /// Downloads a crate
+    fn download_crate<'a>(&'a self, name: &'a str, version: &'a str) -> FaillibleFuture<'a, Vec<u8>>;
+
+    /// Downloads the last metadata for a crate
+    fn download_crate_metadata<'a>(&'a self, name: &'a str, version: &'a str) -> FaillibleFuture<'a, Option<CrateMetadata>>;
+
+    /// Downloads the last README for a crate
+    fn download_crate_readme<'a>(&'a self, name: &'a str, version: &'a str) -> FaillibleFuture<'a, Vec<u8>>;
+
+    /// Stores a documentation file
+    fn store_doc_file<'a>(&'a self, path: &'a str, file: &'a Path) -> FaillibleFuture<'a, ()>;
+
+    /// Stores a documentation file
+    fn store_doc_data<'a>(&'a self, path: &'a str, content: Vec<u8>) -> FaillibleFuture<'a, ()>;
+
+    /// Gets the content of a documentation file
+    fn download_doc_file<'a>(&'a self, path: &'a str) -> FaillibleFuture<'a, Vec<u8>>;
+}
+
+/// Gets the backing storage for the documentation
+pub fn get_storage(config: &Configuration) -> Arc<dyn Storage + Send + Sync> {
+    Arc::new(StorageImpl::from(config))
+}
 
 /// Backing storage
-pub struct Storage {
+pub struct StorageImpl {
     opendal_operator: Operator,
 }
 
-impl From<&Configuration> for Storage {
+impl From<&Configuration> for StorageImpl {
     fn from(config: &Configuration) -> Self {
         let opendal_operator = match &config.storage {
             StorageConfig::FileSystem => {
@@ -47,11 +78,41 @@ impl From<&Configuration> for Storage {
             }
         };
 
-        Storage { opendal_operator }
+        StorageImpl { opendal_operator }
     }
 }
 
-impl Storage {
+impl Storage for StorageImpl {
+    fn store_crate<'a>(&'a self, metadata: &'a CrateMetadata, content: Vec<u8>) -> FaillibleFuture<'a, ()> {
+        Box::pin(async move { self.store_crate(metadata, content).await })
+    }
+
+    fn download_crate<'a>(&'a self, name: &'a str, version: &'a str) -> FaillibleFuture<'a, Vec<u8>> {
+        Box::pin(async move { self.download_crate(name, version).await })
+    }
+
+    fn download_crate_metadata<'a>(&'a self, name: &'a str, version: &'a str) -> FaillibleFuture<'a, Option<CrateMetadata>> {
+        Box::pin(async move { self.download_crate_metadata(name, version).await })
+    }
+
+    fn download_crate_readme<'a>(&'a self, name: &'a str, version: &'a str) -> FaillibleFuture<'a, Vec<u8>> {
+        Box::pin(async move { self.download_crate_readme(name, version).await })
+    }
+
+    fn store_doc_file<'a>(&'a self, path: &'a str, file: &'a Path) -> FaillibleFuture<'a, ()> {
+        Box::pin(async move { self.store_doc_file(path, file).await })
+    }
+
+    fn store_doc_data<'a>(&'a self, path: &'a str, content: Vec<u8>) -> FaillibleFuture<'a, ()> {
+        Box::pin(async move { self.store_doc_data(path, content).await })
+    }
+
+    fn download_doc_file<'a>(&'a self, path: &'a str) -> FaillibleFuture<'a, Vec<u8>> {
+        Box::pin(async move { self.download_doc_file(path).await })
+    }
+}
+
+impl StorageImpl {
     /// Stores the data for a crate
     pub async fn store_crate(&self, metadata: &CrateMetadata, content: Vec<u8>) -> Result<(), ApiError> {
         let readme = extract_readme(&content)?;
