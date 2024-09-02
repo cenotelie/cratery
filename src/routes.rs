@@ -400,6 +400,14 @@ pub async fn api_v1_get_crates_stats(auth_data: AuthData, State(state): State<Ar
     response(state.application.get_crates_stats(&auth_data).await)
 }
 
+/// Gets the packages that need documentation generation
+pub async fn get_undocumented_crates(
+    auth_data: AuthData,
+    State(state): State<Arc<AxumState>>,
+) -> ApiResult<Vec<CrateAndVersion>> {
+    response(state.application.get_undocumented_crates(&auth_data).await)
+}
+
 /// Gets all the packages that are outdated while also being the latest version
 pub async fn api_v1_get_crates_outdated_heads(
     auth_data: AuthData,

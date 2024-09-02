@@ -392,6 +392,18 @@ impl Application {
         .await
     }
 
+    /// Gets the packages that need documentation generation
+    pub async fn get_undocumented_crates(&self, auth_data: &AuthData) -> Result<Vec<CrateAndVersion>, ApiError> {
+        let mut connection: sqlx::pool::PoolConnection<Sqlite> = self.service_db_pool.acquire().await?;
+        in_transaction(&mut connection, |transaction| async move {
+            let app = self.with_transaction(transaction);
+            let _principal = app.authenticate(auth_data).await?;
+            let crates = app.database.get_undocumented_crates().await?;
+            Ok(crates.into_iter().map(CrateAndVersion::from).collect())
+        })
+        .await
+    }
+
     /// Force the re-generation for the documentation of a package
     pub async fn regen_crate_version_doc(&self, auth_data: &AuthData, package: &str, version: &str) -> Result<(), ApiError> {
         let mut connection: sqlx::pool::PoolConnection<Sqlite> = self.service_db_pool.acquire().await?;

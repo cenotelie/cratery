@@ -47,6 +47,15 @@ pub struct CrateAndVersion {
     pub version: String,
 }
 
+impl From<JobCrate> for CrateAndVersion {
+    fn from(value: JobCrate) -> Self {
+        CrateAndVersion {
+            name: value.name,
+            version: value.version,
+        }
+    }
+}
+
 /// The description of a crate for a job
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct JobCrate {

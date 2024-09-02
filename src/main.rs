@@ -97,6 +97,7 @@ async fn main_serve_app(application: Arc<Application>, cookie_key: Key) -> Resul
                     Router::new()
                         .route("/", get(routes::api_v1_cargo_search))
                         .route("/stats", get(routes::api_v1_get_crates_stats))
+                        .route("/undocumented", get(routes::get_undocumented_crates))
                         .route("/outdated", get(routes::api_v1_get_crates_outdated_heads))
                         .route("/new", put(routes::api_v1_cargo_publish_crate_version))
                         .route("/:package", get(routes::api_v1_get_crate_info))
