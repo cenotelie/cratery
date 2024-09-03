@@ -20,6 +20,7 @@ pub mod db;
 pub mod hashes;
 pub mod shared;
 pub mod sigterm;
+pub mod token;
 
 /// Pushes an element in a vector if it is not present yet
 /// Returns `true` if the vector was modified

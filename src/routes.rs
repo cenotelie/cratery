@@ -21,20 +21,21 @@ use tokio::fs::File;
 use tokio_util::io::ReaderStream;
 
 use crate::application::Application;
-use crate::model::auth::{AuthenticatedUser, RegistryUserToken, RegistryUserTokenWithSecret};
+use crate::model::auth::{Authentication, RegistryUserToken, RegistryUserTokenWithSecret};
 use crate::model::cargo::{
     CrateUploadResult, OwnersChangeQuery, OwnersQueryResult, RegistryUser, SearchResults, YesNoMsgResult, YesNoResult,
 };
 use crate::model::deps::DepsAnalysis;
 use crate::model::packages::CrateInfo;
 use crate::model::stats::{DownloadStats, GlobalStats};
-use crate::model::{generate_token, AppVersion, CrateVersion, RegistryInformation};
+use crate::model::{AppVersion, CrateVersion, RegistryInformation};
 use crate::services::index::Index;
 use crate::utils::apierror::{error_invalid_request, error_not_found, specialize, ApiError};
 use crate::utils::axum::auth::{AuthData, AxumStateForCookies};
 use crate::utils::axum::embedded::{EmbeddedResources, WebappResource};
 use crate::utils::axum::extractors::Base64;
 use crate::utils::axum::{response, response_error, response_ok, ApiResult};
+use crate::utils::token::generate_token;
 
 /// The state of this application for axum
 pub struct AxumState {
@@ -300,13 +301,7 @@ pub async fn api_v1_login_with_oauth_code(
 ) -> Result<(StatusCode, [(HeaderName, HeaderValue); 1], Json<RegistryUser>), (StatusCode, Json<ApiError>)> {
     let code = String::from_utf8_lossy(&body);
     let registry_user = state.application.login_with_oauth_code(&code).await.map_err(response_error)?;
-    let cookie = auth_data.create_id_cookie(&AuthenticatedUser {
-        uid: registry_user.id,
-        principal: registry_user.email.clone(),
-        // when authenticated via cookies, can do everything
-        can_write: true,
-        can_admin: true,
-    });
+    let cookie = auth_data.create_id_cookie(&Authentication::new_user(registry_user.id, registry_user.email.clone()));
     Ok((
         StatusCode::OK,
         [(SET_COOKIE, HeaderValue::from_str(&cookie.to_string()).unwrap())],

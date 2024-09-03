@@ -14,7 +14,7 @@ use futures::StreamExt;
 use semver::Version;
 
 use super::Database;
-use crate::model::auth::AuthenticatedUser;
+use crate::model::auth::Authentication;
 use crate::model::cargo::{
     CrateUploadData, CrateUploadResult, IndexCrateMetadata, OwnersQueryResult, RegistryUser, SearchResultCrate, SearchResults,
     SearchResultsMeta, YesNoMsgResult, YesNoResult,
@@ -111,7 +111,7 @@ impl<'c> Database<'c> {
     #[allow(clippy::similar_names)]
     pub async fn publish_crate_version(
         &self,
-        authenticated_user: &AuthenticatedUser,
+        authenticated_user: &Authentication,
         package: &CrateUploadData,
     ) -> Result<CrateUploadResult, ApiError> {
         if !authenticated_user.can_write {
@@ -120,6 +120,7 @@ impl<'c> Database<'c> {
                 String::from("writing is forbidden for this authentication"),
             ));
         }
+        let uid = authenticated_user.uid()?;
         let warnings = package.metadata.validate()?;
         let lowercase = package.metadata.name.to_ascii_lowercase();
         let row = sqlx::query!(
@@ -154,7 +155,7 @@ impl<'c> Database<'c> {
             let rows = sqlx::query!("SELECT owner FROM PackageOwner WHERE package = $1", package.metadata.name,)
                 .fetch_all(&mut *self.transaction.borrow().await)
                 .await?;
-            if rows.into_iter().all(|r| r.owner != authenticated_user.uid) {
+            if rows.into_iter().all(|r| r.owner != uid) {
                 return Err(specialize(
                     error_forbidden(),
                     String::from("User is not an owner of this package"),
@@ -173,7 +174,7 @@ impl<'c> Database<'c> {
             sqlx::query!(
                 "INSERT INTO PackageOwner (package, owner) VALUES ($1, $2)",
                 package.metadata.name,
-                authenticated_user.uid
+                uid
             )
             .execute(&mut *self.transaction.borrow().await)
             .await?;
@@ -187,7 +188,7 @@ impl<'c> Database<'c> {
             package.metadata.vers,
             description,
             now,
-            authenticated_user.uid
+            uid,
         )
         .execute(&mut *self.transaction.borrow().await)
         .await?;
@@ -208,19 +209,20 @@ impl<'c> Database<'c> {
     }
 
     /// Checks the ownership of a package
-    async fn check_crate_ownership(&self, authenticated_user: &AuthenticatedUser, package: &str) -> Result<i64, ApiError> {
-        if self.check_is_admin(authenticated_user.uid).await.is_ok() {
-            return Ok(authenticated_user.uid);
+    async fn check_crate_ownership(&self, authenticated_user: &Authentication, package: &str) -> Result<i64, ApiError> {
+        let uid = authenticated_user.uid()?;
+        if self.check_is_admin(uid).await.is_ok() {
+            return Ok(uid);
         }
         let row = sqlx::query!(
             "SELECT id from PackageOwner WHERE package = $1 AND owner = $2 LIMIT 1",
             package,
-            authenticated_user.uid
+            uid
         )
         .fetch_optional(&mut *self.transaction.borrow().await)
         .await?;
         match row {
-            Some(_) => Ok(authenticated_user.uid),
+            Some(_) => Ok(uid),
             None => Err(specialize(
                 error_forbidden(),
                 String::from("User is not an owner of this package"),
@@ -231,7 +233,7 @@ impl<'c> Database<'c> {
     /// Yank a crate version
     pub async fn yank_crate_version(
         &self,
-        authenticated_user: &AuthenticatedUser,
+        authenticated_user: &Authentication,
         package: &str,
         version: &str,
     ) -> Result<YesNoResult, ApiError> {
@@ -277,7 +279,7 @@ impl<'c> Database<'c> {
     /// Unyank a crate version
     pub async fn unyank_crate_version(
         &self,
-        authenticated_user: &AuthenticatedUser,
+        authenticated_user: &Authentication,
         package: &str,
         version: &str,
     ) -> Result<YesNoResult, ApiError> {
@@ -367,7 +369,7 @@ impl<'c> Database<'c> {
     /// Force the re-generation for the documentation of a package
     pub async fn regen_crate_version_doc(
         &self,
-        authenticated_user: &AuthenticatedUser,
+        authenticated_user: &Authentication,
         package: &str,
         version: &str,
     ) -> Result<(), ApiError> {
@@ -582,7 +584,7 @@ impl<'c> Database<'c> {
     /// Add owners to a package
     pub async fn add_crate_owners(
         &self,
-        authenticated_user: &AuthenticatedUser,
+        authenticated_user: &Authentication,
         package: &str,
         new_users: &[String],
     ) -> Result<YesNoMsgResult, ApiError> {
@@ -621,7 +623,7 @@ impl<'c> Database<'c> {
     /// Remove owners from a package
     pub async fn remove_crate_owners(
         &self,
-        authenticated_user: &AuthenticatedUser,
+        authenticated_user: &Authentication,
         package: &str,
         old_users: &[String],
     ) -> Result<YesNoResult, ApiError> {
@@ -669,7 +671,7 @@ impl<'c> Database<'c> {
     /// Sets the targets for a crate
     pub async fn set_crate_targets(
         &self,
-        authenticated_user: &AuthenticatedUser,
+        authenticated_user: &Authentication,
         package: &str,
         targets: &[String],
     ) -> Result<(), ApiError> {

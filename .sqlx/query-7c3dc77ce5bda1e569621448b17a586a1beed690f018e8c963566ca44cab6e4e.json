@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "DELETE FROM RegistryGlobalToken WHERE id = $1",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": []
+  },
+  "hash": "7c3dc77ce5bda1e569621448b17a586a1beed690f018e8c963566ca44cab6e4e"
+}

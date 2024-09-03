@@ -11,7 +11,7 @@ use log::info;
 use sqlx::sqlite::SqlitePoolOptions;
 use sqlx::{Pool, Sqlite};
 
-use crate::model::auth::{AuthenticatedUser, RegistryUserToken, RegistryUserTokenWithSecret};
+use crate::model::auth::{Authentication, RegistryUserToken, RegistryUserTokenWithSecret};
 use crate::model::cargo::{
     CrateUploadData, CrateUploadResult, OwnersQueryResult, RegistryUser, SearchResults, YesNoMsgResult, YesNoResult,
 };
@@ -142,7 +142,7 @@ impl Application {
     }
 
     /// Attempts the authentication of a user
-    pub async fn authenticate(&self, auth_data: &AuthData) -> Result<AuthenticatedUser, ApiError> {
+    pub async fn authenticate(&self, auth_data: &AuthData) -> Result<Authentication, ApiError> {
         let mut connection = self.service_db_pool.acquire().await?;
         in_transaction(&mut connection, |transaction| async move {
             self.with_transaction(transaction).authenticate(auth_data).await
@@ -570,28 +570,23 @@ pub struct ApplicationWithTransaction<'a, 'c> {
 
 impl<'a, 'c> ApplicationWithTransaction<'a, 'c> {
     /// Attempts the authentication of a user
-    pub async fn authenticate(&self, auth_data: &AuthData) -> Result<AuthenticatedUser, ApiError> {
+    pub async fn authenticate(&self, auth_data: &AuthData) -> Result<Authentication, ApiError> {
         if let Some(token) = &auth_data.token {
             self.authenticate_token(token).await
         } else {
             let authenticated_user = auth_data.try_authenticate_cookie()?.ok_or_else(error_unauthorized)?;
-            self.database.check_is_user(&authenticated_user.principal).await?;
+            self.database.check_is_user(authenticated_user.email()?).await?;
             Ok(authenticated_user)
         }
     }
 
     /// Tries to authenticate using a token
-    pub async fn authenticate_token(&self, token: &Token) -> Result<AuthenticatedUser, ApiError> {
+    pub async fn authenticate_token(&self, token: &Token) -> Result<Authentication, ApiError> {
         if token.id == self.application.configuration.self_service_login
             && token.secret == self.application.configuration.self_service_token
         {
             // self authentication to read
-            return Ok(AuthenticatedUser {
-                uid: -1,
-                principal: self.application.configuration.self_service_login.clone(),
-                can_write: false,
-                can_admin: false,
-            });
+            return Ok(Authentication::new_self());
         }
         let user = self.database.check_token(&token.id, &token.secret).await?;
         Ok(user)

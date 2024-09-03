@@ -19,6 +19,7 @@ use tokio::process::Command;
 
 use crate::model::errors::MissingEnvVar;
 use crate::utils::apierror::ApiError;
+use crate::utils::token::generate_token;
 
 /// Gets the value for an environment variable
 pub fn get_var<T: AsRef<str>>(name: T) -> Result<String, MissingEnvVar> {
@@ -444,8 +445,8 @@ impl Configuration {
             deps_notify_cves,
             email,
             self_local_name,
-            self_service_login: super::generate_token(16),
-            self_service_token: super::generate_token(64),
+            self_service_login: generate_token(16),
+            self_service_token: generate_token(64),
             self_toolchain_version: get_rustc_version().await,
             self_toolchain_host: get_rustc_host().await,
             self_builtin_targets: get_builtin_targets().await,

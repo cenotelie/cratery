@@ -16,7 +16,7 @@ use cookie::time::OffsetDateTime;
 use cookie::{Cookie, CookieJar, Expiration, Key, SameSite};
 
 use super::extractors::Cookies;
-use crate::model::auth::AuthenticatedUser;
+use crate::model::auth::Authentication;
 use crate::utils::apierror::ApiError;
 
 /// An authentication token
@@ -160,7 +160,7 @@ impl AuthData {
     /// # Panics
     ///
     /// Panic when the value cannot be serialized to JSON
-    pub fn create_id_cookie(&mut self, value: &AuthenticatedUser) -> Cookie<'static> {
+    pub fn create_id_cookie(&mut self, value: &Authentication) -> Cookie<'static> {
         self.create_cookie(&self.cookie_id_name.clone(), &serde_json::to_string(value).unwrap(), true)
     }
 
@@ -174,7 +174,7 @@ impl AuthData {
     /// # Errors
     ///
     /// Propagates the error from the `check_token` callback.
-    pub fn try_authenticate_cookie(&self) -> Result<Option<AuthenticatedUser>, ApiError> {
+    pub fn try_authenticate_cookie(&self) -> Result<Option<Authentication>, ApiError> {
         // try the cookie
         Ok(self
             .cookie_jar

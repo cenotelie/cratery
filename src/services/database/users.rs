@@ -6,46 +6,23 @@
 //! API related to the management of users and authentication
 
 use chrono::Local;
-use data_encoding::HEXLOWER;
-use ring::digest::{Context, SHA256};
 
 use super::Database;
-use crate::model::auth::{find_field_in_blob, AuthenticatedUser, OAuthToken, RegistryUserToken, RegistryUserTokenWithSecret};
+use crate::model::auth::{
+    find_field_in_blob, Authentication, AuthenticationPrincipal, OAuthToken, RegistryUserToken, RegistryUserTokenWithSecret,
+};
 use crate::model::cargo::RegistryUser;
 use crate::model::config::Configuration;
-use crate::model::generate_token;
 use crate::model::namegen::generate_name;
 use crate::utils::apierror::{
     error_conflict, error_forbidden, error_invalid_request, error_not_found, error_unauthorized, specialize, ApiError,
 };
-
-/// Computes the SHA256 digest of bytes
-fn sha256(buffer: &[u8]) -> String {
-    let mut context = Context::new(&SHA256);
-    context.update(buffer);
-    let digest = context.finish();
-    HEXLOWER.encode(digest.as_ref())
-}
-
-/// Hashes a token secret
-fn hash_token(input: &str) -> String {
-    sha256(input.as_bytes())
-}
-
-/// Checks a token hash
-pub fn check_hash(token: &str, hashed: &str) -> Result<(), ApiError> {
-    let matches = hashed == sha256(token.as_bytes());
-    if matches {
-        Ok(())
-    } else {
-        Err(error_unauthorized())
-    }
-}
+use crate::utils::token::{check_hash, generate_token, hash_token};
 
 impl<'c> Database<'c> {
     /// Gets the data about the current user
-    pub async fn get_current_user(&self, authenticated_user: &AuthenticatedUser) -> Result<RegistryUser, ApiError> {
-        self.get_user_profile(authenticated_user.uid).await
+    pub async fn get_current_user(&self, authenticated_user: &Authentication) -> Result<RegistryUser, ApiError> {
+        self.get_user_profile(authenticated_user.uid()?).await
     }
 
     /// Retrieves a user profile
@@ -152,14 +129,14 @@ impl<'c> Database<'c> {
     }
 
     /// Gets the known users
-    pub async fn get_users(&self, authenticated_user: &AuthenticatedUser) -> Result<Vec<RegistryUser>, ApiError> {
+    pub async fn get_users(&self, authenticated_user: &Authentication) -> Result<Vec<RegistryUser>, ApiError> {
         if !authenticated_user.can_admin {
             return Err(specialize(
                 error_forbidden(),
                 String::from("administration is forbidden for this authentication"),
             ));
         }
-        self.check_is_admin(authenticated_user.uid).await?;
+        self.check_is_admin(authenticated_user.uid()?).await?;
         let rows = sqlx::query_as!(
             RegistryUser,
             "SELECT id, isActive AS is_active, email, login, name, roles FROM RegistryUser ORDER BY login",
@@ -172,10 +149,10 @@ impl<'c> Database<'c> {
     /// Updates the information of a user
     pub async fn update_user(
         &self,
-        authenticated_user: &AuthenticatedUser,
+        authenticated_user: &Authentication,
         target: &RegistryUser,
     ) -> Result<RegistryUser, ApiError> {
-        let uid = authenticated_user.uid;
+        let uid = authenticated_user.uid()?;
         let is_admin = if target.id == uid {
             self.get_is_admin(uid).await?
         } else {
@@ -231,14 +208,14 @@ impl<'c> Database<'c> {
     }
 
     /// Attempts to deactivate a user
-    pub async fn deactivate_user(&self, authenticated_user: &AuthenticatedUser, target: &str) -> Result<(), ApiError> {
+    pub async fn deactivate_user(&self, authenticated_user: &Authentication, target: &str) -> Result<(), ApiError> {
         if !authenticated_user.can_admin {
             return Err(specialize(
                 error_forbidden(),
                 String::from("administration is forbidden for this authentication"),
             ));
         }
-        let uid = authenticated_user.uid;
+        let uid = authenticated_user.uid()?;
         let target_uid = self.check_is_user(target).await?;
         self.check_is_admin(uid).await?;
         if uid == target_uid {
@@ -252,14 +229,14 @@ impl<'c> Database<'c> {
     }
 
     /// Attempts to re-activate a user
-    pub async fn reactivate_user(&self, authenticated_user: &AuthenticatedUser, target: &str) -> Result<(), ApiError> {
+    pub async fn reactivate_user(&self, authenticated_user: &Authentication, target: &str) -> Result<(), ApiError> {
         if !authenticated_user.can_admin {
             return Err(specialize(
                 error_forbidden(),
                 String::from("administration is forbidden for this authentication"),
             ));
         }
-        let uid = authenticated_user.uid;
+        let uid = authenticated_user.uid()?;
         self.check_is_admin(uid).await?;
         sqlx::query!("UPDATE RegistryUser SET isActive = TRUE WHERE email = $1", target)
             .execute(&mut *self.transaction.borrow().await)
@@ -268,14 +245,14 @@ impl<'c> Database<'c> {
     }
 
     /// Attempts to delete a user
-    pub async fn delete_user(&self, authenticated_user: &AuthenticatedUser, target: &str) -> Result<(), ApiError> {
+    pub async fn delete_user(&self, authenticated_user: &Authentication, target: &str) -> Result<(), ApiError> {
         if !authenticated_user.can_admin {
             return Err(specialize(
                 error_forbidden(),
                 String::from("administration is forbidden for this authentication"),
             ));
         }
-        let uid = authenticated_user.uid;
+        let uid = authenticated_user.uid()?;
         self.check_is_admin(uid).await?;
         let target_uid = sqlx::query!("SELECT id FROM RegistryUser WHERE email = $1", target)
             .fetch_optional(&mut *self.transaction.borrow().await)
@@ -298,14 +275,14 @@ impl<'c> Database<'c> {
     }
 
     /// Gets the tokens for a user
-    pub async fn get_tokens(&self, authenticated_user: &AuthenticatedUser) -> Result<Vec<RegistryUserToken>, ApiError> {
+    pub async fn get_tokens(&self, authenticated_user: &Authentication) -> Result<Vec<RegistryUserToken>, ApiError> {
         if !authenticated_user.can_admin {
             return Err(specialize(
                 error_forbidden(),
                 String::from("administration is forbidden for this authentication"),
             ));
         }
-        let uid = authenticated_user.uid;
+        let uid = authenticated_user.uid()?;
         let rows = sqlx::query!(
             "SELECT id, name, lastUsed AS last_used, canWrite AS can_write, canAdmin AS can_admin FROM RegistryUserToken WHERE user = $1 ORDER BY id",
             uid
@@ -327,7 +304,7 @@ impl<'c> Database<'c> {
     /// Creates a token for the current user
     pub async fn create_token(
         &self,
-        authenticated_user: &AuthenticatedUser,
+        authenticated_user: &Authentication,
         name: &str,
         can_write: bool,
         can_admin: bool,
@@ -338,7 +315,7 @@ impl<'c> Database<'c> {
                 String::from("administration is forbidden for this authentication"),
             ));
         }
-        let uid = authenticated_user.uid;
+        let uid = authenticated_user.uid()?;
         let token_secret = generate_token(64);
         let token_hash = hash_token(&token_secret);
         let now = Local::now().naive_local();
@@ -365,14 +342,14 @@ impl<'c> Database<'c> {
     }
 
     /// Revoke a previous token
-    pub async fn revoke_token(&self, authenticated_user: &AuthenticatedUser, token_id: i64) -> Result<(), ApiError> {
+    pub async fn revoke_token(&self, authenticated_user: &Authentication, token_id: i64) -> Result<(), ApiError> {
         if !authenticated_user.can_admin {
             return Err(specialize(
                 error_forbidden(),
                 String::from("administration is forbidden for this authentication"),
             ));
         }
-        let uid = authenticated_user.uid;
+        let uid = authenticated_user.uid()?;
         sqlx::query!("DELETE FROM RegistryUserToken WHERE user = $1 AND id = $2", uid, token_id)
             .execute(&mut *self.transaction.borrow().await)
             .await?;
@@ -380,7 +357,18 @@ impl<'c> Database<'c> {
     }
 
     /// Checks an authentication request with a token
-    pub async fn check_token(&self, login: &str, token_secret: &str) -> Result<AuthenticatedUser, ApiError> {
+    pub async fn check_token(&self, login: &str, token_secret: &str) -> Result<Authentication, ApiError> {
+        if let Some(auth) = self.check_token_global(login, token_secret).await? {
+            return Ok(auth);
+        }
+        if let Some(auth) = self.check_token_user(login, token_secret).await? {
+            return Ok(auth);
+        }
+        Err(error_unauthorized())
+    }
+
+    /// Checks whether the information provided is a user token
+    async fn check_token_user(&self, login: &str, token_secret: &str) -> Result<Option<Authentication>, ApiError> {
         let rows = sqlx::query!(
             "SELECT RegistryUser.id AS uid, email, RegistryUserToken.id, token, canWrite AS can_write, canAdmin AS can_admin
             FROM RegistryUser INNER JOIN RegistryUserToken ON RegistryUser.id = RegistryUserToken.user
@@ -395,14 +383,33 @@ impl<'c> Database<'c> {
                 sqlx::query!("UPDATE RegistryUserToken SET lastUsed = $2 WHERE id = $1", row.id, now)
                     .execute(&mut *self.transaction.borrow().await)
                     .await?;
-                return Ok(AuthenticatedUser {
-                    uid: row.uid,
-                    principal: row.email,
+                return Ok(Some(Authentication {
+                    principal: AuthenticationPrincipal::User {
+                        uid: row.uid,
+                        email: row.email,
+                    },
                     can_write: row.can_write,
                     can_admin: row.can_admin,
-                });
+                }));
             }
         }
-        Err(error_unauthorized())
+        Ok(None)
+    }
+
+    /// Checks whether the information provided is for a global token
+    async fn check_token_global(&self, login: &str, token_secret: &str) -> Result<Option<Authentication>, ApiError> {
+        let row = sqlx::query!("SELECT id, token FROM RegistryGlobalToken WHERE name = $1 LIMIT 1", login)
+            .fetch_optional(&mut *self.transaction.borrow().await)
+            .await?;
+        let Some(row) = row else { return Ok(None) };
+        if check_hash(token_secret, &row.token).is_ok() {
+            let now = Local::now().naive_local();
+            sqlx::query!("UPDATE RegistryGlobalToken SET lastUsed = $2 WHERE id = $1", row.id, now)
+                .execute(&mut *self.transaction.borrow().await)
+                .await?;
+            Ok(Some(Authentication::new_service(login.to_string())))
+        } else {
+            Ok(None)
+        }
     }
 }

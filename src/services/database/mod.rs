@@ -4,6 +4,7 @@
 
 //! Service for persisting information in the database
 
+pub mod admin;
 pub mod packages;
 pub mod stats;
 pub mod users;
@@ -24,8 +25,8 @@ impl<'c> Database<'c> {
     }
 
     /// Checks the security for an operation and returns the identifier of the target user (login)
-    pub async fn check_is_user(&self, principal: &str) -> Result<i64, ApiError> {
-        let maybe_row = sqlx::query!("SELECT id FROM RegistryUser WHERE isActive = TRUE AND email = $1", principal)
+    pub async fn check_is_user(&self, email: &str) -> Result<i64, ApiError> {
+        let maybe_row = sqlx::query!("SELECT id FROM RegistryUser WHERE isActive = TRUE AND email = $1", email)
             .fetch_optional(&mut *self.transaction.borrow().await)
             .await?;
         let row = maybe_row.ok_or_else(error_unauthorized)?;
