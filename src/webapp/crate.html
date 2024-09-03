@@ -204,16 +204,15 @@
       const params = getQueryParameters(window.location.search);
       Promise.all([
         Promise.resolve(user),
+        apiGetRegistryInformation(),
         apiGetCrate(params.crate),
         params.version === undefined ? apiGetCrateLastReadme(params.crate) : apiGetCrateReadmeAt(params.crate, params.version),
         apiGetCrateOwners(params.crate)
-      ]).then(([user, crate, readme, owners]) => renderCrate(user, crate, params.version, readme, owners));
+      ]).then(([user, registryInfo, crate, readme, owners]) => renderCrate(user, registryInfo, crate, params.version, readme, owners));
     });
   }
 
-  function renderCrate(currentUser, crate, version, readme, owners) {
-    const domainParts = window.location.hostname.split(".");
-    const regName = domainParts.length >= 2 ? domainParts[domainParts.length - 2] : domainParts[0];
+  function renderCrate(currentUser, registryInfo, crate, version, readme, owners) {
     const currentVersion = version === undefined ? crate.versions[crate.versions.length - 1] : crate.versions.find(meta => meta.index.vers === version);
     if (currentVersion.depsHasOutdated || currentVersion.depsHasCVEs) {
       document.getElementById("header-dependencies-warn").style.display = "inline-block";
@@ -228,7 +227,7 @@
     document.getElementById("meta-uploaded-on").appendChild(document.createTextNode(serializeDate(currentVersion.upload)));
     document.getElementById("meta-uploaded-by").appendChild(document.createTextNode(currentVersion.uploadedBy.name));
     document.getElementById("meta-uploaded-by").href = `mailto:${currentVersion.uploadedBy.email}`;
-    document.getElementById("meta-install").appendChild(document.createTextNode(`${currentVersion.index.name} = { version = "${currentVersion.index.vers}", registry = "${regName}" }`));
+    document.getElementById("meta-install").appendChild(document.createTextNode(`${currentVersion.index.name} = { version = "${currentVersion.index.vers}", registry = "${registryInfo.registryName}" }`));
     if (currentVersion.hasDocs) {
       const crateRustName = currentVersion.index.name.replaceAll("-", "_");
       const link = document.createElement("a");
