@@ -28,7 +28,7 @@ use crate::model::cargo::{
 use crate::model::deps::DepsAnalysis;
 use crate::model::packages::CrateInfo;
 use crate::model::stats::{DownloadStats, GlobalStats};
-use crate::model::{generate_token, AppVersion, CrateAndVersion, RegistryInformation};
+use crate::model::{generate_token, AppVersion, CrateVersion, RegistryInformation};
 use crate::services::index::Index;
 use crate::utils::apierror::{error_invalid_request, error_not_found, specialize, ApiError};
 use crate::utils::axum::auth::{AuthData, AxumStateForCookies};
@@ -426,7 +426,7 @@ pub async fn api_v1_get_crates_stats(auth_data: AuthData, State(state): State<Ar
 pub async fn api_v1_get_crates_undocumented(
     auth_data: AuthData,
     State(state): State<Arc<AxumState>>,
-) -> ApiResult<Vec<CrateAndVersion>> {
+) -> ApiResult<Vec<CrateVersion>> {
     response(state.application.get_undocumented_crates(&auth_data).await)
 }
 
@@ -434,7 +434,7 @@ pub async fn api_v1_get_crates_undocumented(
 pub async fn api_v1_get_crates_outdated_heads(
     auth_data: AuthData,
     State(state): State<Arc<AxumState>>,
-) -> ApiResult<Vec<CrateAndVersion>> {
+) -> ApiResult<Vec<CrateVersion>> {
     response(state.application.get_crates_outdated_heads(&auth_data).await)
 }
 

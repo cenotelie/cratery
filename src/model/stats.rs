@@ -9,7 +9,7 @@ use chrono::{Datelike, Days, Local, NaiveDate};
 use semver::Version;
 use serde_derive::{Deserialize, Serialize};
 
-use super::CrateAndVersion;
+use super::CrateVersion;
 
 /// The global stats for the registry
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -22,13 +22,13 @@ pub struct GlobalStats {
     pub total_crates: i64,
     /// The newest crate in the registry
     #[serde(rename = "cratesNewest")]
-    pub crates_newest: Vec<CrateAndVersion>,
+    pub crates_newest: Vec<CrateVersion>,
     /// The most downloaded crates in the registry
     #[serde(rename = "cratesMostDownloaded")]
-    pub crates_most_downloaded: Vec<CrateAndVersion>,
+    pub crates_most_downloaded: Vec<CrateVersion>,
     /// the last updated crates in the registry
     #[serde(rename = "cratesLastUpdated")]
-    pub crates_last_updated: Vec<CrateAndVersion>,
+    pub crates_last_updated: Vec<CrateVersion>,
 }
 
 /// The length of a series, i.e. the maximum number of days in the series

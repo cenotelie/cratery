@@ -67,3 +67,18 @@ pub async fn execute_at_location(location: &Path, command: &str, args: &[&str], 
 
 /// Box future that outputs a `Result` with an `ApiError`
 pub type FaillibleFuture<'a, T> = BoxFuture<'a, Result<T, ApiError>>;
+
+/// Transforms a comma separated list to a `Vec` of owned `String`
+pub fn comma_sep_to_vec(input: &str) -> Vec<String> {
+    input
+        .split(',')
+        .filter_map(|s| {
+            let s = s.trim();
+            if s.is_empty() {
+                None
+            } else {
+                Some(s.to_string())
+            }
+        })
+        .collect::<Vec<_>>()
+}

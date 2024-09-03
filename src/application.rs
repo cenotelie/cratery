@@ -19,7 +19,7 @@ use crate::model::config::Configuration;
 use crate::model::deps::DepsAnalysis;
 use crate::model::packages::CrateInfo;
 use crate::model::stats::{DownloadStats, GlobalStats};
-use crate::model::{CrateAndVersion, JobCrate, RegistryInformation};
+use crate::model::{CrateVersion, JobCrate, RegistryInformation};
 use crate::services::database::Database;
 use crate::services::deps::DepsChecker;
 use crate::services::docs::DocsGenerator;
@@ -393,13 +393,13 @@ impl Application {
     }
 
     /// Gets the packages that need documentation generation
-    pub async fn get_undocumented_crates(&self, auth_data: &AuthData) -> Result<Vec<CrateAndVersion>, ApiError> {
+    pub async fn get_undocumented_crates(&self, auth_data: &AuthData) -> Result<Vec<CrateVersion>, ApiError> {
         let mut connection: sqlx::pool::PoolConnection<Sqlite> = self.service_db_pool.acquire().await?;
         in_transaction(&mut connection, |transaction| async move {
             let app = self.with_transaction(transaction);
             let _principal = app.authenticate(auth_data).await?;
             let crates = app.database.get_undocumented_crates().await?;
-            Ok(crates.into_iter().map(CrateAndVersion::from).collect())
+            Ok(crates.into_iter().map(CrateVersion::from).collect())
         })
         .await
     }
@@ -423,7 +423,7 @@ impl Application {
     }
 
     /// Gets all the packages that are outdated while also being the latest version
-    pub async fn get_crates_outdated_heads(&self, auth_data: &AuthData) -> Result<Vec<CrateAndVersion>, ApiError> {
+    pub async fn get_crates_outdated_heads(&self, auth_data: &AuthData) -> Result<Vec<CrateVersion>, ApiError> {
         let mut connection: sqlx::pool::PoolConnection<Sqlite> = self.service_db_pool.acquire().await?;
         in_transaction(&mut connection, |transaction| async move {
             let app = self.with_transaction(transaction);

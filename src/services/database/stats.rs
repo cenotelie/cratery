@@ -7,7 +7,7 @@
 
 use super::Database;
 use crate::model::stats::GlobalStats;
-use crate::model::CrateAndVersion;
+use crate::model::CrateVersion;
 use crate::utils::apierror::ApiError;
 
 impl<'c> Database<'c> {
@@ -34,7 +34,7 @@ impl<'c> Database<'c> {
         .await?;
         let crates_newest = rows
             .into_iter()
-            .map(|row| CrateAndVersion {
+            .map(|row| CrateVersion {
                 name: row.name,
                 version: row.version,
             })
@@ -51,7 +51,7 @@ impl<'c> Database<'c> {
         .await?;
         let crates_most_downloaded = rows
             .into_iter()
-            .map(|row| CrateAndVersion {
+            .map(|row| CrateVersion {
                 name: row.name,
                 version: String::new(),
             })
@@ -67,7 +67,7 @@ impl<'c> Database<'c> {
         .await?;
         let crates_last_updated = rows
             .into_iter()
-            .map(|row| CrateAndVersion {
+            .map(|row| CrateVersion {
                 name: row.package,
                 version: row.version,
             })

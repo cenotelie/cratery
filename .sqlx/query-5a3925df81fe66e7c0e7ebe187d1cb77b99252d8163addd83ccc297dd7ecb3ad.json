@@ -1,6 +1,6 @@
 {
   "db_name": "SQLite",
-  "query": "SELECT package, version, depsLastCheck AS last_check, targets\n            FROM PackageVersion\n            INNER JOIN Package ON PackageVersion.package = Package.name",
+  "query": "SELECT package, version, depsHasOutdated AS has_outdated, depsLastCheck AS last_check, targets\n            FROM PackageVersion\n            INNER JOIN Package ON PackageVersion.package = Package.name\n            WHERE yanked = FALSE",
   "describe": {
     "columns": [
       {
@@ -14,13 +14,18 @@
         "type_info": "Text"
       },
       {
-        "name": "last_check",
+        "name": "has_outdated",
         "ordinal": 2,
+        "type_info": "Bool"
+      },
+      {
+        "name": "last_check",
+        "ordinal": 3,
         "type_info": "Datetime"
       },
       {
         "name": "targets",
-        "ordinal": 3,
+        "ordinal": 4,
         "type_info": "Text"
       }
     ],
@@ -31,8 +36,9 @@
       false,
       false,
       false,
+      false,
       false
     ]
   },
-  "hash": "c1157df9bad081dd38b9a7aa911096e9ebc9841d49d9f355b937132880e6f5a1"
+  "hash": "5a3925df81fe66e7c0e7ebe187d1cb77b99252d8163addd83ccc297dd7ecb3ad"
 }

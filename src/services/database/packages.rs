@@ -21,8 +21,9 @@ use crate::model::cargo::{
 };
 use crate::model::packages::CrateInfoVersion;
 use crate::model::stats::{DownloadStats, SERIES_LENGTH};
-use crate::model::{CrateAndVersion, JobCrate};
+use crate::model::{CrateVersion, CrateVersionDepsCheckState, JobCrate};
 use crate::utils::apierror::{error_forbidden, error_invalid_request, error_not_found, specialize, ApiError};
+use crate::utils::comma_sep_to_vec;
 
 impl<'c> Database<'c> {
     /// Search for crates
@@ -408,49 +409,12 @@ impl<'c> Database<'c> {
     pub async fn get_unanalyzed_crates(&self, deps_stale_analysis: i64) -> Result<Vec<JobCrate>, ApiError> {
         let now = Local::now().naive_local();
         let from = now - Duration::minutes(deps_stale_analysis);
-        let mut cache = HashMap::<String, (Version, String, String, NaiveDateTime)>::new();
-        let transaction = &mut *self.transaction.borrow().await;
-        let mut stream = sqlx::query!(
-            "SELECT package, version, depsLastCheck AS last_check, targets
-            FROM PackageVersion
-            INNER JOIN Package ON PackageVersion.package = Package.name"
-        )
-        .fetch(transaction);
-        // accumulate the last version for each major branch of each crate
-        while let Some(row) = stream.next().await {
-            let row = row?;
-            let name = row.package;
-            let semver = row.version.parse::<Version>()?;
-            match cache.entry(name.clone()) {
-                Entry::Vacant(entry) => {
-                    entry.insert((semver, row.version, row.targets, row.last_check));
-                }
-                Entry::Occupied(mut entry) => {
-                    if semver > entry.get().0 {
-                        entry.insert((semver, row.version, row.targets, row.last_check));
-                    }
-                }
-            }
-        }
-        Ok(cache
+        let heads = self.get_crates_version_heads().await?;
+        Ok(heads
             .into_iter()
-            .filter_map(|(name, (_, version, targets, last_check))| {
-                if last_check < from {
-                    Some(JobCrate {
-                        name,
-                        version,
-                        targets: targets
-                            .split(',')
-                            .filter_map(|s| {
-                                let s = s.trim();
-                                if s.is_empty() {
-                                    None
-                                } else {
-                                    Some(s.to_string())
-                                }
-                            })
-                            .collect::<Vec<_>>(),
-                    })
+            .filter_map(|element| {
+                if element.deps_last_check < from {
+                    Some(element.into())
                 } else {
                     None
                 }
@@ -459,38 +423,76 @@ impl<'c> Database<'c> {
     }
 
     /// Gets all the packages that are outdated while also being the latest version
-    pub async fn get_crates_outdated_heads(&self) -> Result<Vec<CrateAndVersion>, ApiError> {
-        let mut cache = HashMap::<String, (Version, String, bool)>::new();
+    pub async fn get_crates_outdated_heads(&self) -> Result<Vec<CrateVersion>, ApiError> {
+        let heads = self.get_crates_version_heads().await?;
+        Ok(heads
+            .into_iter()
+            .filter_map(|element| {
+                if element.deps_has_outdated {
+                    Some(element.into())
+                } else {
+                    None
+                }
+            })
+            .collect())
+    }
+
+    /// Gets all the lastest version of crates, filtering out yanked and pre-release versions
+    async fn get_crates_version_heads(&self) -> Result<Vec<CrateVersionDepsCheckState>, ApiError> {
+        struct Elem {
+            semver: Version,
+            version: String,
+            deps_has_outdated: bool,
+            deps_last_check: NaiveDateTime,
+            targets: String,
+        }
+        let mut cache = HashMap::<String, Elem>::new();
         let transaction = &mut *self.transaction.borrow().await;
         let mut stream = sqlx::query!(
-            "SELECT package, version, depsHasOutdated AS has_outdated
-            FROM PackageVersion"
+            "SELECT package, version, depsHasOutdated AS has_outdated, depsLastCheck AS last_check, targets
+            FROM PackageVersion
+            INNER JOIN Package ON PackageVersion.package = Package.name
+            WHERE yanked = FALSE"
         )
         .fetch(transaction);
-        // accumulate the last version for each major branch of each crate
         while let Some(row) = stream.next().await {
             let row = row?;
             let name = row.package;
             let semver = row.version.parse::<Version>()?;
-            match cache.entry(name.clone()) {
-                Entry::Vacant(entry) => {
-                    entry.insert((semver, row.version, row.has_outdated));
-                }
-                Entry::Occupied(mut entry) => {
-                    if semver > entry.get().0 {
-                        entry.insert((semver, row.version, row.has_outdated));
+            if semver.pre.is_empty() {
+                // not a pre-release
+                match cache.entry(name.clone()) {
+                    Entry::Vacant(entry) => {
+                        entry.insert(Elem {
+                            semver,
+                            version: row.version,
+                            deps_has_outdated: row.has_outdated,
+                            deps_last_check: row.last_check,
+                            targets: row.targets,
+                        });
+                    }
+                    Entry::Occupied(mut entry) => {
+                        if semver > entry.get().semver {
+                            entry.insert(Elem {
+                                semver,
+                                version: row.version,
+                                deps_has_outdated: row.has_outdated,
+                                deps_last_check: row.last_check,
+                                targets: row.targets,
+                            });
+                        }
                     }
                 }
             }
         }
         Ok(cache
             .into_iter()
-            .filter_map(|(name, (_, version, has_outdated))| {
-                if has_outdated {
-                    Some(CrateAndVersion { name, version })
-                } else {
-                    None
-                }
+            .map(|(name, elem)| CrateVersionDepsCheckState {
+                name,
+                version: elem.version,
+                deps_has_outdated: elem.deps_has_outdated,
+                deps_last_check: elem.deps_last_check,
+                targets: elem.targets,
             })
             .collect())
     }
@@ -661,18 +663,7 @@ impl<'c> Database<'c> {
             .fetch_optional(&mut *self.transaction.borrow().await)
             .await?
             .ok_or_else(error_not_found)?;
-        Ok(row
-            .targets
-            .split(',')
-            .filter_map(|s| {
-                let s = s.trim();
-                if s.is_empty() {
-                    None
-                } else {
-                    Some(s.to_string())
-                }
-            })
-            .collect::<Vec<_>>())
+        Ok(comma_sep_to_vec(&row.targets))
     }
 
     /// Sets the targets for a crate
