@@ -5,6 +5,7 @@
 //! Module for configuration management
 
 use std::net::{IpAddr, Ipv4Addr};
+use std::path::PathBuf;
 use std::process::Stdio;
 use std::str::FromStr;
 
@@ -135,6 +136,9 @@ pub struct S3Params {
 /// The configuration in the index
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct IndexConfig {
+    /// The home directory where the .cargo, .git are expected to be located
+    #[serde(rename = "homeDir")]
+    pub home_dir: String,
     /// The location in the file system
     pub location: String,
     /// Whether to allow the git protocol for clients fetching the index
@@ -164,8 +168,9 @@ pub struct IndexConfig {
 
 impl IndexConfig {
     /// Loads the configuration for a registry from the environment
-    fn from_env(data_dir: &str, web_public_uri: &str) -> Result<IndexConfig, MissingEnvVar> {
+    fn from_env(home_dir: &str, data_dir: &str, web_public_uri: &str) -> Result<IndexConfig, MissingEnvVar> {
         Ok(IndexConfig {
+            home_dir: home_dir.to_string(),
             location: format!("{data_dir}/index"),
             allow_protocol_git: get_var("REGISTRY_INDEX_PROTOCOL_GIT").map(|v| v == "true").unwrap_or(true),
             allow_protocol_sparse: get_var("REGISTRY_INDEX_PROTOCOL_SPARSE").map(|v| v == "true").unwrap_or(true),
@@ -271,6 +276,9 @@ pub struct Configuration {
     /// The path to the local resources to serve as the web app
     #[serde(rename = "webHotReloadPath")]
     pub web_hot_reload_path: Option<String>,
+    /// The home directory where the .cargo, .git are expected to be located
+    #[serde(rename = "homeDir")]
+    pub home_dir: String,
     /// The data directory
     #[serde(rename = "dataDir")]
     pub data_dir: String,
@@ -357,6 +365,9 @@ impl Configuration {
     ///
     /// Return a `VarError` when an expected environment variable is not present
     pub async fn from_env() -> Result<Self, MissingEnvVar> {
+        let home_dir = get_var("REGISTRY_HOME_DIR")
+            .or(get_var("HOME"))
+            .unwrap_or_else(|_| String::from("/home/cratery"));
         let data_dir = get_var("REGISTRY_DATA_DIR")?;
         let web_public_uri = get_var("REGISTRY_WEB_PUBLIC_URI")?;
         let web_domain = Uri::from_str(&web_public_uri)
@@ -371,7 +382,7 @@ impl Configuration {
                 None => web_domain.clone(),
             },
         };
-        let index = IndexConfig::from_env(&data_dir, &web_public_uri)?;
+        let index = IndexConfig::from_env(&home_dir, &data_dir, &web_public_uri)?;
         let storage = StorageConfig::from_env()?;
         let deps_notify_outdated = get_var("REGISTRY_DEPS_NOTIFY_OUTDATED").map(|v| v == "true").unwrap_or(false);
         let deps_notify_cves = get_var("REGISTRY_DEPS_NOTIFY_CVES").map(|v| v == "true").unwrap_or(false);
@@ -403,6 +414,7 @@ impl Configuration {
                 .map(|s| s.parse().expect("invalid REGISTRY_WEB_BODY_LIMIT"))
                 .unwrap_or(10 * 1024 * 1024),
             web_hot_reload_path: get_var("REGISTRY_WEB_HOT_RELOAD_PATH").ok(),
+            home_dir,
             data_dir,
             index,
             storage,
@@ -441,6 +453,15 @@ impl Configuration {
         })
     }
 
+    /// Gets the path to a file in the home folder
+    pub fn get_home_path_for(&self, path: &[&str]) -> PathBuf {
+        let mut result = PathBuf::from(&self.home_dir);
+        for e in path {
+            result.push(e);
+        }
+        result
+    }
+
     /// Gets the name of the file for the database
     pub fn get_database_filename(&self) -> String {
         format!("{}/registry.db", self.data_dir)
@@ -463,13 +484,13 @@ impl Configuration {
     /// Return an error when writing fail
     pub async fn write_auth_config(&self) -> Result<(), ApiError> {
         {
-            let file = File::create("/home/cratery/.gitconfig").await?;
+            let file = File::create(self.get_home_path_for(&[".gitconfig"])).await?;
             let mut writer = BufWriter::new(file);
             writer.write_all("[credential]\n    helper = store\n".as_bytes()).await?;
             writer.flush().await?;
         }
         {
-            let file = File::create("/home/cratery/.git-credentials").await?;
+            let file = File::create(self.get_home_path_for(&[".git-credentials"])).await?;
             let mut writer = BufWriter::new(file);
             let index = self.web_public_uri.find('/').unwrap() + 2;
             writer
@@ -502,7 +523,7 @@ impl Configuration {
             writer.flush().await?;
         }
         {
-            let file = File::create("/home/cratery/.cargo/config.toml").await?;
+            let file = File::create(self.get_home_path_for(&[".cargo", "config.toml"])).await?;
             let mut writer = BufWriter::new(file);
             writer.write_all("[registry]\n".as_bytes()).await?;
             writer
@@ -521,7 +542,7 @@ impl Configuration {
             writer.flush().await?;
         }
         {
-            let file = File::create("/home/cratery/.cargo/credentials.toml").await?;
+            let file = File::create(self.get_home_path_for(&[".cargo", "credentials.toml"])).await?;
             let mut writer = BufWriter::new(file);
             writer
                 .write_all(format!("[registries.{}]\n", self.self_local_name).as_bytes())

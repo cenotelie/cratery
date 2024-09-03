@@ -67,7 +67,7 @@ impl GitIndexImpl {
 
         // check for the SSH key
         if let Some(file_name) = &index.config.remote_ssh_key_file_name {
-            let mut key_filename = PathBuf::from(std::env::var("HOME")?);
+            let mut key_filename = PathBuf::from(&index.config.home_dir);
             key_filename.push(".ssh");
             key_filename.push(file_name);
             if !key_filename.exists() {

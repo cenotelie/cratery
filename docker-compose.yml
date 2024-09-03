@@ -17,6 +17,7 @@ services:
       REGISTRY_WEB_COOKIE_SECRET: this is the secret key for my yummy cookies, this is the secret key for my yummy cookies
       REGISTRY_WEB_PUBLIC_URI: http://localhost
       # REGISTRY_WEB_BODY_LIMIT: 10485760
+      REGISTRY_HOME_DIR: /home/cratery
       REGISTRY_DATA_DIR: /data
       # REGISTRY_INDEX_PROTOCOL_GIT: "true"
       # REGISTRY_INDEX_PROTOCOL_SPARSE: "true"

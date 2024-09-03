@@ -157,6 +157,10 @@ The persisted data for `cratery` is:
 By default, all data is stored in a single directory specified by the `REGISTRY_DATA_DIR` environment variable.
 The default value is a `/data` folder, expected to be mounted into the docker container.
 
+In addition, `cratery` uses git and Cargo and expect their respective configuration to appear in a home directory.
+This directory can be configured using the `REGISTRY_HOME_DIR` environment variable.
+If this variable is not set, `cratery` looks for the `HOME` environment variable and then fallback to a default value of `home/cratery` expecting to run within a docker container.
+
 The crates data and their generated documentation can be stored on S3 instead.
 This is controlled by the following configuration :
 * `REGISTRY_STORAGE`: Either `fs` (default) to store in the `REGISTRY_DATA_DIR` folder or `s3` to store on an S3 bucket.
