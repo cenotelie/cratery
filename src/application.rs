@@ -272,6 +272,39 @@ impl Application {
         .await
     }
 
+    /// Gets the global tokens for the registry, usually for CI purposes
+    pub async fn get_global_tokens(&self, auth_data: &AuthData) -> Result<Vec<RegistryUserToken>, ApiError> {
+        let mut connection = self.service_db_pool.acquire().await?;
+        in_transaction(&mut connection, |transaction| async move {
+            let app = self.with_transaction(transaction);
+            let principal = app.authenticate(auth_data).await?;
+            app.database.get_global_tokens(&principal).await
+        })
+        .await
+    }
+
+    /// Creates a global token for the registry
+    pub async fn create_global_token(&self, auth_data: &AuthData, name: &str) -> Result<RegistryUserTokenWithSecret, ApiError> {
+        let mut connection = self.service_db_pool.acquire().await?;
+        in_transaction(&mut connection, |transaction| async move {
+            let app = self.with_transaction(transaction);
+            let principal = app.authenticate(auth_data).await?;
+            app.database.create_global_token(&principal, name).await
+        })
+        .await
+    }
+
+    /// Revokes a globel token for the registry
+    pub async fn revoke_global_token(&self, auth_data: &AuthData, token_id: i64) -> Result<(), ApiError> {
+        let mut connection = self.service_db_pool.acquire().await?;
+        in_transaction(&mut connection, |transaction| async move {
+            let app = self.with_transaction(transaction);
+            let principal = app.authenticate(auth_data).await?;
+            app.database.revoke_global_token(&principal, token_id).await
+        })
+        .await
+    }
+
     /// Publish a crate
     pub async fn publish_crate_version(&self, auth_data: &AuthData, content: &[u8]) -> Result<CrateUploadResult, ApiError> {
         let mut connection = self.service_db_pool.acquire().await?;

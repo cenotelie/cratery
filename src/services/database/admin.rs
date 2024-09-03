@@ -9,7 +9,7 @@ use chrono::Local;
 
 use super::Database;
 use crate::model::auth::{Authentication, RegistryUserToken, RegistryUserTokenWithSecret};
-use crate::utils::apierror::{error_forbidden, specialize, ApiError};
+use crate::utils::apierror::{error_forbidden, error_invalid_request, specialize, ApiError};
 use crate::utils::token::{generate_token, hash_token};
 
 impl<'c> Database<'c> {
@@ -50,6 +50,15 @@ impl<'c> Database<'c> {
             ));
         }
         self.check_is_admin(authenticated_user.uid()?).await?;
+        let row = sqlx::query!("SELECT id FROM RegistryGlobalToken WHERE name = $1 LIMIT 1", name)
+            .fetch_optional(&mut *self.transaction.borrow().await)
+            .await?;
+        if row.is_some() {
+            return Err(specialize(
+                error_invalid_request(),
+                String::from("a token with the same name already exists"),
+            ));
+        }
         let token_secret = generate_token(64);
         let token_hash = hash_token(&token_secret);
         let now = Local::now().naive_local();

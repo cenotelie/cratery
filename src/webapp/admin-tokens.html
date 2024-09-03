@@ -5,9 +5,9 @@
   <meta charset="UTF-8">
   <meta name="description" content="">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <link rel="icon" type="image/png" href="./favicon.png">
+  <link rel="icon" type="image/png" href="/webapp/favicon.png">
   <title>
-    Cratery -- My account
+    Cratery -- Tokens management
   </title>
   <script src="https://cdn.tailwindcss.com"></script>
 </head>
@@ -26,53 +26,41 @@
       </div>
   </nav>
 </header>
-<body onload="doPageLoad()" class="bg-white dark:bg-gray-800 content-center">
-  <section class="bg-white dark:bg-gray-900 max-w-screen-lg mx-auto">
-    <div class="py-8 lg:py-16 px-4 mx-auto max-w-screen-md">
-        <form class="space-y-8">
-            <div>
-                <label for="email" class="block mb-2 text-sm font-medium text-gray-900 dark:text-gray-300">Email</label>
-                <input type="email" id="email" class="shadow-sm bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-primary-500 focus:border-primary-500 block w-full p-2.5 dark:bg-gray-700 dark:border-gray-600 dark:placeholder-gray-400 dark:text-white dark:focus:ring-primary-500 dark:focus:border-primary-500 dark:shadow-sm-light" disabled>
-            </div>
-            <div>
-                <label for="login" class="block mb-2 text-sm font-medium text-gray-900 dark:text-gray-300">Login (for token authentication)</label>
-                <input type="text" id="login" class="block p-3 w-full text-sm text-gray-900 bg-gray-50 rounded-lg border border-gray-300 shadow-sm focus:ring-primary-500 focus:border-primary-500 dark:bg-gray-700 dark:border-gray-600 dark:placeholder-gray-400 dark:text-white dark:focus:ring-primary-500 dark:focus:border-primary-500 dark:shadow-sm-light">
-            </div>
-            <div>
-                <label for="name" class="block mb-2 text-sm font-medium text-gray-900 dark:text-gray-300">Full name</label>
-                <input type="text" id="name" class="block p-3 w-full text-sm text-gray-900 bg-gray-50 rounded-lg border border-gray-300 shadow-sm focus:ring-primary-500 focus:border-primary-500 dark:bg-gray-700 dark:border-gray-600 dark:placeholder-gray-400 dark:text-white dark:focus:ring-primary-500 dark:focus:border-primary-500 dark:shadow-sm-light">
-            </div>
-            <div>
-                <label for="roles" class="block mb-2 text-sm font-medium text-gray-900 dark:text-gray-300">Roles</label>
-                <input type="text" id="roles" class="block p-3 w-full text-sm text-gray-900 bg-gray-50 rounded-lg border border-gray-300 shadow-sm focus:ring-primary-500 focus:border-primary-500 dark:bg-gray-700 dark:border-gray-600 dark:placeholder-gray-400 dark:text-white dark:focus:ring-primary-500 dark:focus:border-primary-500 dark:shadow-sm-light" disabled>
-            </div>
-        </form>
+<body onload="doPageLoad()" class="bg-white dark:bg-gray-800">
+  <section class="bg-white dark:bg-gray-900">
+    <div class="p-2 flex flex-row flex-wrap">
+      <a href="/webapp/admin.html" class="font-medium text-blue-600 dark:text-blue-500 hover:underline">
+        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="size-6" style="display: inline-block;">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M10.5 19.5 3 12m0 0 7.5-7.5M3 12h18" />
+        </svg>
+       Back to admin
+      </a>
+    </div>
+    <div class="py-4 lg:py-4 px-4 mx-auto max-w-screen-xxl">
+      <h2 class="mb-4 text-4xl tracking-tight font-extrabold text-center text-gray-900 dark:text-white">Global tokens</h2>
+      <div class="relative overflow-x-auto space-y-8">
+        <button type="button" class="text-white bg-blue-700 hover:bg-blue-800 focus:ring-4 focus:ring-blue-300 font-medium rounded-lg text-sm px-5 py-2.5 me-2 mb-2 dark:bg-blue-600 dark:hover:bg-blue-700 focus:outline-none dark:focus:ring-blue-800" onclick="onOpenCreateToken()">Create new token</button>
+        <table class="w-full text-sm text-left rtl:text-right text-gray-500 dark:text-gray-400">
+          <thead class="text-xs text-gray-700 uppercase bg-gray-50 dark:bg-gray-700 dark:text-gray-400">
+              <tr>
+                  <th scope="col" class="px-6 py-3">
+                    Token name
+                  </th>
+                  <th scope="col" class="px-6 py-3">
+                    Last used
+                  </th>
+                  <th scope="col" class="px-6 py-3">
+                    Accesses
+                  </th>
+                  <th scope="col" class="px-6 py-3">
+                    Revoke
+                  </th>
+              </tr>
+          </thead>
+          <tbody id="tokens">
+          </tbody>
+      </table>
       </div>
-      <div class="py-8 lg:py-16 px-4 mx-auto max-w-screen-md">
-        <h2 class="mb-4 text-4xl tracking-tight font-extrabold text-center text-gray-900 dark:text-white">Tokens</h2>
-        <div class="relative overflow-x-auto space-y-8">
-          <button type="button" class="text-white bg-blue-700 hover:bg-blue-800 focus:ring-4 focus:ring-blue-300 font-medium rounded-lg text-sm px-5 py-2.5 me-2 mb-2 dark:bg-blue-600 dark:hover:bg-blue-700 focus:outline-none dark:focus:ring-blue-800" onclick="onOpenCreateToken()">Create new token</button>
-          <table class="w-full text-sm text-left rtl:text-right text-gray-500 dark:text-gray-400">
-              <thead class="text-xs text-gray-700 uppercase bg-gray-50 dark:bg-gray-700 dark:text-gray-400">
-                  <tr>
-                      <th scope="col" class="px-6 py-3">
-                        Token name
-                      </th>
-                      <th scope="col" class="px-6 py-3">
-                        Last used
-                      </th>
-                      <th scope="col" class="px-6 py-3">
-                        Accesses
-                      </th>
-                      <th scope="col" class="px-6 py-3">
-                        Revoke
-                      </th>
-                  </tr>
-              </thead>
-              <tbody id="tokens">
-              </tbody>
-          </table>
-        </div>
     </div>
   </section>
   <div id="modal-create-token" tabindex="-1" class="overflow-y-auto overflow-x-hidden fixed top-0 right-0 left-0 z-50 w-full md:inset-0 h-modal md:h-full" style="display: none;">
@@ -86,20 +74,6 @@
               <div>
                 <label for="new-token-name" class="block mb-2 text-sm font-medium text-gray-900 dark:text-gray-300">Token name</label>
                 <input type="text" id="new-token-name" class="block p-3 w-full text-sm text-gray-900 bg-gray-50 rounded-lg border border-gray-300 shadow-sm focus:ring-primary-500 focus:border-primary-500 dark:bg-gray-700 dark:border-gray-600 dark:placeholder-gray-400 dark:text-white dark:focus:ring-primary-500 dark:focus:border-primary-500 dark:shadow-sm-light">
-              </div>
-              <div>
-                <label class="relative inline-flex items-center cursor-pointer">
-                  <input id="new-token-can-write" type="checkbox" class="sr-only peer">
-                  <div class="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-300 dark:peer-focus:ring-blue-800 rounded-full peer dark:bg-gray-700 peer-checked:after:translate-x-full rtl:peer-checked:after:-translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:start-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all dark:border-gray-600 peer-checked:bg-blue-600"></div>
-                  <span class="ms-3 text-sm font-medium text-gray-900 dark:text-gray-300">Can write with this token (upload crates, etc)</span>
-                </label>
-              </div>
-              <div>
-                <label class="relative inline-flex items-center cursor-pointer">
-                  <input id="new-token-can-admin" type="checkbox" class="sr-only peer">
-                  <div class="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-300 dark:peer-focus:ring-blue-800 rounded-full peer dark:bg-gray-700 peer-checked:after:translate-x-full rtl:peer-checked:after:-translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:start-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all dark:border-gray-600 peer-checked:bg-blue-600"></div>
-                  <span class="ms-3 text-sm font-medium text-gray-900 dark:text-gray-300">Can perform admin operations</span>
-                </label>
               </div>
             </form>
               <div class="justify-between items-center pt-0 space-y-4 sm:flex sm:space-y-0">
@@ -174,51 +148,17 @@
 <script src="/webapp/index.js"></script>
 <script>
     function doPageLoad() {
-      onPageLoad().then((user) => {
-        document.getElementById("email").value = user.email;
-        document.getElementById("login").value = user.login;
-        document.getElementById("name").value = user.name;
-        document.getElementById("roles").value = user.roles;
-        setupOnChange(document.getElementById("login"), (login) => {
-          const user = JSON.parse(window.localStorage.getItem("cratery-user"));
-          return apiUpdateUser({...user, login}).then(user => {
-            window.localStorage.setItem("cratery-user", JSON.stringify(user));
-            return user;
-          });
+      onPageLoad().then((_user) => {
+        apiGetRegistryInformation().then((registryInformation) => {
+          window.localStorage.setItem("cratery-registry-name", registryInformation.registryName);
         });
-
-        setupOnChange(document.getElementById("name"), (name) => {
-          const user = JSON.parse(window.localStorage.getItem("cratery-user"));
-          return apiUpdateUser({...user, name}).then(user => {
-            window.localStorage.setItem("cratery-user", JSON.stringify(user));
-            return user;
-          });
-        });
-        apiGetUserTokens().then((tokens) => {
+        apiGetGlobalTokens().then((tokens) => {
           const table = document.getElementById("tokens");
           for (const token of tokens) {
             table.appendChild(renderToken(token));
           }
         });
-
-        apiGetRegistryInformation().then((registryInformation) => {
-          window.localStorage.setItem("cratery-registry-name", registryInformation.registryName);
-        })
       });
-    }
-
-    function renderTokenAccess(token) {
-      if (!token.canWrite && !token.canAdmin) {
-        return document.createTextNode("read-only");
-      }
-      let access = "read";
-      if (token.canWrite) {
-        access = access + ", write"
-      }
-      if (token.canAdmin) {
-        access = access + ", admin"
-      }
-      return document.createTextNode(access);
     }
 
     function renderToken(token) {
@@ -233,7 +173,7 @@
       cell2.appendChild(document.createTextNode(serializeDateTime(token.lastUsed)));
       const cell3 = document.createElement("td");
       cell3.className = "px-6 py-4";
-      cell3.appendChild(renderTokenAccess(token));
+      cell3.appendChild(document.createTextNode("read-only"));
       const cell4 = document.createElement("td");
       cell4.className = "px-6 py-4";
       const button = document.createElement("button");
@@ -258,10 +198,6 @@
       const newTokenNameEl = document.getElementById("new-token-name");
       newTokenNameEl.value = "";
       newTokenNameEl.focus();
-      const newTokenCanWriteEl = document.getElementById("new-token-can-write");
-      newTokenCanWriteEl.checked = false;
-      const newTokenCanAdminEl = document.getElementById("new-token-can-admin");
-      newTokenCanAdminEl.checked = false;
 
       const closeEl = document.getElementById('modal-create-token-close');
       closeEl.addEventListener('click', function() {
@@ -274,14 +210,12 @@
         if (name.length === 0) {
           return;
         }
-        const canWrite = newTokenCanWriteEl.checked;
-        const canAdmin = newTokenCanAdminEl.checked;
         newTokenNameEl.disabled = true;
         closeEl.disabled = true;
         confirmEl.disabled = true;
-        apiCreateUserToken(name, canWrite, canAdmin).then((tokenData) => {
+        apiCreateGlobalToken(name).then((tokenData) => {
           modalEl.style.display = "none";
-          openTokenCreatedModal(tokenData.secret);
+          openTokenCreatedModal(tokenData);
         }).finally(() => {
           newTokenNameEl.disabled = false;
           newTokenNameEl.value = "";
@@ -291,13 +225,13 @@
       });
     }
 
-    function openTokenCreatedModal(secret) {
+    function openTokenCreatedModal(tokenData) {
       const user = JSON.parse(window.localStorage.getItem("cratery-user"));
       const regName = window.localStorage.getItem("cratery-registry-name");
       const gitCredEl = document.getElementById("modal-token-created-git-cred");
-      gitCredEl.value = `${window.location.protocol}//${user.login}:${secret}@${window.location.hostname}`;
+      gitCredEl.value = `${window.location.protocol}//${tokenData.name}:${tokenData.secret}@${window.location.hostname}`;
       const cargoCredEl = document.getElementById("modal-token-created-cargo-cred");
-      cargoCredEl.value = `[registries.${regName}]\ntoken = "Basic ${btoa(`${user.login}:${secret}`)}"`;
+      cargoCredEl.value = `[registries.${regName}]\ntoken = "Basic ${btoa(`${tokenData.name}:${tokenData.secret}`)}"`;
       const cargoRegEl = document.getElementById("modal-token-created-cargo-reg");
       cargoRegEl.value = `[registries]\n${regName} = { index = "sparse+${window.location.protocol}//${window.location.hostname}/" }\n\n[registry]\nglobal-credential-providers = ["cargo:token"]`;
       const modalEl = document.getElementById('modal-token-created');
@@ -323,7 +257,7 @@
       confirmEl.addEventListener('click', function() {
         closeEl.disabled = true;
         confirmEl.disabled = true;
-        apiRevokeUserToken(token.id).then((_) => {
+        apiRevokeGlobalToken(token.id).then((_) => {
           window.location.reload();
         }).finally(() => {
           closeEl.disabled = false;

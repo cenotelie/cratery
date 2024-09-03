@@ -46,8 +46,8 @@ function apiLogout() {
   }).then((r) => r.text());
 }
 
-function apiGetTokens() {
-  return fetch("/api/v1/tokens").then((response) => {
+function apiGetUserTokens() {
+  return fetch("/api/v1/me/tokens").then((response) => {
     if (response.status !== 200) {
       throw response.text();
     } else {
@@ -56,8 +56,8 @@ function apiGetTokens() {
   });
 }
 
-function apiCreateToken(name, canWrite, canAdmin) {
-  return fetch(`/api/v1/tokens?canWrite=${canWrite}&canAdmin=${canAdmin}`, {
+function apiCreateUserToken(name, canWrite, canAdmin) {
+  return fetch(`/api/v1/me/tokens?canWrite=${canWrite}&canAdmin=${canAdmin}`, {
     method: "PUT",
     body: name,
   }).then((response) => {
@@ -69,8 +69,43 @@ function apiCreateToken(name, canWrite, canAdmin) {
   });
 }
 
-function apiRevokeToken(token_id) {
-  return fetch(`/api/v1/tokens/${token_id}`, { method: "DELETE" }).then(
+function apiRevokeUserToken(token_id) {
+  return fetch(`/api/v1/me/tokens/${token_id}`, { method: "DELETE" }).then(
+    (response) => {
+      if (response.status !== 200) {
+        throw response.text();
+      } else {
+        return response.text();
+      }
+    }
+  );
+}
+
+function apiGetGlobalTokens() {
+  return fetch("/api/v1/admin/tokens").then((response) => {
+    if (response.status !== 200) {
+      throw response.text();
+    } else {
+      return response.json();
+    }
+  });
+}
+
+function apiCreateGlobalToken(name) {
+  return fetch("/api/v1/admin/tokens", {
+    method: "PUT",
+    body: name,
+  }).then((response) => {
+    if (response.status !== 200) {
+      throw response.text();
+    } else {
+      return response.json();
+    }
+  });
+}
+
+function apiRevokeGlobalToken(token_id) {
+  return fetch(`/api/v1/admin/tokens/${token_id}`, { method: "DELETE" }).then(
     (response) => {
       if (response.status !== 200) {
         throw response.text();
@@ -82,7 +117,7 @@ function apiRevokeToken(token_id) {
 }
 
 function apiGetUsers() {
-  return fetch("/api/v1/users").then((response) => {
+  return fetch("/api/v1/admin/users").then((response) => {
     if (response.status !== 200) {
       throw response.text();
     } else {
@@ -92,7 +127,7 @@ function apiGetUsers() {
 }
 
 function apiUpdateUser(user) {
-  return fetch(`/api/v1/users/${btoa(user.email)}`, {
+  return fetch(`/api/v1/admin/users/${btoa(user.email)}`, {
     method: "PATCH",
     body: JSON.stringify(user),
     headers: [["content-type", "application/json"]],
@@ -106,7 +141,7 @@ function apiUpdateUser(user) {
 }
 
 function apiDeleteUser(email) {
-  return fetch(`/api/v1/users/${btoa(email)}`, {
+  return fetch(`/api/v1/admin/users/${btoa(email)}`, {
     method: "DELETE",
   }).then((response) => {
     if (response.status !== 200) {
@@ -118,7 +153,7 @@ function apiDeleteUser(email) {
 }
 
 function apiDeactivateUser(email) {
-  return fetch(`/api/v1/users/${btoa(email)}/deactivate`, {
+  return fetch(`/api/v1/admin/users/${btoa(email)}/deactivate`, {
     method: "POST",
   }).then((response) => {
     if (response.status !== 200) {
@@ -130,7 +165,7 @@ function apiDeactivateUser(email) {
 }
 
 function apiReactivateUser(email) {
-  return fetch(`/api/v1/users/${btoa(email)}/reactivate`, {
+  return fetch(`/api/v1/admin/users/${btoa(email)}/reactivate`, {
     method: "POST",
   }).then((response) => {
     if (response.status !== 200) {

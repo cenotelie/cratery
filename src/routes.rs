@@ -319,7 +319,10 @@ pub async fn api_v1_logout(mut auth_data: AuthData) -> (StatusCode, [(HeaderName
 }
 
 /// Gets the tokens for a user
-pub async fn api_v1_get_tokens(auth_data: AuthData, State(state): State<Arc<AxumState>>) -> ApiResult<Vec<RegistryUserToken>> {
+pub async fn api_v1_get_user_tokens(
+    auth_data: AuthData,
+    State(state): State<Arc<AxumState>>,
+) -> ApiResult<Vec<RegistryUserToken>> {
     response(state.application.get_tokens(&auth_data).await)
 }
 
@@ -332,7 +335,7 @@ pub struct CreateTokenQuery {
 }
 
 /// Creates a token for the current user
-pub async fn api_v1_create_token(
+pub async fn api_v1_create_user_token(
     auth_data: AuthData,
     State(state): State<Arc<AxumState>>,
     Query(CreateTokenQuery { can_write, can_admin }): Query<CreateTokenQuery>,
@@ -342,12 +345,38 @@ pub async fn api_v1_create_token(
 }
 
 /// Revoke a previous token
-pub async fn api_v1_revoke_token(
+pub async fn api_v1_revoke_user_token(
     auth_data: AuthData,
     State(state): State<Arc<AxumState>>,
     Path(token_id): Path<i64>,
 ) -> ApiResult<()> {
     response(state.application.revoke_token(&auth_data, token_id).await)
+}
+
+/// Gets the global tokens for the registry, usually for CI purposes
+pub async fn api_v1_get_global_tokens(
+    auth_data: AuthData,
+    State(state): State<Arc<AxumState>>,
+) -> ApiResult<Vec<RegistryUserToken>> {
+    response(state.application.get_global_tokens(&auth_data).await)
+}
+
+/// Creates a global token for the registry
+pub async fn api_v1_create_global_token(
+    auth_data: AuthData,
+    State(state): State<Arc<AxumState>>,
+    name: String,
+) -> ApiResult<RegistryUserTokenWithSecret> {
+    response(state.application.create_global_token(&auth_data, &name).await)
+}
+
+/// Revokes a globel token for the registry
+pub async fn api_v1_revoke_global_token(
+    auth_data: AuthData,
+    State(state): State<Arc<AxumState>>,
+    Path(token_id): Path<i64>,
+) -> ApiResult<()> {
+    response(state.application.revoke_global_token(&auth_data, token_id).await)
 }
 
 /// Gets the known users

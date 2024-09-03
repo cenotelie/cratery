@@ -1,0 +1,214 @@
+<!DOCTYPE html>
+<html lang="en" class="dark">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="description" content="">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <link rel="icon" type="image/png" href="/webapp/favicon.png">
+  <title>
+    Cratery -- Users management
+  </title>
+  <script src="https://cdn.tailwindcss.com"></script>
+</head>
+
+<header style="position: sticky; top: 0;">
+  <nav class="bg-white border-gray-200 px-4 lg:px-6 py-2.5 dark:bg-gray-800">
+      <div class="flex flex-wrap justify-between items-center mx-auto max-w-screen-xl">
+          <a href="/webapp/index.html" class="flex items-center">
+              <img src="./logo-white.svg" class="mr-3 h-6 sm:h-9" style="min-width: 200px;" alt="Cratery Logo" />
+          </a>
+          <div class="flex items-center lg:order-2">
+            <a id="link-admin" href="/webapp/admin.html" style="cursor: pointer;" class="text-gray-800 dark:text-white hover:bg-gray-50 focus:ring-4 focus:ring-gray-300 font-medium rounded-lg text-sm px-4 lg:px-5 py-2 lg:py-2.5 mr-2 dark:hover:bg-gray-700 focus:outline-none dark:focus:ring-gray-800">Admin</a>
+            <a id="link-account" href="/webapp/account.html" style="cursor: pointer;" class="text-gray-800 dark:text-white hover:bg-gray-50 focus:ring-4 focus:ring-gray-300 font-medium rounded-lg text-sm px-4 lg:px-5 py-2 lg:py-2.5 mr-2 dark:hover:bg-gray-700 focus:outline-none dark:focus:ring-gray-800">My Account</a>
+            <a onclick="doLogout()" style="cursor: pointer;" class="text-gray-800 dark:text-white hover:bg-gray-50 focus:ring-4 focus:ring-gray-300 font-medium rounded-lg text-sm px-4 lg:px-5 py-2 lg:py-2.5 mr-2 dark:hover:bg-gray-700 focus:outline-none dark:focus:ring-gray-800">Logout</a>
+          </div>
+      </div>
+  </nav>
+</header>
+<body onload="doPageLoad()" class="bg-white dark:bg-gray-800">
+  <section class="bg-white dark:bg-gray-900">
+    <div class="p-2 flex flex-row flex-wrap">
+      <a href="/webapp/admin.html" class="font-medium text-blue-600 dark:text-blue-500 hover:underline">
+        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="size-6" style="display: inline-block;">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M10.5 19.5 3 12m0 0 7.5-7.5M3 12h18" />
+        </svg>
+       Back to admin
+      </a>
+    </div>
+    <div class="py-4 lg:py-4 px-4 mx-auto max-w-screen-xxl">
+      <h2 class="mb-4 text-4xl tracking-tight font-extrabold text-center text-gray-900 dark:text-white">Users</h2>
+      <div class="relative overflow-x-auto space-y-8">
+        <table class="w-full text-sm text-left rtl:text-right text-gray-500 dark:text-gray-400">
+            <thead class="text-xs text-gray-700 uppercase bg-gray-50 dark:bg-gray-700 dark:text-gray-400">
+              <tr>
+                <th scope="col" class="px-6 py-3">
+                    Email
+                </th>
+                <th scope="col" class="px-6 py-3">
+                    Login
+                </th>
+                <th scope="col" class="px-6 py-3">
+                    Name
+                </th>
+                <th scope="col" class="px-6 py-3">
+                    Roles
+                </th>
+                <th scope="col" class="px-6 py-3">
+                    Is active
+                </th>
+                <th scope="col" class="px-6 py-3">
+                    Delete
+                </th>
+              </tr>
+            </thead>
+            <tbody id="users">
+            </tbody>
+        </table>
+      </div>
+    </div>
+  </section>
+  <div id="modal-delete-user" tabindex="-1" class="overflow-y-auto overflow-x-hidden fixed top-0 right-0 left-0 z-50 w-full md:inset-0 h-modal md:h-full" style="display: none;">
+    <div class="overflow-y-auto overflow-x-hidden fixed top-0 right-0 left-0 z-51 w-full md:inset-0 h-modal md:h-full" style="background-color: black; opacity: 0.75;"></div>
+    <div class="relative" style="margin: auto; margin-top: 10%; width: 800px;">
+        <div class="relative p-4 bg-white rounded-lg shadow dark:bg-gray-800 md:p-8">
+            <div class="mb-4 text-sm font-light text-gray-500 dark:text-gray-400">
+              <h3 class="mb-3 text-2xl font-bold text-gray-900 dark:text-white">Delete this user?</h3>
+            </div>
+            <form class="mb-3 space-y-8">
+              <div>
+                <label for="delete-user-email" class="block mb-2 text-sm font-medium text-gray-900 dark:text-gray-300">User</label>
+                <input type="text" id="delete-user-email" class="block p-3 w-full text-sm text-gray-900 bg-gray-50 rounded-lg border border-gray-300 shadow-sm focus:ring-primary-500 focus:border-primary-500 dark:bg-gray-700 dark:border-gray-600 dark:placeholder-gray-400 dark:text-white dark:focus:ring-primary-500 dark:focus:border-primary-500 dark:shadow-sm-light" disabled>
+              </div>
+            </form>
+            <div class="justify-between items-center pt-0 space-y-4 sm:flex sm:space-y-0">
+              <div class="items-center space-y-4 sm:space-x-4 sm:flex sm:space-y-0">
+                <button id="modal-delete-user-close" type="button"  class="py-2 px-4 w-full text-sm font-medium text-gray-500 bg-white rounded-lg border border-gray-200 sm:w-auto hover:bg-gray-100 focus:ring-4 focus:outline-none focus:ring-primary-300 hover:text-gray-900 focus:z-10 dark:bg-gray-700 dark:text-gray-300 dark:border-gray-500 dark:hover:text-white dark:hover:bg-gray-600 dark:focus:ring-gray-600">Cancel</button>
+                <button id="modal-delete-user-confirm" type="button" class="focus:outline-none text-white bg-red-700 hover:bg-red-800 focus:ring-4 focus:ring-red-300 font-medium rounded-lg text-sm px-5 py-2.5 me-2 mb-2 dark:bg-red-600 dark:hover:bg-red-700 dark:focus:ring-red-900">Delete</button>
+              </div>
+            </div>
+        </div>
+    </div>
+  </div>
+</body>
+<footer class="p-4 bg-white md:p-8 lg:p-10 dark:bg-gray-800">
+  <div class="mx-auto max-w-screen-xl text-center">
+      <span class="text-sm text-gray-500 sm:text-center dark:text-gray-400">Version <span id="version"></span>, Copyright © <span id="year"></span> <a href="https://cenotelie.fr/" target="_blank" class="hover:underline">Cénotélie</a>. All Rights Reserved.</span>
+  </div>
+</footer>
+
+<link href="/webapp/index.css" rel="stylesheet" />
+<script src="/webapp/api.js"></script>
+<script src="/webapp/index.js"></script>
+<script>
+    function doPageLoad() {
+      onPageLoad().then((_user) => {
+        apiGetUsers().then(users => {
+          const usersEl = document.getElementById("users");
+          for (const user of users) {
+            usersEl.appendChild(renderUser(user));
+          }
+        })
+      });
+    }
+
+    function renderUser(user) {
+      const inputLoginEl = document.createElement("input");
+      inputLoginEl.setAttribute("type", "text");
+      inputLoginEl.className = "block p-3 w-full text-sm text-gray-900 bg-gray-50 rounded-lg border border-gray-300 shadow-sm focus:ring-primary-500 focus:border-primary-500 dark:bg-gray-700 dark:border-gray-600 dark:placeholder-gray-400 dark:text-white dark:focus:ring-primary-500 dark:focus:border-primary-500 dark:shadow-sm-light";
+      inputLoginEl.value = user.login;
+      const inputNameEl = document.createElement("input");
+      inputNameEl.setAttribute("type", "text");
+      inputNameEl.className = "block p-3 w-full text-sm text-gray-900 bg-gray-50 rounded-lg border border-gray-300 shadow-sm focus:ring-primary-500 focus:border-primary-500 dark:bg-gray-700 dark:border-gray-600 dark:placeholder-gray-400 dark:text-white dark:focus:ring-primary-500 dark:focus:border-primary-500 dark:shadow-sm-light";
+      inputNameEl.value = user.name;
+      const inputRolesEl = document.createElement("input");
+      inputRolesEl.setAttribute("type", "text");
+      inputRolesEl.className = "block p-3 w-full text-sm text-gray-900 bg-gray-50 rounded-lg border border-gray-300 shadow-sm focus:ring-primary-500 focus:border-primary-500 dark:bg-gray-700 dark:border-gray-600 dark:placeholder-gray-400 dark:text-white dark:focus:ring-primary-500 dark:focus:border-primary-500 dark:shadow-sm-light";
+      inputRolesEl.value = user.roles;
+
+      setupOnChange(inputLoginEl, (login) => apiUpdateUser({...user, login}));
+      setupOnChange(inputNameEl, (name) => apiUpdateUser({...user, name}));
+      setupOnChange(inputRolesEl, (roles) => apiUpdateUser({...user, roles}));
+
+      const switchEl = document.createElement("label");
+      switchEl.className = "relative inline-flex items-center cursor-pointer";
+      const switchInputEl = document.createElement("input");
+      switchInputEl.setAttribute("type", "checkbox");
+      switchInputEl.className = "sr-only peer";
+      switchInputEl.checked = user.isActive;
+      switchInputEl.addEventListener("click", (e) => {
+        e.preventDefault();
+        const isActive = !switchInputEl.checked; // just changed
+        (isActive ? apiDeactivateUser(user.email) : apiReactivateUser(user.email)).then(value => {
+          switchInputEl.checked = !isActive;
+        }).catch(() => {
+          switchInputEl.checked = isActive;
+        });
+        return false;
+      });
+      const switchToggleEl = document.createElement("div");
+      switchToggleEl.className = "w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-300 dark:peer-focus:ring-blue-800 rounded-full peer dark:bg-gray-700 peer-checked:after:translate-x-full rtl:peer-checked:after:-translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:start-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all dark:border-gray-600 peer-checked:bg-blue-600";
+      switchEl.appendChild(switchInputEl);
+      switchEl.appendChild(switchToggleEl);
+      const buttonDelete = document.createElement("button");
+      buttonDelete.className = "focus:outline-none text-white bg-red-700 hover:bg-red-800 focus:ring-4 focus:ring-red-300 font-medium rounded-lg text-sm px-5 py-2.5 me-2 mb-2 dark:bg-red-600 dark:hover:bg-red-700 dark:focus:ring-red-900";
+      buttonDelete.type = "button";
+      buttonDelete.appendChild(document.createTextNode("Delete"));
+      buttonDelete.addEventListener("click", () => {
+        openDeleteUser(user);
+      });
+
+      const row = document.createElement("tr");
+      const cell1 = document.createElement("th");
+      cell1.setAttribute("scope", "row");
+      cell1.className = "px-6 py-4 font-medium text-gray-900 whitespace-nowrap dark:text-white";
+      cell1.appendChild(document.createTextNode(user.email));
+      const cell2 = document.createElement("td");
+      cell2.className = "px-6 py-4";
+      cell2.appendChild(inputLoginEl);
+      const cell3 = document.createElement("td");
+      cell3.className = "px-6 py-4";
+      cell3.appendChild(inputNameEl);
+      const cell4 = document.createElement("td");
+      cell4.className = "px-6 py-4";
+      cell4.appendChild(inputRolesEl);
+      const cell5 = document.createElement("td");
+      cell5.className = "px-6 py-4";
+      cell5.appendChild(switchEl);
+      const cell6 = document.createElement("td");
+      cell6.className = "px-6 py-4";
+      cell6.appendChild(buttonDelete);
+      
+
+      row.appendChild(cell1);
+      row.appendChild(cell2);
+      row.appendChild(cell3);
+      row.appendChild(cell4);
+      row.appendChild(cell5);
+      row.appendChild(cell6);
+      return row;
+    }
+
+    function openDeleteUser(user) {
+      const modalEl = document.getElementById('modal-delete-user');
+      modalEl.style.display = "unset";
+      const userEmailEl = document.getElementById("delete-user-email");
+      userEmailEl.value = user.email;
+      const closeEl = document.getElementById('modal-delete-user-close');
+      closeEl.addEventListener('click', function() {
+        modalEl.style.display = "none";
+      });
+      const confirmEl = document.getElementById('modal-delete-user-confirm');
+      confirmEl.addEventListener('click', function() {
+        closeEl.disabled = true;
+        confirmEl.disabled = true;
+        apiDeleteUser(user.email).then((_) => {
+          window.location.reload();
+        }).finally(() => {
+          closeEl.disabled = false;
+          confirmEl.disabled = false;
+        });
+      });
+    }
+</script>
+</html>

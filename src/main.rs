@@ -72,24 +72,37 @@ async fn main_serve_app(application: Arc<Application>, cookie_key: Key) -> Resul
             Router::new()
                 .route("/version", get(routes::get_version))
                 .route("/registry-information", get(routes::api_v1_get_registry_information))
-                .route("/me", get(routes::api_v1_get_current_user))
+                .nest(
+                    "/me",
+                    Router::new().route("/", get(routes::api_v1_get_current_user)).nest(
+                        "/tokens",
+                        Router::new()
+                            .route("/", get(routes::api_v1_get_user_tokens))
+                            .route("/", put(routes::api_v1_create_user_token))
+                            .route("/:token_id", delete(routes::api_v1_revoke_user_token)),
+                    ),
+                )
                 .route("/oauth/code", post(routes::api_v1_login_with_oauth_code))
                 .route("/logout", post(routes::api_v1_logout))
                 .nest(
-                    "/tokens",
+                    "/admin",
                     Router::new()
-                        .route("/", get(routes::api_v1_get_tokens))
-                        .route("/", put(routes::api_v1_create_token))
-                        .route("/:token_id", delete(routes::api_v1_revoke_token)),
-                )
-                .nest(
-                    "/users",
-                    Router::new()
-                        .route("/", get(routes::api_v1_get_users))
-                        .route("/:target", patch(routes::api_v1_update_user))
-                        .route("/:target", delete(routes::api_v1_delete_user))
-                        .route("/:target/deactivate", post(routes::api_v1_deactivate_user))
-                        .route("/:target/reactivate", post(routes::api_v1_reactivate_user)),
+                        .nest(
+                            "/users",
+                            Router::new()
+                                .route("/", get(routes::api_v1_get_users))
+                                .route("/:target", patch(routes::api_v1_update_user))
+                                .route("/:target", delete(routes::api_v1_delete_user))
+                                .route("/:target/deactivate", post(routes::api_v1_deactivate_user))
+                                .route("/:target/reactivate", post(routes::api_v1_reactivate_user)),
+                        )
+                        .nest(
+                            "/tokens",
+                            Router::new()
+                                .route("/", get(routes::api_v1_get_global_tokens))
+                                .route("/", put(routes::api_v1_create_global_token))
+                                .route("/:token_id", delete(routes::api_v1_revoke_global_token)),
+                        ),
                 )
                 .nest(
                     "/crates",
