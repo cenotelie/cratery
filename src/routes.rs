@@ -423,7 +423,7 @@ pub async fn api_v1_get_crates_stats(auth_data: AuthData, State(state): State<Ar
 }
 
 /// Gets the packages that need documentation generation
-pub async fn get_undocumented_crates(
+pub async fn api_v1_get_crates_undocumented(
     auth_data: AuthData,
     State(state): State<Arc<AxumState>>,
 ) -> ApiResult<Vec<CrateAndVersion>> {

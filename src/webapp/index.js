@@ -6,7 +6,7 @@ function doLogout() {
 }
 
 function onPageLoad() {
-  document.getElementById("year").appendChild(document.createTextNode(new Date(Date.now()).getFullYear()));
+  setupFooter();
   return apiMe()
     .then((user) => {
       // setup
@@ -21,6 +21,23 @@ function onPageLoad() {
       window.localStorage.removeItem("cratery-user");
       return null;
     });
+}
+
+function setupFooter() {
+  document
+    .getElementById("year")
+    .appendChild(document.createTextNode(new Date(Date.now()).getFullYear()));
+  apiGetVersion().then((versionData) => {
+    document
+      .getElementById("version")
+      .appendChild(
+        document.createTextNode(
+          `${versionData.tag.length === 0 ? "latest" : versionData.tag}, git ${
+            versionData.commit
+          }`
+        )
+      );
+  });
 }
 
 function setupOnChange(inputEl, applyChange) {

@@ -1,0 +1,81 @@
+<!DOCTYPE html>
+<html lang="en" class="dark">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="description" content="">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <link rel="icon" type="image/png" href="/webapp/favicon.png">
+  <title>
+    Cratery -- Outdated crates
+  </title>
+  <script src="https://cdn.tailwindcss.com"></script>
+</head>
+
+<header style="position: sticky; top: 0;">
+  <nav class="bg-white border-gray-200 px-4 lg:px-6 py-2.5 dark:bg-gray-800">
+      <div class="flex flex-wrap justify-between items-center mx-auto max-w-screen-xl">
+          <a href="/webapp/index.html" class="flex items-center">
+              <img src="./logo-white.svg" class="mr-3 h-6 sm:h-9" style="min-width: 200px;" alt="Cratery Logo" />
+          </a>
+          <div class="flex items-center lg:order-2">
+            <a id="link-admin" href="/webapp/admin.html" style="cursor: pointer;" class="text-gray-800 dark:text-white hover:bg-gray-50 focus:ring-4 focus:ring-gray-300 font-medium rounded-lg text-sm px-4 lg:px-5 py-2 lg:py-2.5 mr-2 dark:hover:bg-gray-700 focus:outline-none dark:focus:ring-gray-800">Admin</a>
+            <a id="link-account" href="/webapp/account.html" style="cursor: pointer;" class="text-gray-800 dark:text-white hover:bg-gray-50 focus:ring-4 focus:ring-gray-300 font-medium rounded-lg text-sm px-4 lg:px-5 py-2 lg:py-2.5 mr-2 dark:hover:bg-gray-700 focus:outline-none dark:focus:ring-gray-800">My Account</a>
+            <a onclick="doLogout()" style="cursor: pointer;" class="text-gray-800 dark:text-white hover:bg-gray-50 focus:ring-4 focus:ring-gray-300 font-medium rounded-lg text-sm px-4 lg:px-5 py-2 lg:py-2.5 mr-2 dark:hover:bg-gray-700 focus:outline-none dark:focus:ring-gray-800">Logout</a>
+          </div>
+      </div>
+  </nav>
+</header>
+<body onload="doPageLoad()" class="bg-white dark:bg-gray-800 content-center">
+  <section class="bg-gray-50 dark:bg-gray-900 py-4 max-w-screen-lg mx-auto">
+    <div class="p-6 mb-4 flex flex-col flex-wrap" id="crates-outdated">
+      <div class="w-full">
+        <h1 class="text-xl font-bold leading-tight tracking-tight text-gray-900 md:text-2xl dark:text-white" style="text-align: center;">
+          Head crates with outdated dependencies
+        </h1>
+      </div>
+    </div>
+  </section>
+</body>
+<footer class="p-4 bg-white md:p-8 lg:p-10 dark:bg-gray-800">
+  <div class="mx-auto max-w-screen-xl text-center">
+      <span class="text-sm text-gray-500 sm:text-center dark:text-gray-400">Version <span id="version"></span>, Copyright © <span id="year"></span> <a href="https://cenotelie.fr/" target="_blank" class="hover:underline">Cénotélie</a>. All Rights Reserved.</span>
+  </div>
+</footer>
+
+<link href="/webapp/index.css" rel="stylesheet" />
+<script src="/webapp/api.js"></script>
+<script src="/webapp/index.js"></script>
+<script>
+  function doPageLoad() {
+    onPageLoad().then((_) => {
+      apiGetCratesOutdatedHeads().then(renderOutdated);
+    });
+  }
+
+  function renderOutdated(crates) {
+    const listCratesEl = document.getElementById("crates-outdated");
+    for (const crate of crates) {
+      listCratesEl.appendChild(renderCrateLink(crate, true, true));
+    }
+  }
+
+  function renderCrateLink(crate, withVersion, hasWarning) {
+    const color = hasWarning ? "yellow" : "gray";
+    const card = document.createElement("a");
+    card.className = `block m-2 p-2 bg-white border border-${color}-200 rounded-lg shadow hover:bg-${color}-100 dark:bg-${color}-800 dark:border-${color}-700 dark:hover:bg-${color}-700`;
+    card.href = withVersion ? `/crates/${crate.name}/${crate.version}` : `/crates/${crate.name}`;
+    const title = document.createElement("h5");
+    title.className = `mb-1 text-xl font-bold tracking-tight text-${color}-900 dark:text-${color}-100`;
+    title.appendChild(document.createTextNode(crate.name));
+    card.appendChild(title);
+    if (withVersion) {
+      const sub = document.createElement("p");
+      sub.className = `font-normal text-${color}-700 dark:text-${color}-400`;
+      sub.appendChild(document.createTextNode(crate.version));
+      card.appendChild(sub);
+    }
+    return card;
+  }
+</script>
+</html>

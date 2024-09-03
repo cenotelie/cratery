@@ -24,6 +24,7 @@ pub fn get_resources() -> EmbeddedResources {
     let mut resources = EmbeddedResources::with_fallback("index.html");
     // HTML
     add!(resources, "index.html");
+    add!(resources, "index-outdated.html");
     add!(resources, "account.html");
     add!(resources, "admin.html");
     add!(resources, "crate.html");
