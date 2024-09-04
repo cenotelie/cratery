@@ -59,6 +59,24 @@
       </div>
     </div>
   </section>
+  <div id="modal-failure-info" tabindex="-1" class="overflow-y-auto overflow-x-hidden fixed top-0 right-0 left-0 z-50 w-full md:inset-0 h-modal md:h-full" style="display: none;">
+    <div class="overflow-y-auto overflow-x-hidden fixed top-0 right-0 left-0 z-51 w-full md:inset-0 h-modal md:h-full" style="background-color: black; opacity: 0.75;"></div>
+    <div class="relative" style="margin: auto; margin-top: 10%; width: 800px;">
+        <div class="relative p-4 bg-white rounded-lg shadow dark:bg-gray-800 md:p-8">
+            <div class="mb-4 text-sm font-light text-gray-500 dark:text-gray-400">
+              <h3 class="mb-3 text-2xl font-bold text-gray-900 dark:text-white">Log</h3>
+            </div>
+            <form class="mb-3 space-y-8">
+              <textarea id="modal-failure-info-log" rows="10" class="block p-2.5 w-full text-sm text-gray-900 bg-gray-50 rounded-lg border border-gray-300 focus:ring-blue-500 focus:border-blue-500 dark:bg-gray-700 dark:border-gray-600 dark:placeholder-gray-400 dark:text-white dark:focus:ring-blue-500 dark:focus:border-blue-500"></textarea>
+            </form>
+            <div class="justify-between items-center pt-0 space-y-4 sm:flex sm:space-y-0">
+              <div class="items-center space-y-4 sm:space-x-4 sm:flex sm:space-y-0">
+                <button id="modal-failure-info-close" type="button"  class="py-2 px-4 w-full text-sm font-medium text-gray-500 bg-white rounded-lg border border-gray-200 sm:w-auto hover:bg-gray-100 focus:ring-4 focus:outline-none focus:ring-primary-300 hover:text-gray-900 focus:z-10 dark:bg-gray-700 dark:text-gray-300 dark:border-gray-500 dark:hover:text-white dark:hover:bg-gray-600 dark:focus:ring-gray-600">Close</button>
+              </div>
+            </div>
+        </div>
+    </div>
+  </div>
 </body>
 <footer class="p-4 bg-white md:p-8 lg:p-10 dark:bg-gray-800">
   <div class="mx-auto max-w-screen-xl text-center">
@@ -75,37 +93,69 @@
         apiGetDocGenJobs().then(jobs => {
           const jobsEl = document.getElementById("jobs");
           for (const job of jobs) {
-            // jobsEl.appendChild(renderJob(job));
+            jobsEl.appendChild(renderJob(job));
           }
         })
       });
     }
 
+    function getJobStatusText(status) {
+      if (status === "Queued") {
+        return "queued";
+      } else if (status === "Working") {
+        return "working ...";
+      } else if (status === "Success") {
+        return "sucess";
+      } else if (status === "Failure") {
+        return "failed";
+      } else {
+        return "";
+      }
+    }
+
+    function getJobStatusColor(status) {
+      if (status === "Queued") {
+        return "gray";
+      } else if (status === "Working") {
+        return "blue";
+      } else if (status === "Success") {
+        return "green";
+      } else if (status === "Failure") {
+        return "red";
+      } else {
+        return "gray";
+      }
+    }
+
     function renderJob(job) {
-      const inputLoginEl = document.createElement("input");
-      inputLoginEl.setAttribute("type", "text");
-      inputLoginEl.className = "block p-3 w-full text-sm text-gray-900 bg-gray-50 rounded-lg border border-gray-300 shadow-sm focus:ring-primary-500 focus:border-primary-500 dark:bg-gray-700 dark:border-gray-600 dark:placeholder-gray-400 dark:text-white dark:focus:ring-primary-500 dark:focus:border-primary-500 dark:shadow-sm-light";
-      inputLoginEl.value = user.login;
-      const inputNameEl = document.createElement("input");
-      inputNameEl.setAttribute("type", "text");
-      inputNameEl.className = "block p-3 w-full text-sm text-gray-900 bg-gray-50 rounded-lg border border-gray-300 shadow-sm focus:ring-primary-500 focus:border-primary-500 dark:bg-gray-700 dark:border-gray-600 dark:placeholder-gray-400 dark:text-white dark:focus:ring-primary-500 dark:focus:border-primary-500 dark:shadow-sm-light";
-      inputNameEl.value = user.name;
-      const inputRolesEl = document.createElement("input");
-      inputRolesEl.setAttribute("type", "text");
-      inputRolesEl.className = "block p-3 w-full text-sm text-gray-900 bg-gray-50 rounded-lg border border-gray-300 shadow-sm focus:ring-primary-500 focus:border-primary-500 dark:bg-gray-700 dark:border-gray-600 dark:placeholder-gray-400 dark:text-white dark:focus:ring-primary-500 dark:focus:border-primary-500 dark:shadow-sm-light";
-      inputRolesEl.value = user.roles;
+      const color = getJobStatusColor(job.state);
+      const statusEl = document.createElement("span");
+      statusEl.className = `bg-${color}-100 text-${color}-800 text-xs font-medium me-2 px-2.5 py-0.5 rounded dark:bg-${color}-900 dark:text-${color}-300`;
+      statusEl.appendChild(document.createTextNode(getJobStatusText(job.state)));
+      if (job.state === "Failure") {
+        statusEl.style.cursor = "pointer";
+        statusEl.onclick = () => {
+          document.getElementById('modal-failure-info-log').value = job.output;
+          const closeEl = document.getElementById('modal-failure-info-close');
+          closeEl.addEventListener('click', function() {
+            modalEl.style.display = "none";
+          });
+          const modalEl = document.getElementById('modal-failure-info');
+          modalEl.style.display = "unset";
+        };
+      }
 
       const row = document.createElement("tr");
       const cell1 = document.createElement("th");
       cell1.setAttribute("scope", "row");
       cell1.className = "px-6 py-4 font-medium text-gray-900 whitespace-nowrap dark:text-white";
-      cell1.appendChild(document.createTextNode(user.email));
+      cell1.appendChild(document.createTextNode(job.spec.name));
       const cell2 = document.createElement("td");
       cell2.className = "px-6 py-4";
-      cell2.appendChild(inputLoginEl);
+      cell2.appendChild(document.createTextNode(job.spec.version));
       const cell3 = document.createElement("td");
       cell3.className = "px-6 py-4";
-      cell3.appendChild(inputNameEl);
+      cell3.appendChild(statusEl);
 
       row.appendChild(cell1);
       row.appendChild(cell2);
