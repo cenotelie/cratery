@@ -116,6 +116,16 @@ function apiRevokeGlobalToken(token_id) {
   );
 }
 
+function apiGetDocGenJobs() {
+  return fetch("/api/v1/admin/jobs/docgen").then((response) => {
+    if (response.status !== 200) {
+      throw response.text();
+    } else {
+      return response.json();
+    }
+  });
+}
+
 function apiGetUsers() {
   return fetch("/api/v1/admin/users").then((response) => {
     if (response.status !== 200) {

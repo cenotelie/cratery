@@ -44,7 +44,7 @@ impl<'c> Database<'c> {
     }
 
     /// Checks that a user is an admin
-    async fn check_is_admin(&self, uid: i64) -> Result<(), ApiError> {
+    pub async fn check_is_admin(&self, uid: i64) -> Result<(), ApiError> {
         let is_admin = self.get_is_admin(uid).await?;
         if is_admin {
             Ok(())

@@ -6,8 +6,9 @@
 
 use std::path::{Path, PathBuf};
 use std::process::Stdio;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 
+use chrono::Local;
 use flate2::bufread::GzDecoder;
 use futures::StreamExt;
 use log::{error, info};
@@ -18,6 +19,7 @@ use tokio::sync::mpsc::{UnboundedReceiver, UnboundedSender};
 use tokio_stream::wrappers::UnboundedReceiverStream;
 
 use crate::model::config::Configuration;
+use crate::model::docs::{DocGenJob, DocGenJobState};
 use crate::model::JobCrate;
 use crate::services::database::Database;
 use crate::services::storage::Storage;
@@ -27,6 +29,9 @@ use crate::utils::db::in_transaction;
 
 /// Service to generate documentation for a crate
 pub trait DocsGenerator {
+    /// Gets all the jobs
+    fn get_jobs(&self) -> Vec<DocGenJob>;
+
     /// Queues a job for documentation generation
     fn queue(&self, job: JobCrate) -> Result<(), ApiError>;
 }
@@ -42,7 +47,8 @@ pub fn get_docs_generator(
         configuration,
         service_db_pool,
         service_storage,
-        queue: sender,
+        jobs: Arc::new(Mutex::new(Vec::with_capacity(64))),
+        jobs_sender: sender,
     });
     let service2 = service.clone();
     let _handle = tokio::spawn(async move {
@@ -60,34 +66,70 @@ struct DocsGeneratorImpl {
     service_db_pool: Pool<Sqlite>,
     /// The storage layer
     service_storage: Arc<dyn Storage + Send + Sync>,
-    /// The queue of waiting jobs
-    queue: UnboundedSender<JobCrate>,
+    /// The documentation jobs
+    jobs: Arc<Mutex<Vec<DocGenJob>>>,
+    /// Sender to send job signals to the worker
+    jobs_sender: UnboundedSender<usize>,
 }
 
 impl DocsGenerator for DocsGeneratorImpl {
+    /// Gets all the jobs
+    fn get_jobs(&self) -> Vec<DocGenJob> {
+        self.jobs.lock().unwrap().clone()
+    }
+
     /// Queues a job for documentation generation
-    fn queue(&self, job: JobCrate) -> Result<(), ApiError> {
-        self.queue.send(job)?;
+    fn queue(&self, spec: JobCrate) -> Result<(), ApiError> {
+        let now = Local::now().naive_local();
+        let index = {
+            let mut jobs = self.jobs.lock().unwrap();
+            let index = jobs.len();
+            jobs.push(DocGenJob {
+                spec,
+                state: DocGenJobState::Queued,
+                last_update: now,
+                output: String::new(),
+            });
+            index
+        };
+        self.jobs_sender.send(index)?;
         Ok(())
     }
 }
 
 impl DocsGeneratorImpl {
+    /// Update a job
+    fn update_job(&self, job_index: usize, state: DocGenJobState, output: Option<&str>) {
+        let now = Local::now().naive_local();
+        let mut jobs = self.jobs.lock().unwrap();
+        let job = jobs.get_mut(job_index).unwrap();
+        job.state = state;
+        job.last_update = now;
+        if let Some(output) = output {
+            job.output.push_str(output);
+        }
+    }
+
     /// Implementation of the worker
-    async fn worker(&self, receiver: UnboundedReceiver<JobCrate>) {
+    async fn worker(&self, receiver: UnboundedReceiver<usize>) {
         let mut stream = UnboundedReceiverStream::new(receiver);
-        while let Some(job) = stream.next().await {
-            if let Err(e) = self.docs_worker_job(job).await {
+        while let Some(job_index) = stream.next().await {
+            self.update_job(job_index, DocGenJobState::Working, None);
+            if let Err(e) = self.docs_worker_job(job_index).await {
                 error!("{e}");
                 if let Some(backtrace) = &e.backtrace {
                     error!("{backtrace}");
                 }
+                self.update_job(job_index, DocGenJobState::Failure, Some(&e.to_string()));
+            } else {
+                self.update_job(job_index, DocGenJobState::Success, None);
             }
         }
     }
 
     /// Executes a documentation generation job
-    async fn docs_worker_job(&self, job: JobCrate) -> Result<(), ApiError> {
+    async fn docs_worker_job(&self, job_index: usize) -> Result<(), ApiError> {
+        let job = self.jobs.lock().unwrap().get(job_index).unwrap().spec.clone();
         info!("generating doc for {} {}", job.name, job.version);
         let content = self.service_storage.download_crate(&job.name, &job.version).await?;
         let temp_folder = Self::extract_content(&job.name, &job.version, &content)?;

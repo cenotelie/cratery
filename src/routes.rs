@@ -26,6 +26,7 @@ use crate::model::cargo::{
     CrateUploadResult, OwnersChangeQuery, OwnersQueryResult, RegistryUser, SearchResults, YesNoMsgResult, YesNoResult,
 };
 use crate::model::deps::DepsAnalysis;
+use crate::model::docs::DocGenJob;
 use crate::model::packages::CrateInfo;
 use crate::model::stats::{DownloadStats, GlobalStats};
 use crate::model::{AppVersion, CrateVersion, RegistryInformation};
@@ -377,6 +378,11 @@ pub async fn api_v1_revoke_global_token(
     Path(token_id): Path<i64>,
 ) -> ApiResult<()> {
     response(state.application.revoke_global_token(&auth_data, token_id).await)
+}
+
+/// Gets the documentation jobs
+pub async fn api_v1_get_doc_gen_jobs(auth_data: AuthData, State(state): State<Arc<AxumState>>) -> ApiResult<Vec<DocGenJob>> {
+    response(state.application.get_doc_gen_jobs(&auth_data).await)
 }
 
 /// Gets the known users

@@ -102,7 +102,8 @@ async fn main_serve_app(application: Arc<Application>, cookie_key: Key) -> Resul
                                 .route("/", get(routes::api_v1_get_global_tokens))
                                 .route("/", put(routes::api_v1_create_global_token))
                                 .route("/:token_id", delete(routes::api_v1_revoke_global_token)),
-                        ),
+                        )
+                        .route("/jobs/docgen", get(routes::api_v1_get_doc_gen_jobs)),
                 )
                 .nest(
                     "/crates",

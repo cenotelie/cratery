@@ -8,6 +8,7 @@ pub mod auth;
 pub mod cargo;
 pub mod config;
 pub mod deps;
+pub mod docs;
 pub mod errors;
 pub mod namegen;
 pub mod osv;

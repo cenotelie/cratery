@@ -17,6 +17,7 @@ use crate::model::cargo::{
 };
 use crate::model::config::Configuration;
 use crate::model::deps::DepsAnalysis;
+use crate::model::docs::DocGenJob;
 use crate::model::packages::CrateInfo;
 use crate::model::stats::{DownloadStats, GlobalStats};
 use crate::model::{CrateVersion, JobCrate, RegistryInformation};
@@ -433,6 +434,17 @@ impl Application {
             let _principal = app.authenticate(auth_data).await?;
             let crates = app.database.get_undocumented_crates().await?;
             Ok(crates.into_iter().map(CrateVersion::from).collect())
+        })
+        .await
+    }
+
+    /// Gets the documentation jobs
+    pub async fn get_doc_gen_jobs(&self, auth_data: &AuthData) -> Result<Vec<DocGenJob>, ApiError> {
+        let mut connection: sqlx::pool::PoolConnection<Sqlite> = self.service_db_pool.acquire().await?;
+        in_transaction(&mut connection, |transaction| async move {
+            let app = self.with_transaction(transaction);
+            let _principal = app.authenticate(auth_data).await?;
+            Ok(self.service_docs_generator.get_jobs())
         })
         .await
     }
