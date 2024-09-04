@@ -60,7 +60,10 @@
           </a>
         </li>
         <li class="me-2">
-            <a id="header-admin" class="inline-block p-4 rounded-t-lg hover:text-gray-600 hover:bg-gray-50 dark:hover:bg-gray-800 dark:hover:text-gray-300" style="cursor: pointer;" onclick="onClickTab(4)">Settings</a>
+            <a id="header-docs" class="inline-block p-4 rounded-t-lg hover:text-gray-600 hover:bg-gray-50 dark:hover:bg-gray-800 dark:hover:text-gray-300" style="cursor: pointer;" onclick="onClickTab(4)">Documentation</a>
+        </li>
+        <li class="me-2">
+            <a id="header-admin" class="inline-block p-4 rounded-t-lg hover:text-gray-600 hover:bg-gray-50 dark:hover:bg-gray-800 dark:hover:text-gray-300" style="cursor: pointer;" onclick="onClickTab(5)">Settings</a>
         </li>
       </ul>
       <div id="tab-readme" class="m-4 flex flex-row">
@@ -126,6 +129,26 @@
       <div id="tab-features" class="m-4" style="display: none;">
       </div>
       <div id="tab-dependencies" class="m-4" style="display: none;">
+      </div>
+      <div id="tab-docs" class="m-4" style="display: none;">
+        <table class="w-full text-sm text-left rtl:text-right text-gray-500 dark:text-gray-400">
+          <thead class="text-xs text-gray-700 uppercase bg-gray-50 dark:bg-gray-700 dark:text-gray-400">
+            <tr>
+              <th scope="col" class="px-6 py-3">
+                  Version
+              </th>
+              <th scope="col" class="px-6 py-3">
+                  Status
+              </th>
+              <th scope="col" class="px-6 py-3">
+                  Actions
+              </th>
+            </tr>
+          </thead>
+          <tbody id="tab-docs-table">
+          </tbody>
+        </table>
+      </table>
       </div>
       <div id="tab-admin" class="m-4" style="display: none;">
         <div id="tab-admin-owners" class="m-4">
@@ -262,6 +285,7 @@
     }
 
     renderDependencies(currentVersion.index.deps, null);
+    renderDocs(crate);
 
     const canAdmin = currentUser.roles.includes("admin") || owners.users.find(u => u.id === currentUser.id) !== undefined;
     if (canAdmin) {
@@ -566,12 +590,66 @@
     return card;
   }
 
+  function renderDocs(crate) {
+    const tableEl = document.getElementById("tab-docs-table");
+    for (const version of crate.versions) {
+      tableEl.appendChild(renderDocsVersion(version));
+    }
+  }
+
+  function renderDocsVersion(version) {
+    const linkEl = document.createElement("a");
+    if (version.hasDocs) {
+      const crateRustName = version.index.name.replaceAll("-", "_");
+      linkEl.setAttribute("href", `/docs/${version.index.name}/${version.index.vers}/${crateRustName}/index.html`);
+    }
+    linkEl.className = "font-medium text-blue-600 dark:text-blue-500 hover:underline";
+    linkEl.appendChild(document.createTextNode(version.index.vers));
+
+    const color = version.hasDocs ? "green" : "red";
+    const statusEl = document.createElement("span");
+    statusEl.className = `bg-${color}-100 text-${color}-800 text-xs font-medium me-2 px-2.5 py-0.5 rounded dark:bg-${color}-900 dark:text-${color}-300`;
+    statusEl.style.display = "inline-block";
+    statusEl.appendChild(document.createTextNode(version.hasDocs ? "available" : "missing"));
+
+    const row = document.createElement("tr");
+    const cell1 = document.createElement("th");
+    cell1.setAttribute("scope", "row");
+    cell1.className = "px-6 py-4 font-medium";
+    cell1.appendChild(linkEl);
+    const cell2 = document.createElement("td");
+    cell2.className = "px-6 py-4";
+    cell2.appendChild(statusEl);
+    const cell3 = document.createElement("td");
+    cell3.className = "px-6 py-4";
+
+    if (!version.hasDocs) {
+      // <button type="button" class="text-white bg-blue-700 hover:bg-blue-800 focus:ring-4 focus:ring-blue-300 font-medium rounded-lg text-sm px-5 py-2.5 me-2 mb-2 dark:bg-blue-600 dark:hover:bg-blue-700 focus:outline-none dark:focus:ring-blue-800">Default</button>
+      const refreshEl = document.createElement("button");
+      refreshEl.type = "button";
+      refreshEl.className = "text-white bg-blue-700 hover:bg-blue-800 focus:ring-4 focus:ring-blue-300 font-medium rounded-lg text-sm px-5 py-2.5 me-2 mb-2 dark:bg-blue-600 dark:hover:bg-blue-700 focus:outline-none dark:focus:ring-blue-800";
+      refreshEl.appendChild(document.createTextNode("generate"));
+      refreshEl.onclick = () => {
+        apiRegenCrateDoc(version.index.name, version.index.vers).then(() => {
+          refreshEl.remove();
+        });
+      };
+      cell3.appendChild(refreshEl);
+    }
+
+    row.appendChild(cell1);
+    row.appendChild(cell2);
+    row.appendChild(cell3);
+    return row;
+  }
+
   function onClickTab(index) {
     const headers = [
       document.getElementById("header-readme"),
       document.getElementById("header-versions"),
       document.getElementById("header-features"),
       document.getElementById("header-dependencies"),
+      document.getElementById("header-docs"),
       document.getElementById("header-admin"),
     ];
     const tabs = [
@@ -579,6 +657,7 @@
       document.getElementById("tab-versions"),
       document.getElementById("tab-features"),
       document.getElementById("tab-dependencies"),
+      document.getElementById("tab-docs"),
       document.getElementById("tab-admin"),
     ];
     for (const header of headers) {

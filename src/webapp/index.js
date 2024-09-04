@@ -79,3 +79,31 @@ function setupOnChange(inputEl, applyChange) {
   inputEl.addEventListener("change", handler);
   inputEl.addEventListener("keydown", handler);
 }
+
+function getJobStatusText(status) {
+  if (status === "Queued") {
+    return "queued";
+  } else if (status === "Working") {
+    return "working ...";
+  } else if (status === "Success") {
+    return "sucess";
+  } else if (status === "Failure") {
+    return "failed";
+  } else {
+    return "";
+  }
+}
+
+function getJobStatusColor(status) {
+  if (status === "Queued") {
+    return "gray";
+  } else if (status === "Working") {
+    return "blue";
+  } else if (status === "Success") {
+    return "green";
+  } else if (status === "Failure") {
+    return "red";
+  } else {
+    return "gray";
+  }
+}
