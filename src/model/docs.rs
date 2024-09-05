@@ -120,3 +120,18 @@ pub struct DocGenJob {
     /// The output log, if any
     pub output: String,
 }
+
+/// An update to a documentation generation job
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DocGenJobUpdate {
+    /// The unique identifier of the associated job
+    #[serde(rename = "jobId")]
+    pub job_id: i64,
+    /// The new state for the job
+    pub state: DocGenJobState,
+    /// The update timestamp
+    #[serde(rename = "lastUpdate")]
+    pub last_update: NaiveDateTime,
+    /// The appended output, if any
+    pub output: String,
+}

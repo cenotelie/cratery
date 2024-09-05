@@ -7,6 +7,7 @@
 pub mod auth;
 pub mod embedded;
 pub mod extractors;
+pub mod sse;
 
 use axum::http::StatusCode;
 use axum::Json;

@@ -6,18 +6,20 @@
 
 use std::path::{Path, PathBuf};
 use std::process::Stdio;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
+use chrono::Local;
 use flate2::bufread::GzDecoder;
 use log::{error, info};
 use sqlx::{Pool, Sqlite};
 use tar::Archive;
 use tokio::process::Command;
+use tokio::sync::mpsc::UnboundedSender;
 use tokio::time::interval;
 
 use crate::model::config::Configuration;
-use crate::model::docs::{DocGenJob, DocGenJobState, DocGenTrigger};
+use crate::model::docs::{DocGenJob, DocGenJobState, DocGenJobUpdate, DocGenTrigger};
 use crate::model::JobCrate;
 use crate::services::database::Database;
 use crate::services::storage::Storage;
@@ -33,6 +35,9 @@ pub trait DocsGenerator {
 
     /// Queues a job for documentation generation
     fn queue<'a>(&'a self, spec: &'a JobCrate, trigger: &'a DocGenTrigger) -> FaillibleFuture<'a, DocGenJob>;
+
+    /// Adds a listener to job updates
+    fn add_update_listener(&self, listener: UnboundedSender<DocGenJobUpdate>);
 }
 
 /// Gets the documentation generation service
@@ -45,6 +50,7 @@ pub fn get_docs_generator(
         configuration,
         service_db_pool,
         service_storage,
+        listeners: Arc::new(Mutex::new(Vec::new())),
     });
     // launch workers
     let _handle = tokio::spawn({
@@ -65,6 +71,8 @@ struct DocsGeneratorImpl {
     service_db_pool: Pool<Sqlite>,
     /// The storage layer
     service_storage: Arc<dyn Storage + Send + Sync>,
+    /// The active listeners
+    listeners: Arc<Mutex<Vec<UnboundedSender<DocGenJobUpdate>>>>,
 }
 
 impl DocsGenerator for DocsGeneratorImpl {
@@ -93,6 +101,11 @@ impl DocsGenerator for DocsGeneratorImpl {
             Ok(job)
         })
     }
+
+    /// Adds a listener to job updates
+    fn add_update_listener(&self, listener: UnboundedSender<DocGenJobUpdate>) {
+        self.listeners.lock().unwrap().push(listener);
+    }
 }
 
 impl DocsGeneratorImpl {
@@ -104,6 +117,19 @@ impl DocsGeneratorImpl {
             database.update_docgen_job(job_id, state, output.unwrap_or_default()).await
         })
         .await?;
+
+        // send updates
+        let now = Local::now().naive_local();
+        self.listeners.lock().unwrap().retain_mut(|sender| {
+            sender
+                .send(DocGenJobUpdate {
+                    job_id,
+                    state,
+                    last_update: now,
+                    output: output.unwrap_or_default().to_string(),
+                })
+                .is_ok()
+        });
         Ok(())
     }
 

@@ -13,11 +13,13 @@ use axum::body::{Body, Bytes};
 use axum::extract::{Path, Query, State};
 use axum::http::header::{HeaderName, SET_COOKIE};
 use axum::http::{header, HeaderValue, Request, StatusCode};
+use axum::response::{IntoResponse, Response};
 use axum::{BoxError, Json};
 use cookie::Key;
-use futures::Stream;
+use futures::{Stream, StreamExt};
 use serde::Deserialize;
 use tokio::fs::File;
+use tokio_stream::wrappers::UnboundedReceiverStream;
 use tokio_util::io::ReaderStream;
 
 use crate::application::Application;
@@ -35,6 +37,7 @@ use crate::utils::apierror::{error_invalid_request, error_not_found, specialize,
 use crate::utils::axum::auth::{AuthData, AxumStateForCookies};
 use crate::utils::axum::embedded::{EmbeddedResources, WebappResource};
 use crate::utils::axum::extractors::Base64;
+use crate::utils::axum::sse::{Event, ServerSentEventStream};
 use crate::utils::axum::{response, response_error, response_ok, ApiResult};
 use crate::utils::token::generate_token;
 
@@ -383,6 +386,19 @@ pub async fn api_v1_revoke_global_token(
 /// Gets the documentation jobs
 pub async fn api_v1_get_doc_gen_jobs(auth_data: AuthData, State(state): State<Arc<AxumState>>) -> ApiResult<Vec<DocGenJob>> {
     response(state.application.get_doc_gen_jobs(&auth_data).await)
+}
+
+/// Gets a stream of updates for documentation generation jobs
+pub async fn api_v1_get_doc_gen_job_updates(
+    auth_data: AuthData,
+    State(state): State<Arc<AxumState>>,
+) -> Result<Response, (StatusCode, Json<ApiError>)> {
+    let receiver = match state.application.get_doc_gen_job_updates(&auth_data).await {
+        Ok(r) => r,
+        Err(e) => return Err(response_error(e)),
+    };
+    let stream = ServerSentEventStream::new(UnboundedReceiverStream::new(receiver).map(Event::from_data));
+    Ok(stream.into_response())
 }
 
 /// Gets the known users

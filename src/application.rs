@@ -10,6 +10,7 @@ use std::sync::Arc;
 use log::info;
 use sqlx::sqlite::SqlitePoolOptions;
 use sqlx::{Pool, Sqlite};
+use tokio::sync::mpsc::{unbounded_channel, UnboundedReceiver};
 
 use crate::model::auth::{Authentication, RegistryUserToken, RegistryUserTokenWithSecret};
 use crate::model::cargo::{
@@ -17,7 +18,7 @@ use crate::model::cargo::{
 };
 use crate::model::config::Configuration;
 use crate::model::deps::DepsAnalysis;
-use crate::model::docs::{DocGenJob, DocGenTrigger};
+use crate::model::docs::{DocGenJob, DocGenJobUpdate, DocGenTrigger};
 use crate::model::packages::CrateInfo;
 use crate::model::stats::{DownloadStats, GlobalStats};
 use crate::model::{CrateVersion, JobCrate, RegistryInformation};
@@ -452,6 +453,20 @@ impl Application {
             self.service_docs_generator.get_jobs().await
         })
         .await
+    }
+
+    /// Adds a listener to job updates
+    pub async fn get_doc_gen_job_updates(&self, auth_data: &AuthData) -> Result<UnboundedReceiver<DocGenJobUpdate>, ApiError> {
+        let mut connection: sqlx::pool::PoolConnection<Sqlite> = self.service_db_pool.acquire().await?;
+        in_transaction(&mut connection, |transaction| async move {
+            let app = self.with_transaction(transaction);
+            let _principal = app.authenticate(auth_data).await?;
+            Ok::<_, ApiError>(())
+        })
+        .await?;
+        let (sender, receiver) = unbounded_channel();
+        self.service_docs_generator.add_update_listener(sender);
+        Ok(receiver)
     }
 
     /// Force the re-generation for the documentation of a package
