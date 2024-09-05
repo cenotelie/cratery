@@ -10,6 +10,7 @@ use chrono::Local;
 use super::Database;
 use crate::model::auth::{
     find_field_in_blob, Authentication, AuthenticationPrincipal, OAuthToken, RegistryUserToken, RegistryUserTokenWithSecret,
+    TokenUsageEvent,
 };
 use crate::model::cargo::RegistryUser;
 use crate::model::config::Configuration;
@@ -357,18 +358,29 @@ impl<'c> Database<'c> {
     }
 
     /// Checks an authentication request with a token
-    pub async fn check_token(&self, login: &str, token_secret: &str) -> Result<Authentication, ApiError> {
-        if let Some(auth) = self.check_token_global(login, token_secret).await? {
+    pub async fn check_token<F>(&self, login: &str, token_secret: &str, on_usage: &F) -> Result<Authentication, ApiError>
+    where
+        F: Fn(TokenUsageEvent),
+    {
+        if let Some(auth) = self.check_token_global(login, token_secret, &on_usage).await? {
             return Ok(auth);
         }
-        if let Some(auth) = self.check_token_user(login, token_secret).await? {
+        if let Some(auth) = self.check_token_user(login, token_secret, &on_usage).await? {
             return Ok(auth);
         }
         Err(error_unauthorized())
     }
 
     /// Checks whether the information provided is a user token
-    async fn check_token_user(&self, login: &str, token_secret: &str) -> Result<Option<Authentication>, ApiError> {
+    async fn check_token_user<F>(
+        &self,
+        login: &str,
+        token_secret: &str,
+        on_usage: &F,
+    ) -> Result<Option<Authentication>, ApiError>
+    where
+        F: Fn(TokenUsageEvent),
+    {
         let rows = sqlx::query!(
             "SELECT RegistryUser.id AS uid, email, RegistryUserToken.id, token, canWrite AS can_write, canAdmin AS can_admin
             FROM RegistryUser INNER JOIN RegistryUserToken ON RegistryUser.id = RegistryUserToken.user
@@ -380,9 +392,11 @@ impl<'c> Database<'c> {
         for row in rows {
             if check_hash(token_secret, &row.token).is_ok() {
                 let now = Local::now().naive_local();
-                sqlx::query!("UPDATE RegistryUserToken SET lastUsed = $2 WHERE id = $1", row.id, now)
-                    .execute(&mut *self.transaction.borrow().await)
-                    .await?;
+                on_usage(TokenUsageEvent {
+                    is_user_token: true,
+                    token_id: row.id,
+                    timestamp: now,
+                });
                 return Ok(Some(Authentication {
                     principal: AuthenticationPrincipal::User {
                         uid: row.uid,
@@ -397,19 +411,51 @@ impl<'c> Database<'c> {
     }
 
     /// Checks whether the information provided is for a global token
-    async fn check_token_global(&self, login: &str, token_secret: &str) -> Result<Option<Authentication>, ApiError> {
+    async fn check_token_global<F>(
+        &self,
+        login: &str,
+        token_secret: &str,
+        on_usage: &F,
+    ) -> Result<Option<Authentication>, ApiError>
+    where
+        F: Fn(TokenUsageEvent),
+    {
         let row = sqlx::query!("SELECT id, token FROM RegistryGlobalToken WHERE name = $1 LIMIT 1", login)
             .fetch_optional(&mut *self.transaction.borrow().await)
             .await?;
         let Some(row) = row else { return Ok(None) };
         if check_hash(token_secret, &row.token).is_ok() {
             let now = Local::now().naive_local();
-            sqlx::query!("UPDATE RegistryGlobalToken SET lastUsed = $2 WHERE id = $1", row.id, now)
-                .execute(&mut *self.transaction.borrow().await)
-                .await?;
+            on_usage(TokenUsageEvent {
+                is_user_token: true,
+                token_id: row.id,
+                timestamp: now,
+            });
             Ok(Some(Authentication::new_service(login.to_string())))
         } else {
             Ok(None)
         }
+    }
+
+    /// Updates the last usage of a token
+    pub async fn update_token_last_usage(&self, event: &TokenUsageEvent) -> Result<(), ApiError> {
+        if event.is_user_token {
+            sqlx::query!(
+                "UPDATE RegistryUserToken SET lastUsed = $2 WHERE id = $1",
+                event.token_id,
+                event.timestamp
+            )
+            .execute(&mut *self.transaction.borrow().await)
+            .await?;
+        } else {
+            sqlx::query!(
+                "UPDATE RegistryGlobalToken SET lastUsed = $2 WHERE id = $1",
+                event.token_id,
+                event.timestamp
+            )
+            .execute(&mut *self.transaction.borrow().await)
+            .await?;
+        }
+        Ok(())
     }
 }

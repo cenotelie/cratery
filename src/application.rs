@@ -7,11 +7,11 @@
 use std::ops::Deref;
 use std::sync::Arc;
 
-use log::info;
+use log::{error, info};
 use sqlx::Sqlite;
-use tokio::sync::mpsc::{unbounded_channel, UnboundedReceiver};
+use tokio::sync::mpsc::{unbounded_channel, UnboundedReceiver, UnboundedSender};
 
-use crate::model::auth::{Authentication, RegistryUserToken, RegistryUserTokenWithSecret};
+use crate::model::auth::{Authentication, RegistryUserToken, RegistryUserTokenWithSecret, TokenUsageEvent};
 use crate::model::cargo::{
     CrateUploadData, CrateUploadResult, OwnersQueryResult, RegistryUser, SearchResults, YesNoMsgResult, YesNoResult,
 };
@@ -52,6 +52,8 @@ pub struct Application {
     service_email_sender: Arc<dyn EmailSender + Send + Sync>,
     /// The service to generator documentation
     service_docs_generator: Arc<dyn DocsGenerator + Send + Sync>,
+    /// The sender to use to notify about the usage of a token
+    token_usage_update: UnboundedSender<TokenUsageEvent>,
 }
 
 /// The empty database
@@ -107,7 +109,9 @@ impl Application {
             service_db_pool.clone(),
         );
 
-        Ok(Arc::new(Self {
+        let (token_usage_update, token_usage_receiver) = unbounded_channel();
+
+        let this = Arc::new(Self {
             configuration,
             service_db_pool,
             service_storage,
@@ -116,7 +120,17 @@ impl Application {
             service_deps_checker,
             service_email_sender,
             service_docs_generator,
-        }))
+            token_usage_update,
+        });
+
+        let _handle = {
+            let app = this.clone();
+            tokio::spawn(async move {
+                app.token_usage_worker(token_usage_receiver).await;
+            })
+        };
+
+        Ok(this)
     }
 
     /// Gets the storage service
@@ -137,9 +151,41 @@ impl Application {
         }
     }
 
+    /// The worker to handle the update of token usage
+    async fn token_usage_worker(&self, mut receiver: UnboundedReceiver<TokenUsageEvent>) {
+        const BUFFER_SIZE: usize = 16;
+        let mut events = Vec::with_capacity(BUFFER_SIZE);
+        loop {
+            let count = receiver.recv_many(&mut events, BUFFER_SIZE).await;
+            if count == 0 {
+                break;
+            }
+            if let Err(e) = self.token_usage_worker_on_events(&events).await {
+                error!("{e}");
+                if let Some(backtrace) = e.backtrace {
+                    error!("{backtrace}");
+                }
+            }
+        }
+    }
+
+    /// Handles a set of events
+    async fn token_usage_worker_on_events(&self, events: &[TokenUsageEvent]) -> Result<(), ApiError> {
+        let mut connection = self.service_db_pool.acquire_write().await?;
+        in_transaction(&mut connection, |transaction| async move {
+            let app = self.with_transaction(transaction);
+            for event in events {
+                app.database.update_token_last_usage(event).await?;
+            }
+            Ok::<_, ApiError>(())
+        })
+        .await?;
+        Ok(())
+    }
+
     /// Attempts the authentication of a user
     pub async fn authenticate(&self, auth_data: &AuthData) -> Result<Authentication, ApiError> {
-        let mut connection = self.service_db_pool.acquire_write().await?;
+        let mut connection = self.service_db_pool.acquire_read().await?;
         in_transaction(&mut connection, |transaction| async move {
             self.with_transaction(transaction).authenticate(auth_data).await
         })
@@ -155,7 +201,7 @@ impl Application {
 
     /// Gets the data about the current user
     pub async fn get_current_user(&self, auth_data: &AuthData) -> Result<RegistryUser, ApiError> {
-        let mut connection = self.service_db_pool.acquire_write().await?;
+        let mut connection = self.service_db_pool.acquire_read().await?;
         in_transaction(&mut connection, |transaction| async move {
             let app = self.with_transaction(transaction);
             let principal = app.authenticate(auth_data).await?;
@@ -176,7 +222,7 @@ impl Application {
 
     /// Gets the known users
     pub async fn get_users(&self, auth_data: &AuthData) -> Result<Vec<RegistryUser>, ApiError> {
-        let mut connection = self.service_db_pool.acquire_write().await?;
+        let mut connection = self.service_db_pool.acquire_read().await?;
         in_transaction(&mut connection, |transaction| async move {
             let app = self.with_transaction(transaction);
             let principal = app.authenticate(auth_data).await?;
@@ -231,7 +277,7 @@ impl Application {
 
     /// Gets the tokens for a user
     pub async fn get_tokens(&self, auth_data: &AuthData) -> Result<Vec<RegistryUserToken>, ApiError> {
-        let mut connection = self.service_db_pool.acquire_write().await?;
+        let mut connection = self.service_db_pool.acquire_read().await?;
         in_transaction(&mut connection, |transaction| async move {
             let app = self.with_transaction(transaction);
             let principal = app.authenticate(auth_data).await?;
@@ -270,7 +316,7 @@ impl Application {
 
     /// Gets the global tokens for the registry, usually for CI purposes
     pub async fn get_global_tokens(&self, auth_data: &AuthData) -> Result<Vec<RegistryUserToken>, ApiError> {
-        let mut connection = self.service_db_pool.acquire_write().await?;
+        let mut connection = self.service_db_pool.acquire_read().await?;
         in_transaction(&mut connection, |transaction| async move {
             let app = self.with_transaction(transaction);
             let principal = app.authenticate(auth_data).await?;
@@ -334,7 +380,7 @@ impl Application {
 
     /// Gets all the data about a crate
     pub async fn get_crate_info(&self, auth_data: &AuthData, package: &str) -> Result<CrateInfo, ApiError> {
-        let mut connection = self.service_db_pool.acquire_write().await?;
+        let mut connection = self.service_db_pool.acquire_read().await?;
         in_transaction(&mut connection, |transaction| async move {
             let app = self.with_transaction(transaction);
             let _principal = app.authenticate(auth_data).await?;
@@ -358,7 +404,7 @@ impl Application {
 
     /// Downloads the last README for a crate
     pub async fn get_crate_last_readme(&self, auth_data: &AuthData, package: &str) -> Result<Vec<u8>, ApiError> {
-        let mut connection = self.service_db_pool.acquire_write().await?;
+        let mut connection = self.service_db_pool.acquire_read().await?;
         in_transaction(&mut connection, |transaction| async move {
             let app = self.with_transaction(transaction);
             let _principal = app.authenticate(auth_data).await?;
@@ -371,7 +417,7 @@ impl Application {
 
     /// Downloads the README for a crate
     pub async fn get_crate_readme(&self, auth_data: &AuthData, package: &str, version: &str) -> Result<Vec<u8>, ApiError> {
-        let mut connection = self.service_db_pool.acquire_write().await?;
+        let mut connection = self.service_db_pool.acquire_read().await?;
         in_transaction(&mut connection, |transaction| async move {
             let app = self.with_transaction(transaction);
             let _principal = app.authenticate(auth_data).await?;
@@ -383,7 +429,7 @@ impl Application {
 
     /// Downloads the content for a crate
     pub async fn get_crate_content(&self, auth_data: &AuthData, package: &str, version: &str) -> Result<Vec<u8>, ApiError> {
-        let mut connection = self.service_db_pool.acquire_write().await?;
+        let mut connection = self.service_db_pool.acquire_read().await?;
         in_transaction(&mut connection, |transaction| async move {
             let app = self.with_transaction(transaction);
             let _principal = app.authenticate(auth_data).await?;
@@ -429,7 +475,7 @@ impl Application {
 
     /// Gets the packages that need documentation generation
     pub async fn get_undocumented_crates(&self, auth_data: &AuthData) -> Result<Vec<CrateVersion>, ApiError> {
-        let mut connection: sqlx::pool::PoolConnection<Sqlite> = self.service_db_pool.acquire_write().await?;
+        let mut connection: sqlx::pool::PoolConnection<Sqlite> = self.service_db_pool.acquire_read().await?;
         in_transaction(&mut connection, |transaction| async move {
             let app = self.with_transaction(transaction);
             let _principal = app.authenticate(auth_data).await?;
@@ -441,7 +487,7 @@ impl Application {
 
     /// Gets the documentation jobs
     pub async fn get_doc_gen_jobs(&self, auth_data: &AuthData) -> Result<Vec<DocGenJob>, ApiError> {
-        let mut connection: sqlx::pool::PoolConnection<Sqlite> = self.service_db_pool.acquire_write().await?;
+        let mut connection: sqlx::pool::PoolConnection<Sqlite> = self.service_db_pool.acquire_read().await?;
         in_transaction(&mut connection, |transaction| async move {
             let app = self.with_transaction(transaction);
             let _principal = app.authenticate(auth_data).await?;
@@ -452,7 +498,7 @@ impl Application {
 
     /// Adds a listener to job updates
     pub async fn get_doc_gen_job_updates(&self, auth_data: &AuthData) -> Result<UnboundedReceiver<DocGenJobUpdate>, ApiError> {
-        let mut connection: sqlx::pool::PoolConnection<Sqlite> = self.service_db_pool.acquire_write().await?;
+        let mut connection: sqlx::pool::PoolConnection<Sqlite> = self.service_db_pool.acquire_read().await?;
         in_transaction(&mut connection, |transaction| async move {
             let app = self.with_transaction(transaction);
             let _principal = app.authenticate(auth_data).await?;
@@ -494,7 +540,7 @@ impl Application {
 
     /// Gets all the packages that are outdated while also being the latest version
     pub async fn get_crates_outdated_heads(&self, auth_data: &AuthData) -> Result<Vec<CrateVersion>, ApiError> {
-        let mut connection: sqlx::pool::PoolConnection<Sqlite> = self.service_db_pool.acquire_write().await?;
+        let mut connection: sqlx::pool::PoolConnection<Sqlite> = self.service_db_pool.acquire_read().await?;
         in_transaction(&mut connection, |transaction| async move {
             let app = self.with_transaction(transaction);
             let _principal = app.authenticate(auth_data).await?;
@@ -505,7 +551,7 @@ impl Application {
 
     /// Gets the download statistics for a crate
     pub async fn get_crate_dl_stats(&self, auth_data: &AuthData, package: &str) -> Result<DownloadStats, ApiError> {
-        let mut connection: sqlx::pool::PoolConnection<Sqlite> = self.service_db_pool.acquire_write().await?;
+        let mut connection: sqlx::pool::PoolConnection<Sqlite> = self.service_db_pool.acquire_read().await?;
         in_transaction(&mut connection, |transaction| async move {
             let app = self.with_transaction(transaction);
             let _principal = app.authenticate(auth_data).await?;
@@ -516,7 +562,7 @@ impl Application {
 
     /// Gets the list of owners for a package
     pub async fn get_crate_owners(&self, auth_data: &AuthData, package: &str) -> Result<OwnersQueryResult, ApiError> {
-        let mut connection: sqlx::pool::PoolConnection<Sqlite> = self.service_db_pool.acquire_write().await?;
+        let mut connection: sqlx::pool::PoolConnection<Sqlite> = self.service_db_pool.acquire_read().await?;
         in_transaction(&mut connection, |transaction| async move {
             let app = self.with_transaction(transaction);
             let _principal = app.authenticate(auth_data).await?;
@@ -559,7 +605,7 @@ impl Application {
 
     /// Gets the targets for a crate
     pub async fn get_crate_targets(&self, auth_data: &AuthData, package: &str) -> Result<Vec<String>, ApiError> {
-        let mut connection: sqlx::pool::PoolConnection<Sqlite> = self.service_db_pool.acquire_write().await?;
+        let mut connection: sqlx::pool::PoolConnection<Sqlite> = self.service_db_pool.acquire_read().await?;
         in_transaction(&mut connection, |transaction| async move {
             let app = self.with_transaction(transaction);
             let _principal = app.authenticate(auth_data).await?;
@@ -586,7 +632,7 @@ impl Application {
 
     /// Gets the global statistics for the registry
     pub async fn get_crates_stats(&self, auth_data: &AuthData) -> Result<GlobalStats, ApiError> {
-        let mut connection: sqlx::pool::PoolConnection<Sqlite> = self.service_db_pool.acquire_write().await?;
+        let mut connection: sqlx::pool::PoolConnection<Sqlite> = self.service_db_pool.acquire_read().await?;
         in_transaction(&mut connection, |transaction| async move {
             let app = self.with_transaction(transaction);
             let _principal = app.authenticate(auth_data).await?;
@@ -602,7 +648,7 @@ impl Application {
         query: &str,
         per_page: Option<usize>,
     ) -> Result<SearchResults, ApiError> {
-        let mut connection: sqlx::pool::PoolConnection<Sqlite> = self.service_db_pool.acquire_write().await?;
+        let mut connection: sqlx::pool::PoolConnection<Sqlite> = self.service_db_pool.acquire_read().await?;
         in_transaction(&mut connection, |transaction| async move {
             let app = self.with_transaction(transaction);
             let _principal = app.authenticate(auth_data).await?;
@@ -618,7 +664,7 @@ impl Application {
         package: &str,
         version: &str,
     ) -> Result<DepsAnalysis, ApiError> {
-        let mut connection: sqlx::pool::PoolConnection<Sqlite> = self.service_db_pool.acquire_write().await?;
+        let mut connection: sqlx::pool::PoolConnection<Sqlite> = self.service_db_pool.acquire_read().await?;
         let targets = in_transaction(&mut connection, |transaction| async move {
             let app = self.with_transaction(transaction);
             let _principal = app.authenticate(auth_data).await?;
@@ -658,7 +704,12 @@ impl<'a, 'c> ApplicationWithTransaction<'a, 'c> {
             // self authentication to read
             return Ok(Authentication::new_self());
         }
-        let user = self.database.check_token(&token.id, &token.secret).await?;
+        let user = self
+            .database
+            .check_token(&token.id, &token.secret, &|event| {
+                self.application.token_usage_update.send(event).unwrap();
+            })
+            .await?;
         Ok(user)
     }
 }

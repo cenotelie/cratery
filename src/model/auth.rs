@@ -150,3 +150,14 @@ pub fn find_field_in_blob<'v>(blob: &'v serde_json::Value, path: &str) -> Option
     }
     last.as_str()
 }
+
+/// Event when a token was used
+#[derive(Debug, Clone)]
+pub struct TokenUsageEvent {
+    /// Whether this was a user token (or a global one)
+    pub is_user_token: bool,
+    /// The unique identifier for the token
+    pub token_id: i64,
+    /// The timestamp when the token was used
+    pub timestamp: NaiveDateTime,
+}
