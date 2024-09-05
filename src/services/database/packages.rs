@@ -337,18 +337,7 @@ impl<'c> Database<'c> {
             .map(|row| JobCrate {
                 name: row.package,
                 version: row.version,
-                targets: row
-                    .targets
-                    .split(',')
-                    .filter_map(|s| {
-                        let s = s.trim();
-                        if s.is_empty() {
-                            None
-                        } else {
-                            Some(s.to_string())
-                        }
-                    })
-                    .collect::<Vec<_>>(),
+                targets: comma_sep_to_vec(&row.targets),
             })
             .collect())
     }

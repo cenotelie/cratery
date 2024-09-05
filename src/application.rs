@@ -17,7 +17,7 @@ use crate::model::cargo::{
 };
 use crate::model::config::Configuration;
 use crate::model::deps::DepsAnalysis;
-use crate::model::docs::DocGenJob;
+use crate::model::docs::{DocGenJob, DocGenTrigger};
 use crate::model::packages::CrateInfo;
 use crate::model::stats::{DownloadStats, GlobalStats};
 use crate::model::{CrateVersion, JobCrate, RegistryInformation};
@@ -90,18 +90,17 @@ impl Application {
             crate::services::docs::get_docs_generator(configuration.clone(), service_db_pool.clone(), service_storage.clone());
 
         // check undocumented packages
-        {
-            let service_docs_generator = service_docs_generator.clone();
+        let job_specs = {
             let mut connection = service_db_pool.acquire().await?;
             in_transaction(&mut connection, |transaction| async move {
                 let app = Database::new(transaction);
                 let jobs = app.get_undocumented_crates().await?;
-                for job in jobs {
-                    service_docs_generator.queue(job)?;
-                }
-                Ok::<_, ApiError>(())
+                Ok::<_, ApiError>(jobs)
             })
-            .await?;
+            .await
+        }?;
+        for spec in &job_specs {
+            service_docs_generator.queue(spec, &DocGenTrigger::MissingOnLaunch).await?;
         }
 
         // deps worker
@@ -312,6 +311,7 @@ impl Application {
         in_transaction(&mut connection, |transaction| async move {
             let app = self.with_transaction(transaction);
             let principal = app.authenticate(auth_data).await?;
+            let user = app.database.get_user_profile(principal.uid()?).await?;
             // deserialize payload
             let package = CrateUploadData::new(content)?;
             let index_data = package.build_index_data();
@@ -321,11 +321,16 @@ impl Application {
             self.service_index.publish_crate_version(&index_data).await?;
             let targets = app.database.get_crate_targets(&package.metadata.name).await?;
             // generate the doc
-            self.service_docs_generator.queue(JobCrate {
-                name: package.metadata.name.clone(),
-                version: package.metadata.vers.clone(),
-                targets,
-            })?;
+            self.service_docs_generator
+                .queue(
+                    &JobCrate {
+                        name: package.metadata.name.clone(),
+                        version: package.metadata.vers.clone(),
+                        targets,
+                    },
+                    &DocGenTrigger::Upload { by: user },
+                )
+                .await?;
             Ok(r)
         })
         .await
@@ -444,25 +449,35 @@ impl Application {
         in_transaction(&mut connection, |transaction| async move {
             let app = self.with_transaction(transaction);
             let _principal = app.authenticate(auth_data).await?;
-            Ok(self.service_docs_generator.get_jobs())
+            self.service_docs_generator.get_jobs().await
         })
         .await
     }
 
     /// Force the re-generation for the documentation of a package
-    pub async fn regen_crate_version_doc(&self, auth_data: &AuthData, package: &str, version: &str) -> Result<(), ApiError> {
+    pub async fn regen_crate_version_doc(
+        &self,
+        auth_data: &AuthData,
+        package: &str,
+        version: &str,
+    ) -> Result<DocGenJob, ApiError> {
         let mut connection: sqlx::pool::PoolConnection<Sqlite> = self.service_db_pool.acquire().await?;
         in_transaction(&mut connection, |transaction| async move {
             let app = self.with_transaction(transaction);
             let principal = app.authenticate(auth_data).await?;
+            let user = app.database.get_user_profile(principal.uid()?).await?;
             app.database.regen_crate_version_doc(&principal, package, version).await?;
             let targets = app.database.get_crate_targets(package).await?;
-            self.service_docs_generator.queue(JobCrate {
-                name: package.to_string(),
-                version: version.to_string(),
-                targets,
-            })?;
-            Ok(())
+            self.service_docs_generator
+                .queue(
+                    &JobCrate {
+                        name: package.to_string(),
+                        version: version.to_string(),
+                        targets,
+                    },
+                    &DocGenTrigger::Manual { by: user },
+                )
+                .await
         })
         .await
     }

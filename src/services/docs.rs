@@ -6,34 +6,33 @@
 
 use std::path::{Path, PathBuf};
 use std::process::Stdio;
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
+use std::time::Duration;
 
-use chrono::Local;
 use flate2::bufread::GzDecoder;
-use futures::StreamExt;
 use log::{error, info};
 use sqlx::{Pool, Sqlite};
 use tar::Archive;
 use tokio::process::Command;
-use tokio::sync::mpsc::{UnboundedReceiver, UnboundedSender};
-use tokio_stream::wrappers::UnboundedReceiverStream;
+use tokio::time::interval;
 
 use crate::model::config::Configuration;
-use crate::model::docs::{DocGenJob, DocGenJobState};
+use crate::model::docs::{DocGenJob, DocGenJobState, DocGenTrigger};
 use crate::model::JobCrate;
 use crate::services::database::Database;
 use crate::services::storage::Storage;
 use crate::utils::apierror::{error_backend_failure, specialize, ApiError};
 use crate::utils::concurrent::n_at_a_time;
 use crate::utils::db::in_transaction;
+use crate::utils::FaillibleFuture;
 
 /// Service to generate documentation for a crate
 pub trait DocsGenerator {
     /// Gets all the jobs
-    fn get_jobs(&self) -> Vec<DocGenJob>;
+    fn get_jobs(&self) -> FaillibleFuture<'_, Vec<DocGenJob>>;
 
     /// Queues a job for documentation generation
-    fn queue(&self, job: JobCrate) -> Result<(), ApiError>;
+    fn queue<'a>(&'a self, spec: &'a JobCrate, trigger: &'a DocGenTrigger) -> FaillibleFuture<'a, DocGenJob>;
 }
 
 /// Gets the documentation generation service
@@ -42,17 +41,17 @@ pub fn get_docs_generator(
     service_db_pool: Pool<Sqlite>,
     service_storage: Arc<dyn Storage + Send + Sync>,
 ) -> Arc<dyn DocsGenerator + Send + Sync> {
-    let (sender, receiver) = tokio::sync::mpsc::unbounded_channel();
     let service = Arc::new(DocsGeneratorImpl {
         configuration,
         service_db_pool,
         service_storage,
-        jobs: Arc::new(Mutex::new(Vec::with_capacity(64))),
-        jobs_sender: sender,
     });
-    let service2 = service.clone();
-    let _handle = tokio::spawn(async move {
-        service2.worker(receiver).await;
+    // launch workers
+    let _handle = tokio::spawn({
+        let service = service.clone();
+        async move {
+            service.worker().await;
+        }
     });
     service
 }
@@ -66,88 +65,120 @@ struct DocsGeneratorImpl {
     service_db_pool: Pool<Sqlite>,
     /// The storage layer
     service_storage: Arc<dyn Storage + Send + Sync>,
-    /// The documentation jobs
-    jobs: Arc<Mutex<Vec<DocGenJob>>>,
-    /// Sender to send job signals to the worker
-    jobs_sender: UnboundedSender<usize>,
 }
 
 impl DocsGenerator for DocsGeneratorImpl {
     /// Gets all the jobs
-    fn get_jobs(&self) -> Vec<DocGenJob> {
-        self.jobs.lock().unwrap().clone()
+    fn get_jobs(&self) -> FaillibleFuture<'_, Vec<DocGenJob>> {
+        Box::pin(async move {
+            let mut connection = self.service_db_pool.acquire().await?;
+            let jobs = in_transaction(&mut connection, |transaction| async move {
+                let database = Database::new(transaction);
+                database.get_docgen_jobs().await
+            })
+            .await?;
+            Ok(jobs)
+        })
     }
 
     /// Queues a job for documentation generation
-    fn queue(&self, spec: JobCrate) -> Result<(), ApiError> {
-        let now = Local::now().naive_local();
-        let index = {
-            let mut jobs = self.jobs.lock().unwrap();
-            let index = jobs.len();
-            jobs.push(DocGenJob {
-                spec,
-                state: DocGenJobState::Queued,
-                last_update: now,
-                output: String::new(),
-            });
-            index
-        };
-        self.jobs_sender.send(index)?;
-        Ok(())
+    fn queue<'a>(&'a self, spec: &'a JobCrate, trigger: &'a DocGenTrigger) -> FaillibleFuture<'a, DocGenJob> {
+        Box::pin(async move {
+            let mut connection = self.service_db_pool.acquire().await?;
+            let job = in_transaction(&mut connection, |transaction| async move {
+                let database = Database::new(transaction);
+                database.create_docgen_job(spec, trigger).await
+            })
+            .await?;
+            Ok(job)
+        })
     }
 }
 
 impl DocsGeneratorImpl {
     /// Update a job
-    fn update_job(&self, job_index: usize, state: DocGenJobState, output: Option<&str>) {
-        let now = Local::now().naive_local();
-        let mut jobs = self.jobs.lock().unwrap();
-        let job = jobs.get_mut(job_index).unwrap();
-        job.state = state;
-        job.last_update = now;
-        if let Some(output) = output {
-            job.output.push_str(output);
-        }
+    async fn update_job(&self, job_id: i64, state: DocGenJobState, output: Option<&str>) -> Result<(), ApiError> {
+        let mut connection = self.service_db_pool.acquire().await?;
+        in_transaction(&mut connection, |transaction| async move {
+            let database = Database::new(transaction);
+            database.update_docgen_job(job_id, state, output.unwrap_or_default()).await
+        })
+        .await?;
+        Ok(())
+    }
+
+    /// Gets the next job, if any
+    async fn get_next_job(&self) -> Result<Option<DocGenJob>, ApiError> {
+        let mut connection = self.service_db_pool.acquire().await?;
+        let job = in_transaction(&mut connection, |transaction| async move {
+            let database = Database::new(transaction);
+            database.get_next_docgen_job().await
+        })
+        .await?;
+        Ok(job)
     }
 
     /// Implementation of the worker
-    async fn worker(&self, receiver: UnboundedReceiver<usize>) {
-        let mut stream = UnboundedReceiverStream::new(receiver);
-        while let Some(job_index) = stream.next().await {
-            self.update_job(job_index, DocGenJobState::Working, None);
-            match self.docs_worker_job(job_index).await {
-                Ok((final_state, output)) => {
-                    self.update_job(job_index, final_state, output.as_deref());
-                }
+    async fn worker(&self) {
+        // check every 10 seconds
+        let mut interval = interval(Duration::from_secs(10));
+        loop {
+            interval.tick().await;
+            match self.get_next_job().await {
                 Err(e) => {
                     error!("{e}");
                     if let Some(backtrace) = &e.backtrace {
                         error!("{backtrace}");
                     }
-                    self.update_job(job_index, DocGenJobState::Failure, Some(&e.to_string()));
                 }
+                Ok(Some(job)) => {
+                    if let Err(e) = self.docs_worker_on_job(&job).await {
+                        error!("{e}");
+                        if let Some(backtrace) = &e.backtrace {
+                            error!("{backtrace}");
+                        }
+                    }
+                }
+                Ok(None) => {}
             }
         }
     }
 
     /// Executes a documentation generation job
-    async fn docs_worker_job(&self, job_index: usize) -> Result<(DocGenJobState, Option<String>), ApiError> {
-        let job = self.jobs.lock().unwrap().get(job_index).unwrap().spec.clone();
-        info!("generating doc for {} {}", job.name, job.version);
-        let content = self.service_storage.download_crate(&job.name, &job.version).await?;
-        let temp_folder = Self::extract_content(&job.name, &job.version, &content)?;
+    async fn docs_worker_on_job(&self, job: &DocGenJob) -> Result<(), ApiError> {
+        self.update_job(job.id, DocGenJobState::Working, None).await?;
+        match self.docs_worker_execute_job(job).await {
+            Ok((final_state, output)) => {
+                self.update_job(job.id, final_state, output.as_deref()).await?;
+            }
+            Err(e) => {
+                error!("{e}");
+                if let Some(backtrace) = &e.backtrace {
+                    error!("{backtrace}");
+                }
+                self.update_job(job.id, DocGenJobState::Failure, Some(&e.to_string())).await?;
+            }
+        }
+        Ok(())
+    }
+
+    /// Executes a documentation generation job
+    async fn docs_worker_execute_job(&self, job: &DocGenJob) -> Result<(DocGenJobState, Option<String>), ApiError> {
+        info!("generating doc for {} {}", job.package, job.version);
+        let content = self.service_storage.download_crate(&job.package, &job.version).await?;
+        let temp_folder = Self::extract_content(&job.package, &job.version, &content)?;
         let (final_state, output) = match self.generate_doc(&temp_folder).await {
             Ok(mut project_folder) => {
                 project_folder.push("target");
                 project_folder.push("doc");
                 let doc_folder = project_folder;
-                self.upload_package(&job.name, &job.version, &doc_folder).await?;
+                self.upload_package(&job.package, &job.version, &doc_folder).await?;
                 (DocGenJobState::Success, None)
             }
             Err(e) => {
                 // upload the log
                 let log = e.details.unwrap();
-                let path = format!("{}/{}/log.txt", job.name, job.version);
+                let path = format!("{}/{}/log.txt", job.package, job.version);
                 self.service_storage.store_doc_data(&path, log.as_bytes().to_vec()).await?;
                 (DocGenJobState::Failure, Some(log))
             }
@@ -156,7 +187,7 @@ impl DocsGeneratorImpl {
         in_transaction(&mut connection, |transaction| async move {
             let database = Database::new(transaction);
             database
-                .set_crate_documentation(&job.name, &job.version, final_state == DocGenJobState::Success)
+                .set_crate_documentation(&job.package, &job.version, final_state == DocGenJobState::Success)
                 .await
         })
         .await?;

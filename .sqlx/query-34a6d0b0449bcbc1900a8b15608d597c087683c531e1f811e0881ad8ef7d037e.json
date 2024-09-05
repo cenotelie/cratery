@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "UPDATE DocGenJob SET state = $2, lastUpdate = $3, output = concat(output, $4) WHERE id = $1",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 4
+    },
+    "nullable": []
+  },
+  "hash": "34a6d0b0449bcbc1900a8b15608d597c087683c531e1f811e0881ad8ef7d037e"
+}

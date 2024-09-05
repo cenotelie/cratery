@@ -5,6 +5,7 @@
 //! Service for persisting information in the database
 
 pub mod admin;
+pub mod jobs;
 pub mod packages;
 pub mod stats;
 pub mod users;
