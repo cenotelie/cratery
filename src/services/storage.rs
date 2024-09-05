@@ -10,7 +10,7 @@ use std::sync::Arc;
 
 use flate2::bufread::GzDecoder;
 use opendal::layers::LoggingLayer;
-use opendal::Operator;
+use opendal::{ErrorKind, Operator};
 use tar::Archive;
 
 use crate::model::cargo::CrateMetadata;
@@ -114,7 +114,7 @@ impl Storage for StorageImpl {
 
 impl StorageImpl {
     /// Stores the data for a crate
-    pub async fn store_crate(&self, metadata: &CrateMetadata, content: Vec<u8>) -> Result<(), ApiError> {
+    async fn store_crate(&self, metadata: &CrateMetadata, content: Vec<u8>) -> Result<(), ApiError> {
         let readme = extract_readme(&content)?;
         let metadata_json = serde_json::to_vec(metadata)?;
         let name = &metadata.name;
@@ -130,12 +130,24 @@ impl StorageImpl {
     }
 
     /// Downloads a crate
-    pub async fn download_crate(&self, name: &str, version: &str) -> Result<Vec<u8>, ApiError> {
-        self.read_from_file(&Self::data_path(name, version)).await
+    async fn download_crate(&self, name: &str, version: &str) -> Result<Vec<u8>, ApiError> {
+        match self.read_from_file(&Self::data_path(name, version)).await {
+            Ok(data) => Ok(data),
+            Err(e) => {
+                if e.kind() == ErrorKind::NotFound {
+                    // legacy alternative path when not found
+                    self.read_from_file(&format!("crates/{name}/{version}"))
+                        .await
+                        .map_err(ApiError::from)
+                } else {
+                    Err(e.into())
+                }
+            }
+        }
     }
 
     /// Downloads the last metadata for a crate
-    pub async fn download_crate_metadata(&self, name: &str, version: &str) -> Result<Option<CrateMetadata>, ApiError> {
+    async fn download_crate_metadata(&self, name: &str, version: &str) -> Result<Option<CrateMetadata>, ApiError> {
         if let Ok(data) = self.read_from_file(&Self::metadata_path(name, version)).await {
             Ok(Some(serde_json::from_slice(&data)?))
         } else {
@@ -144,38 +156,39 @@ impl StorageImpl {
     }
 
     /// Downloads the last README for a crate
-    pub async fn download_crate_readme(&self, name: &str, version: &str) -> Result<Vec<u8>, ApiError> {
-        self.read_from_file(&Self::readme_path(name, version)).await
+    async fn download_crate_readme(&self, name: &str, version: &str) -> Result<Vec<u8>, ApiError> {
+        self.read_from_file(&Self::readme_path(name, version))
+            .await
+            .map_err(ApiError::from)
     }
 
     /// Stores a documentation file
-    pub async fn store_doc_file(&self, path: &str, file: &Path) -> Result<(), ApiError> {
+    async fn store_doc_file(&self, path: &str, file: &Path) -> Result<(), ApiError> {
         let content = tokio::fs::read(file).await?;
         self.write_to_file(&format!("/docs/{path}"), content).await?;
         Ok(())
     }
 
     /// Stores a documentation file
-    pub async fn store_doc_data(&self, path: &str, content: Vec<u8>) -> Result<(), ApiError> {
+    async fn store_doc_data(&self, path: &str, content: Vec<u8>) -> Result<(), ApiError> {
         self.write_to_file(&format!("docs/{path}"), content).await?;
         Ok(())
     }
 
     /// Gets the content of a documentation file
-    pub async fn download_doc_file(&self, path: &str) -> Result<Vec<u8>, ApiError> {
-        self.read_from_file(&format!("docs/{path}")).await
+    async fn download_doc_file(&self, path: &str) -> Result<Vec<u8>, ApiError> {
+        self.read_from_file(&format!("docs/{path}")).await.map_err(ApiError::from)
     }
 
     /// Write to a file
-    pub async fn write_to_file(&self, path: &str, content: Vec<u8>) -> Result<(), ApiError> {
+    async fn write_to_file(&self, path: &str, content: Vec<u8>) -> Result<(), ApiError> {
         self.opendal_operator.write(path, content).await?;
         Ok(())
     }
 
     /// Reads from a file
-    async fn read_from_file(&self, path: &str) -> Result<Vec<u8>, ApiError> {
+    async fn read_from_file(&self, path: &str) -> Result<Vec<u8>, opendal::Error> {
         let buffer = self.opendal_operator.read(path).await?;
-
         Ok(buffer.to_vec())
     }
 
