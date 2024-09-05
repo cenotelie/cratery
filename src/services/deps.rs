@@ -121,7 +121,7 @@ async fn deps_worker_job_on_crate_version(
     let has_outdated = analysis.direct_dependencies.iter().any(|info| info.is_outdated);
     let has_cves = !analysis.advisories.is_empty();
     let (old_has_outdated, old_has_cves) = {
-        let mut connection = pool.acquire_write().await?;
+        let mut connection = pool.acquire_write("set_crate_deps_analysis").await?;
         in_transaction(&mut connection, |transaction| async move {
             let database = Database::new(transaction);
             database

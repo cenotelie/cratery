@@ -91,7 +91,7 @@ impl DocsGenerator for DocsGeneratorImpl {
     /// Queues a job for documentation generation
     fn queue<'a>(&'a self, spec: &'a JobCrate, trigger: &'a DocGenTrigger) -> FaillibleFuture<'a, DocGenJob> {
         Box::pin(async move {
-            let mut connection = self.service_db_pool.acquire_write().await?;
+            let mut connection = self.service_db_pool.acquire_write("create_docgen_job").await?;
             let job = in_transaction(&mut connection, |transaction| async move {
                 let database = Database::new(transaction);
                 database.create_docgen_job(spec, trigger).await
@@ -110,12 +110,13 @@ impl DocsGenerator for DocsGeneratorImpl {
 impl DocsGeneratorImpl {
     /// Update a job
     async fn update_job(&self, job_id: i64, state: DocGenJobState, output: Option<&str>) -> Result<(), ApiError> {
-        let mut connection = self.service_db_pool.acquire_write().await?;
+        let mut connection = self.service_db_pool.acquire_write("update_docgen_job").await?;
         in_transaction(&mut connection, |transaction| async move {
             let database = Database::new(transaction);
             database.update_docgen_job(job_id, state, output.unwrap_or_default()).await
         })
         .await?;
+        drop(connection);
 
         // send updates
         let now = Local::now().naive_local();
@@ -208,7 +209,7 @@ impl DocsGeneratorImpl {
                 (DocGenJobState::Failure, Some(log))
             }
         };
-        let mut connection = self.service_db_pool.acquire_write().await?;
+        let mut connection = self.service_db_pool.acquire_write("set_crate_documentation").await?;
         in_transaction(&mut connection, |transaction| async move {
             let database = Database::new(transaction);
             database

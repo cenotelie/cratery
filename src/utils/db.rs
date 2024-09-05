@@ -9,8 +9,10 @@ use std::convert::TryFrom;
 use std::fmt::{Display, Formatter};
 use std::ops::{Deref, DerefMut};
 use std::str::FromStr;
+use std::sync::{Arc, Mutex};
 
 use futures::Future;
+use log::error;
 use serde_derive::{Deserialize, Serialize};
 use sqlx::pool::PoolConnection;
 use sqlx::sqlite::{SqliteConnectOptions, SqliteJournalMode, SqlitePoolOptions};
@@ -29,11 +31,14 @@ pub struct RwSqlitePool {
     read: Pool<Sqlite>,
     /// The pool of write connections
     write: Pool<Sqlite>,
+    /// The name of the current write operation
+    current_write_op: Arc<Mutex<Option<&'static str>>>,
 }
 
 impl RwSqlitePool {
     /// Creates a new pool
     pub fn new(url: &str) -> Result<RwSqlitePool, ApiError> {
+        let current_write_op = Arc::new(Mutex::new(None));
         Ok(RwSqlitePool {
             read: SqlitePoolOptions::new()
                 .max_connections(DB_MAX_READ_CONNECTIONS)
@@ -44,7 +49,24 @@ impl RwSqlitePool {
                 ),
             write: SqlitePoolOptions::new()
                 .max_connections(1)
+                .before_acquire(|_connection, _metadata| {
+                    Box::pin(async move {
+                        // println!("before_acquire");
+                        Ok(true)
+                    })
+                })
+                .after_release({
+                    let current_write_op = current_write_op.clone();
+                    move |_connection, _metadata| {
+                        let current_write_op = current_write_op.clone();
+                        Box::pin(async move {
+                            *current_write_op.lock().unwrap() = None;
+                            Ok(true)
+                        })
+                    }
+                })
                 .connect_lazy_with(SqliteConnectOptions::from_str(url)?.journal_mode(SqliteJournalMode::Wal)),
+            current_write_op,
         })
     }
 
@@ -54,8 +76,20 @@ impl RwSqlitePool {
     }
 
     /// Acquires a write connection
-    pub async fn acquire_write(&self) -> Result<PoolConnection<Sqlite>, sqlx::Error> {
-        self.write.acquire().await
+    pub async fn acquire_write(&self, operation: &'static str) -> Result<PoolConnection<Sqlite>, sqlx::Error> {
+        match self.write.acquire().await {
+            Ok(c) => {
+                *self.current_write_op.lock().unwrap() = Some(operation);
+                Ok(c)
+            }
+            Err(e) => {
+                if matches!(e, sqlx::Error::PoolTimedOut) {
+                    let current = self.current_write_op.lock().unwrap().unwrap_or_default();
+                    error!("operation {operation} timed-out waiting for write connection, because it is used by {current}");
+                }
+                Err(e)
+            }
+        }
     }
 }
 

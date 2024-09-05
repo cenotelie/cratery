@@ -49,6 +49,12 @@
                     Status
                 </th>
                 <th scope="col" class="px-6 py-3">
+                    Updates
+                </th>
+                <th scope="col" class="px-6 py-3">
+                    Trigger
+                </th>
+                <th scope="col" class="px-6 py-3">
                     Actions
                 </th>
               </tr>
@@ -102,8 +108,8 @@
     function renderJob(job) {
       const linkEl = document.createElement("a");
       linkEl.className = "font-medium text-blue-600 dark:text-blue-500 hover:underline";
-      linkEl.setAttribute("href", `/crates/${job.spec.name}/${job.spec.version}`);
-      linkEl.appendChild(document.createTextNode(`${job.spec.name} ${job.spec.version}`));
+      linkEl.setAttribute("href", `/crates/${job.package}/${job.version}`);
+      linkEl.appendChild(document.createTextNode(`${job.package} ${job.version}`));
 
       const color = getJobStatusColor(job.state);
       const statusEl = document.createElement("span");
@@ -133,6 +139,24 @@
       cell2.appendChild(statusEl);
       const cell3 = document.createElement("td");
       cell3.className = "px-6 py-4";
+      const cell4 = document.createElement("td");
+      cell4.className = "px-6 py-4";
+      const cell5 = document.createElement("td");
+      cell5.className = "px-6 py-4";
+
+      cell3.appendChild(renderUpdate(job.queuedOn, "queued"));
+      if (job.state === "Working" || job.state === "Success" || job.state === "Failure") {
+        cell3.appendChild(renderUpdate(job.startedOn, "started work"));
+      }
+      if (job.state === "Success") {
+        cell3.appendChild(renderUpdate(job.finishedOn, "finished on success"));
+      }
+      if (job.state === "Failure") {
+        cell3.appendChild(renderUpdate(job.finishedOn, "finished on failure"));
+      }
+      cell3.appendChild(renderUpdate(job.lastUpdate, "-- last update"));
+
+      cell4.appendChild(renderTrigger(job.trigger));
 
       if (job.state === "Failure") {
         const refreshEl = document.createElement("span");
@@ -143,17 +167,57 @@
         refreshEl.style.cursor = "pointer";
         refreshEl.style.display = "inline-block";
         refreshEl.onclick = () => {
-          apiRegenCrateDoc(job.spec.name, job.spec.version).then(() => {
+          apiRegenCrateDoc(job.package, job.version).then(() => {
             window.location.reload();
           });
         };
-        cell3.appendChild(refreshEl);
+        cell5.appendChild(refreshEl);
       }
+
 
       row.appendChild(cell1);
       row.appendChild(cell2);
       row.appendChild(cell3);
+      row.appendChild(cell4);
+      row.appendChild(cell5);
       return row;
+    }
+
+    function renderUpdate(timestamp, text) {
+      const element = document.createElement("span");
+      element.className = "text-base text-gray-900 dark:text-white";
+      element.style.display = "block";
+      element.appendChild(document.createTextNode(`${serializeDateTime(timestamp)}: ${text}`));
+      return element;
+    }
+
+    function renderTrigger(trigger) {
+      const keys = Object.getOwnPropertyNames(trigger);
+      if (keys.includes("MissingOnLaunch")) {
+        const element = document.createElement("span");
+        element.className = "text-base text-gray-900 dark:text-white";
+        element.appendChild(document.createTextNode("doc missing on launch"));
+        return element;
+      }
+      if (keys.includes("Upload") || keys.includes("Manual")) {
+        const wrapper = document.createElement("div");
+        wrapper.className = "flex items-center me-4";
+        const element = document.createElement("p");
+        element.className = "text-base text-gray-900 dark:text-white";
+        element.appendChild(document.createTextNode(keys.includes("Upload") ? "on upload by " : "on request from "));
+        wrapper.appendChild(element);
+        wrapper.innerHTML += '<p class="ml-4 text-base text-gray-900 dark:text-white">\
+                  <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-6 h-6">\
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M17.982 18.725A7.488 7.488 0 0 0 12 15.75a7.488 7.488 0 0 0-5.982 2.975m11.963 0a9 9 0 1 0-11.963 0m11.963 0A8.966 8.966 0 0 1 12 21a8.966 8.966 0 0 1-5.982-2.275M15 9.75a3 3 0 1 1-6 0 3 3 0 0 1 6 0Z" />\
+                  </svg>\
+                </p>';
+        const user = document.createElement("p");
+        user.className = "text-base text-gray-900 dark:text-white";
+        user.appendChild(document.createTextNode(trigger[keys.includes("Upload") ? "Upload" : "Manual"].by.name));
+        wrapper.appendChild(user);
+        return wrapper;
+      }
+      return null;
     }
 </script>
 </html>
