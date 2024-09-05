@@ -115,48 +115,53 @@ impl DocsGeneratorImpl {
         let mut stream = UnboundedReceiverStream::new(receiver);
         while let Some(job_index) = stream.next().await {
             self.update_job(job_index, DocGenJobState::Working, None);
-            if let Err(e) = self.docs_worker_job(job_index).await {
-                error!("{e}");
-                if let Some(backtrace) = &e.backtrace {
-                    error!("{backtrace}");
+            match self.docs_worker_job(job_index).await {
+                Ok((final_state, output)) => {
+                    self.update_job(job_index, final_state, output.as_deref());
                 }
-                self.update_job(job_index, DocGenJobState::Failure, Some(&e.to_string()));
-            } else {
-                self.update_job(job_index, DocGenJobState::Success, None);
+                Err(e) => {
+                    error!("{e}");
+                    if let Some(backtrace) = &e.backtrace {
+                        error!("{backtrace}");
+                    }
+                    self.update_job(job_index, DocGenJobState::Failure, Some(&e.to_string()));
+                }
             }
         }
     }
 
     /// Executes a documentation generation job
-    async fn docs_worker_job(&self, job_index: usize) -> Result<(), ApiError> {
+    async fn docs_worker_job(&self, job_index: usize) -> Result<(DocGenJobState, Option<String>), ApiError> {
         let job = self.jobs.lock().unwrap().get(job_index).unwrap().spec.clone();
         info!("generating doc for {} {}", job.name, job.version);
         let content = self.service_storage.download_crate(&job.name, &job.version).await?;
         let temp_folder = Self::extract_content(&job.name, &job.version, &content)?;
-        let gen_is_ok = match self.generate_doc(&temp_folder).await {
+        let (final_state, output) = match self.generate_doc(&temp_folder).await {
             Ok(mut project_folder) => {
                 project_folder.push("target");
                 project_folder.push("doc");
                 let doc_folder = project_folder;
                 self.upload_package(&job.name, &job.version, &doc_folder).await?;
-                true
+                (DocGenJobState::Success, None)
             }
             Err(e) => {
                 // upload the log
                 let log = e.details.unwrap();
                 let path = format!("{}/{}/log.txt", job.name, job.version);
-                self.service_storage.store_doc_data(&path, log.into_bytes()).await?;
-                false
+                self.service_storage.store_doc_data(&path, log.as_bytes().to_vec()).await?;
+                (DocGenJobState::Failure, Some(log))
             }
         };
         let mut connection = self.service_db_pool.acquire().await?;
         in_transaction(&mut connection, |transaction| async move {
             let database = Database::new(transaction);
-            database.set_crate_documentation(&job.name, &job.version, gen_is_ok).await
+            database
+                .set_crate_documentation(&job.name, &job.version, final_state == DocGenJobState::Success)
+                .await
         })
         .await?;
         tokio::fs::remove_dir_all(&temp_folder).await?;
-        Ok(())
+        Ok((final_state, output))
     }
 
     /// Generates and upload the documentation for a crate

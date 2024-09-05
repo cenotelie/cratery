@@ -56,6 +56,7 @@ pub async fn execute_at_location(location: &Path, command: &str, args: &[&str], 
         .args(args)
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
         .spawn()?;
     child.stdin.as_mut().unwrap().write_all(input).await?;
     let output = child.wait_with_output().await?;
