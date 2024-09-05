@@ -15,7 +15,6 @@ use base64::engine::general_purpose::STANDARD;
 use base64::Engine;
 use futures::lock::Mutex;
 use log::{error, info};
-use sqlx::{Pool, Sqlite};
 use tokio::fs::File;
 use tokio::io::AsyncBufReadExt;
 
@@ -28,7 +27,7 @@ use crate::services::emails::EmailSender;
 use crate::services::index::Index;
 use crate::services::rustsec::RustSecChecker;
 use crate::utils::apierror::{error_backend_failure, error_not_found, specialize, ApiError};
-use crate::utils::db::in_transaction;
+use crate::utils::db::{in_transaction, RwSqlitePool};
 use crate::utils::{stale_instant, FaillibleFuture};
 
 /// Creates a worker for the continuous check of dependencies for head crates
@@ -36,7 +35,7 @@ pub fn create_deps_worker(
     configuration: Arc<Configuration>,
     service_deps_checker: Arc<dyn DepsChecker + Send + Sync>,
     service_email_sender: Arc<dyn EmailSender + Send + Sync>,
-    pool: Pool<Sqlite>,
+    pool: RwSqlitePool,
 ) {
     let _handle = tokio::spawn({
         let service_deps_checker = service_deps_checker.clone();
@@ -80,7 +79,7 @@ async fn deps_worker_job(
     configuration: &Configuration,
     service_deps_checker: Arc<dyn DepsChecker + Send + Sync>,
     service_email_sender: Arc<dyn EmailSender + Send + Sync>,
-    pool: &Pool<Sqlite>,
+    pool: &RwSqlitePool,
 ) -> Result<(), ApiError> {
     if configuration.deps_stale_analysis <= 0 {
         // deactivated
@@ -88,7 +87,7 @@ async fn deps_worker_job(
     }
 
     let jobs = {
-        let mut connection = pool.acquire().await?;
+        let mut connection = pool.acquire_read().await?;
         in_transaction(&mut connection, |transaction| async move {
             let database = Database::new(transaction);
             database.get_unanalyzed_crates(configuration.deps_stale_analysis).await
@@ -112,7 +111,7 @@ async fn deps_worker_job_on_crate_version(
     configuration: &Configuration,
     service_deps_checker: &(dyn DepsChecker + Send + Sync),
     service_email_sender: &(dyn EmailSender + Send + Sync),
-    pool: &Pool<Sqlite>,
+    pool: &RwSqlitePool,
     job: &JobCrate,
 ) -> Result<(), ApiError> {
     info!("checking deps for {} {}", job.name, job.version);
@@ -122,7 +121,7 @@ async fn deps_worker_job_on_crate_version(
     let has_outdated = analysis.direct_dependencies.iter().any(|info| info.is_outdated);
     let has_cves = !analysis.advisories.is_empty();
     let (old_has_outdated, old_has_cves) = {
-        let mut connection = pool.acquire().await?;
+        let mut connection = pool.acquire_write().await?;
         in_transaction(&mut connection, |transaction| async move {
             let database = Database::new(transaction);
             database
@@ -136,7 +135,7 @@ async fn deps_worker_job_on_crate_version(
     {
         // must send some notification
         let owners = {
-            let mut connection = pool.acquire().await?;
+            let mut connection = pool.acquire_read().await?;
             in_transaction(&mut connection, |transaction| async move {
                 let database = Database::new(transaction);
                 database.get_crate_owners(&job.name).await

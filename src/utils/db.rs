@@ -8,12 +8,56 @@ use std::cmp::Ordering;
 use std::convert::TryFrom;
 use std::fmt::{Display, Formatter};
 use std::ops::{Deref, DerefMut};
+use std::str::FromStr;
 
 use futures::Future;
 use serde_derive::{Deserialize, Serialize};
-use sqlx::{Acquire, Sqlite, SqliteConnection, Transaction};
+use sqlx::pool::PoolConnection;
+use sqlx::sqlite::{SqliteConnectOptions, SqliteJournalMode, SqlitePoolOptions};
+use sqlx::{Acquire, Pool, Sqlite, SqliteConnection, Transaction};
 
+use super::apierror::ApiError;
 use crate::utils::shared::{ResourceLock, SharedResource, StillSharedError};
+
+/// Maximum number of concurrent READ connections
+const DB_MAX_READ_CONNECTIONS: u32 = 16;
+
+/// A pool of sqlite connection that distinguish read-only and write connections
+#[derive(Debug, Clone)]
+pub struct RwSqlitePool {
+    /// The pool of read-only connections
+    read: Pool<Sqlite>,
+    /// The pool of write connections
+    write: Pool<Sqlite>,
+}
+
+impl RwSqlitePool {
+    /// Creates a new pool
+    pub fn new(url: &str) -> Result<RwSqlitePool, ApiError> {
+        Ok(RwSqlitePool {
+            read: SqlitePoolOptions::new()
+                .max_connections(DB_MAX_READ_CONNECTIONS)
+                .connect_lazy_with(
+                    SqliteConnectOptions::from_str(url)?
+                        .journal_mode(SqliteJournalMode::Wal)
+                        .read_only(true),
+                ),
+            write: SqlitePoolOptions::new()
+                .max_connections(1)
+                .connect_lazy_with(SqliteConnectOptions::from_str(url)?.journal_mode(SqliteJournalMode::Wal)),
+        })
+    }
+
+    /// Acquires a READ-only connection
+    pub async fn acquire_read(&self) -> Result<PoolConnection<Sqlite>, sqlx::Error> {
+        self.read.acquire().await
+    }
+
+    /// Acquires a write connection
+    pub async fn acquire_write(&self) -> Result<PoolConnection<Sqlite>, sqlx::Error> {
+        self.write.acquire().await
+    }
+}
 
 /// The name of the metadata for the schema version
 pub const SCHEMA_METADATA_VERSION: &str = "version";
