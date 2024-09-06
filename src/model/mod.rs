@@ -15,6 +15,7 @@ pub mod osv;
 pub mod packages;
 pub mod stats;
 
+use auth::TokenUsage;
 use chrono::NaiveDateTime;
 use serde_derive::{Deserialize, Serialize};
 
@@ -100,4 +101,13 @@ pub struct CrateVersionDepsCheckState {
     pub deps_last_check: NaiveDateTime,
     /// The targets associated with the crate
     pub targets: String,
+}
+
+/// An event can be handled asynchronously by the application
+#[derive(Debug, Clone)]
+pub enum AppEvent {
+    /// The use of a token to authenticate
+    TokenUse(TokenUsage),
+    /// The download of a crate
+    CrateDownload(CrateVersion),
 }

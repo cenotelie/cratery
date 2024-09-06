@@ -12,7 +12,7 @@ use chrono::Local;
 use super::Database;
 use crate::model::auth::{
     find_field_in_blob, Authentication, AuthenticationPrincipal, OAuthToken, RegistryUserToken, RegistryUserTokenWithSecret,
-    TokenUsageEvent,
+    TokenKind, TokenUsage,
 };
 use crate::model::cargo::RegistryUser;
 use crate::model::config::Configuration;
@@ -358,7 +358,7 @@ impl<'c> Database<'c> {
     /// Checks an authentication request with a token
     pub async fn check_token<F, FUT>(&self, login: &str, token_secret: &str, on_usage: &F) -> Result<Authentication, ApiError>
     where
-        F: Fn(TokenUsageEvent) -> FUT,
+        F: Fn(TokenUsage) -> FUT,
         FUT: Future<Output = ()>,
     {
         if let Some(auth) = self.check_token_global(login, token_secret, &on_usage).await? {
@@ -378,7 +378,7 @@ impl<'c> Database<'c> {
         on_usage: &F,
     ) -> Result<Option<Authentication>, ApiError>
     where
-        F: Fn(TokenUsageEvent) -> FUT,
+        F: Fn(TokenUsage) -> FUT,
         FUT: Future<Output = ()>,
     {
         let rows = sqlx::query!(
@@ -392,8 +392,8 @@ impl<'c> Database<'c> {
         for row in rows {
             if check_hash(token_secret, &row.token).is_ok() {
                 let now = Local::now().naive_local();
-                on_usage(TokenUsageEvent {
-                    is_user_token: true,
+                on_usage(TokenUsage {
+                    kind: TokenKind::User,
                     token_id: row.id,
                     timestamp: now,
                 })
@@ -419,7 +419,7 @@ impl<'c> Database<'c> {
         on_usage: &F,
     ) -> Result<Option<Authentication>, ApiError>
     where
-        F: Fn(TokenUsageEvent) -> FUT,
+        F: Fn(TokenUsage) -> FUT,
         FUT: Future<Output = ()>,
     {
         let row = sqlx::query!("SELECT id, token FROM RegistryGlobalToken WHERE name = $1 LIMIT 1", login)
@@ -428,8 +428,8 @@ impl<'c> Database<'c> {
         let Some(row) = row else { return Ok(None) };
         if check_hash(token_secret, &row.token).is_ok() {
             let now = Local::now().naive_local();
-            on_usage(TokenUsageEvent {
-                is_user_token: true,
+            on_usage(TokenUsage {
+                kind: TokenKind::Registry,
                 token_id: row.id,
                 timestamp: now,
             })
@@ -441,8 +441,8 @@ impl<'c> Database<'c> {
     }
 
     /// Updates the last usage of a token
-    pub async fn update_token_last_usage(&self, event: &TokenUsageEvent) -> Result<(), ApiError> {
-        if event.is_user_token {
+    pub async fn update_token_last_usage(&self, event: &TokenUsage) -> Result<(), ApiError> {
+        if event.kind == TokenKind::User {
             sqlx::query!(
                 "UPDATE RegistryUserToken SET lastUsed = $2 WHERE id = $1",
                 event.token_id,
@@ -450,7 +450,7 @@ impl<'c> Database<'c> {
             )
             .execute(&mut *self.transaction.borrow().await)
             .await?;
-        } else {
+        } else if event.kind == TokenKind::Registry {
             sqlx::query!(
                 "UPDATE RegistryGlobalToken SET lastUsed = $2 WHERE id = $1",
                 event.token_id,

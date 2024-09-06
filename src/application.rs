@@ -10,7 +10,7 @@ use std::sync::Arc;
 use log::{error, info};
 use tokio::sync::mpsc::{channel, Receiver, Sender};
 
-use crate::model::auth::{Authentication, RegistryUserToken, RegistryUserTokenWithSecret, TokenUsageEvent};
+use crate::model::auth::{Authentication, RegistryUserToken, RegistryUserTokenWithSecret};
 use crate::model::cargo::{
     CrateUploadData, CrateUploadResult, OwnersQueryResult, RegistryUser, SearchResults, YesNoMsgResult, YesNoResult,
 };
@@ -19,7 +19,7 @@ use crate::model::deps::DepsAnalysis;
 use crate::model::docs::{DocGenEvent, DocGenJob, DocGenTrigger};
 use crate::model::packages::CrateInfo;
 use crate::model::stats::{DownloadStats, GlobalStats};
-use crate::model::{CrateVersion, JobCrate, RegistryInformation};
+use crate::model::{AppEvent, CrateVersion, JobCrate, RegistryInformation};
 use crate::services::database::Database;
 use crate::services::deps::DepsChecker;
 use crate::services::docs::DocsGenerator;
@@ -51,8 +51,8 @@ pub struct Application {
     service_email_sender: Arc<dyn EmailSender + Send + Sync>,
     /// The service to generator documentation
     service_docs_generator: Arc<dyn DocsGenerator + Send + Sync>,
-    /// The sender to use to notify about the usage of a token
-    token_usage_update: Sender<TokenUsageEvent>,
+    /// Sender to use to notify about events that will be asynchronously handled
+    app_events_sender: Sender<AppEvent>,
 }
 
 /// The empty database
@@ -108,7 +108,7 @@ impl Application {
             service_db_pool.clone(),
         );
 
-        let (token_usage_update, token_usage_receiver) = channel(64);
+        let (app_events_sender, app_events_receiver) = channel(64);
 
         let this = Arc::new(Self {
             configuration,
@@ -119,13 +119,13 @@ impl Application {
             service_deps_checker,
             service_email_sender,
             service_docs_generator,
-            token_usage_update,
+            app_events_sender,
         });
 
         let _handle = {
             let app = this.clone();
             tokio::spawn(async move {
-                app.token_usage_worker(token_usage_receiver).await;
+                app.events_handler(app_events_receiver).await;
             })
         };
 
@@ -151,7 +151,7 @@ impl Application {
     }
 
     /// The worker to handle the update of token usage
-    async fn token_usage_worker(&self, mut receiver: Receiver<TokenUsageEvent>) {
+    async fn events_handler(&self, mut receiver: Receiver<AppEvent>) {
         const BUFFER_SIZE: usize = 16;
         let mut events = Vec::with_capacity(BUFFER_SIZE);
         loop {
@@ -159,22 +159,30 @@ impl Application {
             if count == 0 {
                 break;
             }
-            if let Err(e) = self.token_usage_worker_on_events(&events).await {
+            if let Err(e) = self.events_handler_handle(&events).await {
                 error!("{e}");
                 if let Some(backtrace) = e.backtrace {
                     error!("{backtrace}");
                 }
             }
+            events.clear();
         }
     }
 
     /// Handles a set of events
-    async fn token_usage_worker_on_events(&self, events: &[TokenUsageEvent]) -> Result<(), ApiError> {
-        let mut connection = self.service_db_pool.acquire_write("update_token_last_usage").await?;
+    async fn events_handler_handle(&self, events: &[AppEvent]) -> Result<(), ApiError> {
+        let mut connection = self.service_db_pool.acquire_write("events_handler_handle").await?;
         in_transaction(&mut connection, |transaction| async move {
             let app = self.with_transaction(transaction);
             for event in events {
-                app.database.update_token_last_usage(event).await?;
+                match event {
+                    AppEvent::TokenUse(usage) => {
+                        app.database.update_token_last_usage(usage).await?;
+                    }
+                    AppEvent::CrateDownload(CrateVersion { name, version }) => {
+                        app.database.increment_crate_version_dl_count(name, version).await?;
+                    }
+                }
             }
             Ok::<_, ApiError>(())
         })
@@ -440,12 +448,17 @@ impl Application {
                 let app = self.with_transaction(transaction);
                 let _authentication = app.authenticate(auth_data).await?;
                 app.database.check_crate_exists(package, version).await?;
-                // FIXME: app.database.increment_crate_version_dl_count(package, version).await?;
                 Ok::<_, ApiError>(())
             })
             .await?;
         }
         let content = self.service_storage.download_crate(package, version).await?;
+        self.app_events_sender
+            .send(AppEvent::CrateDownload(CrateVersion {
+                name: package.to_string(),
+                version: version.to_string(),
+            }))
+            .await?;
         Ok(content)
     }
 
@@ -715,8 +728,12 @@ impl<'a, 'c> ApplicationWithTransaction<'a, 'c> {
         }
         let user = self
             .database
-            .check_token(&token.id, &token.secret, &|event| async move {
-                self.application.token_usage_update.send(event).await.unwrap();
+            .check_token(&token.id, &token.secret, &|usage| async move {
+                self.application
+                    .app_events_sender
+                    .send(AppEvent::TokenUse(usage))
+                    .await
+                    .unwrap();
             })
             .await?;
         Ok(user)

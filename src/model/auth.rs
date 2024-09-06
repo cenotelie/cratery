@@ -151,11 +151,20 @@ pub fn find_field_in_blob<'v>(blob: &'v serde_json::Value, path: &str) -> Option
     last.as_str()
 }
 
+/// The kind of auth token
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum TokenKind {
+    /// A user-specific token
+    User,
+    /// A registry-wide token
+    Registry,
+}
+
 /// Event when a token was used
 #[derive(Debug, Clone)]
-pub struct TokenUsageEvent {
-    /// Whether this was a user token (or a global one)
-    pub is_user_token: bool,
+pub struct TokenUsage {
+    /// The kind of token
+    pub kind: TokenKind,
     /// The unique identifier for the token
     pub token_id: i64,
     /// The timestamp when the token was used
