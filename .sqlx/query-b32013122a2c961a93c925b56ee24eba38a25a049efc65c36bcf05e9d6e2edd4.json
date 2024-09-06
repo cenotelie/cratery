@@ -1,0 +1,80 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT id, package, version, targets, state,\n            queuedOn AS queued_on, startedOn AS started_on, finishedOn AS finished_on, lastUpdate AS last_update,\n            triggerUser AS trigger_user, triggerEvent AS trigger_event\n            FROM DocGenJob\n            ORDER BY id DESC",
+  "describe": {
+    "columns": [
+      {
+        "name": "id",
+        "ordinal": 0,
+        "type_info": "Integer"
+      },
+      {
+        "name": "package",
+        "ordinal": 1,
+        "type_info": "Text"
+      },
+      {
+        "name": "version",
+        "ordinal": 2,
+        "type_info": "Text"
+      },
+      {
+        "name": "targets",
+        "ordinal": 3,
+        "type_info": "Text"
+      },
+      {
+        "name": "state",
+        "ordinal": 4,
+        "type_info": "Integer"
+      },
+      {
+        "name": "queued_on",
+        "ordinal": 5,
+        "type_info": "Datetime"
+      },
+      {
+        "name": "started_on",
+        "ordinal": 6,
+        "type_info": "Datetime"
+      },
+      {
+        "name": "finished_on",
+        "ordinal": 7,
+        "type_info": "Datetime"
+      },
+      {
+        "name": "last_update",
+        "ordinal": 8,
+        "type_info": "Datetime"
+      },
+      {
+        "name": "trigger_user",
+        "ordinal": 9,
+        "type_info": "Integer"
+      },
+      {
+        "name": "trigger_event",
+        "ordinal": 10,
+        "type_info": "Integer"
+      }
+    ],
+    "parameters": {
+      "Right": 0
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false
+    ]
+  },
+  "hash": "b32013122a2c961a93c925b56ee24eba38a25a049efc65c36bcf05e9d6e2edd4"
+}

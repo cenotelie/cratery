@@ -14,14 +14,14 @@ use crate::utils::token::{generate_token, hash_token};
 
 impl<'c> Database<'c> {
     /// Gets the global tokens for the registry, usually for CI purposes
-    pub async fn get_global_tokens(&self, authenticated_user: &Authentication) -> Result<Vec<RegistryUserToken>, ApiError> {
-        if !authenticated_user.can_admin {
+    pub async fn get_global_tokens(&self, authentication: &Authentication) -> Result<Vec<RegistryUserToken>, ApiError> {
+        if !authentication.can_admin {
             return Err(specialize(
                 error_forbidden(),
                 String::from("administration is forbidden for this authentication"),
             ));
         }
-        self.check_is_admin(authenticated_user.uid()?).await?;
+        self.check_is_admin(authentication.uid()?).await?;
         let rows = sqlx::query!("SELECT id, name, lastUsed AS last_used FROM RegistryGlobalToken ORDER BY id",)
             .fetch_all(&mut *self.transaction.borrow().await)
             .await?;
@@ -40,16 +40,16 @@ impl<'c> Database<'c> {
     /// Creates a global token for the registry
     pub async fn create_global_token(
         &self,
-        authenticated_user: &Authentication,
+        authentication: &Authentication,
         name: &str,
     ) -> Result<RegistryUserTokenWithSecret, ApiError> {
-        if !authenticated_user.can_admin {
+        if !authentication.can_admin {
             return Err(specialize(
                 error_forbidden(),
                 String::from("administration is forbidden for this authentication"),
             ));
         }
-        self.check_is_admin(authenticated_user.uid()?).await?;
+        self.check_is_admin(authentication.uid()?).await?;
         let row = sqlx::query!("SELECT id FROM RegistryGlobalToken WHERE name = $1 LIMIT 1", name)
             .fetch_optional(&mut *self.transaction.borrow().await)
             .await?;
@@ -82,14 +82,14 @@ impl<'c> Database<'c> {
     }
 
     /// Revokes a globel token for the registry
-    pub async fn revoke_global_token(&self, authenticated_user: &Authentication, token_id: i64) -> Result<(), ApiError> {
-        if !authenticated_user.can_admin {
+    pub async fn revoke_global_token(&self, authentication: &Authentication, token_id: i64) -> Result<(), ApiError> {
+        if !authentication.can_admin {
             return Err(specialize(
                 error_forbidden(),
                 String::from("administration is forbidden for this authentication"),
             ));
         }
-        self.check_is_admin(authenticated_user.uid()?).await?;
+        self.check_is_admin(authentication.uid()?).await?;
         sqlx::query!("DELETE FROM RegistryGlobalToken WHERE id = $1", token_id)
             .execute(&mut *self.transaction.borrow().await)
             .await?;

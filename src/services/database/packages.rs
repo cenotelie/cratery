@@ -111,16 +111,16 @@ impl<'c> Database<'c> {
     #[allow(clippy::similar_names)]
     pub async fn publish_crate_version(
         &self,
-        authenticated_user: &Authentication,
+        authentication: &Authentication,
         package: &CrateUploadData,
     ) -> Result<CrateUploadResult, ApiError> {
-        if !authenticated_user.can_write {
+        if !authentication.can_write {
             return Err(specialize(
                 error_forbidden(),
                 String::from("writing is forbidden for this authentication"),
             ));
         }
-        let uid = authenticated_user.uid()?;
+        let uid = authentication.uid()?;
         let warnings = package.metadata.validate()?;
         let lowercase = package.metadata.name.to_ascii_lowercase();
         let row = sqlx::query!(
@@ -209,8 +209,8 @@ impl<'c> Database<'c> {
     }
 
     /// Checks the ownership of a package
-    async fn check_crate_ownership(&self, authenticated_user: &Authentication, package: &str) -> Result<i64, ApiError> {
-        let uid = authenticated_user.uid()?;
+    async fn check_crate_ownership(&self, authentication: &Authentication, package: &str) -> Result<i64, ApiError> {
+        let uid = authentication.uid()?;
         if self.check_is_admin(uid).await.is_ok() {
             return Ok(uid);
         }
@@ -233,17 +233,17 @@ impl<'c> Database<'c> {
     /// Yank a crate version
     pub async fn yank_crate_version(
         &self,
-        authenticated_user: &Authentication,
+        authentication: &Authentication,
         package: &str,
         version: &str,
     ) -> Result<YesNoResult, ApiError> {
-        if !authenticated_user.can_write {
+        if !authentication.can_write {
             return Err(specialize(
                 error_forbidden(),
                 String::from("writing is forbidden for this authentication"),
             ));
         }
-        self.check_crate_ownership(authenticated_user, package).await?;
+        self.check_crate_ownership(authentication, package).await?;
         let row = sqlx::query!(
             "SELECT yanked FROM PackageVersion WHERE package = $1 AND version = $2 LIMIT 1",
             package,
@@ -279,17 +279,17 @@ impl<'c> Database<'c> {
     /// Unyank a crate version
     pub async fn unyank_crate_version(
         &self,
-        authenticated_user: &Authentication,
+        authentication: &Authentication,
         package: &str,
         version: &str,
     ) -> Result<YesNoResult, ApiError> {
-        if !authenticated_user.can_write {
+        if !authentication.can_write {
             return Err(specialize(
                 error_forbidden(),
                 String::from("writing is forbidden for this authentication"),
             ));
         }
-        self.check_crate_ownership(authenticated_user, package).await?;
+        self.check_crate_ownership(authentication, package).await?;
         let row = sqlx::query!(
             "SELECT yanked FROM PackageVersion WHERE package = $1 AND version = $2 LIMIT 1",
             package,
@@ -358,17 +358,17 @@ impl<'c> Database<'c> {
     /// Force the re-generation for the documentation of a package
     pub async fn regen_crate_version_doc(
         &self,
-        authenticated_user: &Authentication,
+        authentication: &Authentication,
         package: &str,
         version: &str,
     ) -> Result<(), ApiError> {
-        if !authenticated_user.can_write {
+        if !authentication.can_write {
             return Err(specialize(
                 error_forbidden(),
                 String::from("writing is forbidden for this authentication"),
             ));
         }
-        self.check_crate_ownership(authenticated_user, package).await?;
+        self.check_crate_ownership(authentication, package).await?;
         let row = sqlx::query!(
             "SELECT yanked FROM PackageVersion WHERE package = $1 AND version = $2 LIMIT 1",
             package,
@@ -573,18 +573,18 @@ impl<'c> Database<'c> {
     /// Add owners to a package
     pub async fn add_crate_owners(
         &self,
-        authenticated_user: &Authentication,
+        authentication: &Authentication,
         package: &str,
         new_users: &[String],
     ) -> Result<YesNoMsgResult, ApiError> {
-        if !authenticated_user.can_admin {
+        if !authentication.can_admin {
             return Err(specialize(
                 error_forbidden(),
                 String::from("administration is forbidden for this authentication"),
             ));
         }
         // check access
-        self.check_crate_ownership(authenticated_user, package).await?;
+        self.check_crate_ownership(authentication, package).await?;
         // get all current owners
         let rows = sqlx::query!("SELECT owner FROM PackageOwner WHERE package = $1", package,)
             .fetch_all(&mut *self.transaction.borrow().await)
@@ -612,18 +612,18 @@ impl<'c> Database<'c> {
     /// Remove owners from a package
     pub async fn remove_crate_owners(
         &self,
-        authenticated_user: &Authentication,
+        authentication: &Authentication,
         package: &str,
         old_users: &[String],
     ) -> Result<YesNoResult, ApiError> {
-        if !authenticated_user.can_admin {
+        if !authentication.can_admin {
             return Err(specialize(
                 error_forbidden(),
                 String::from("administration is forbidden for this authentication"),
             ));
         }
         // check access
-        self.check_crate_ownership(authenticated_user, package).await?;
+        self.check_crate_ownership(authentication, package).await?;
         // get all current owners
         let rows = sqlx::query!("SELECT owner FROM PackageOwner WHERE package = $1", package,)
             .fetch_all(&mut *self.transaction.borrow().await)
@@ -660,18 +660,18 @@ impl<'c> Database<'c> {
     /// Sets the targets for a crate
     pub async fn set_crate_targets(
         &self,
-        authenticated_user: &Authentication,
+        authentication: &Authentication,
         package: &str,
         targets: &[String],
     ) -> Result<(), ApiError> {
-        if !authenticated_user.can_admin {
+        if !authentication.can_admin {
             return Err(specialize(
                 error_forbidden(),
                 String::from("administration is forbidden for this authentication"),
             ));
         }
         // check access
-        self.check_crate_ownership(authenticated_user, package).await?;
+        self.check_crate_ownership(authentication, package).await?;
         let targets = targets.join(",");
         sqlx::query!("UPDATE Package SET targets = $2 WHERE name = $1", package, targets)
             .execute(&mut *self.transaction.borrow().await)

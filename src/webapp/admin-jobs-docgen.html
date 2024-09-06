@@ -154,7 +154,6 @@
       if (job.state === "Failure") {
         cell3.appendChild(renderUpdate(job.finishedOn, "finished on failure"));
       }
-      cell3.appendChild(renderUpdate(job.lastUpdate, "-- last update"));
 
       cell4.appendChild(renderTrigger(job.trigger));
 

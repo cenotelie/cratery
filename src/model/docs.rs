@@ -117,8 +117,6 @@ pub struct DocGenJob {
     pub last_update: NaiveDateTime,
     /// The event that triggered the job
     pub trigger: DocGenTrigger,
-    /// The output log, if any
-    pub output: String,
 }
 
 /// An update to a documentation generation job
@@ -132,6 +130,15 @@ pub struct DocGenJobUpdate {
     /// The update timestamp
     #[serde(rename = "lastUpdate")]
     pub last_update: NaiveDateTime,
-    /// The appended output, if any
-    pub output: String,
+    /// The appended log, if any
+    pub log: Option<String>,
+}
+
+/// An event for the documentation generation service
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum DocGenEvent {
+    /// An new job was queued
+    Queued(Box<DocGenJob>),
+    /// A job was updated
+    Update(DocGenJobUpdate),
 }

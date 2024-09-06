@@ -6,7 +6,7 @@
 
 use std::path::{Path, PathBuf};
 use std::process::Stdio;
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
 use std::time::Duration;
 
 use chrono::Local;
@@ -14,11 +14,12 @@ use flate2::bufread::GzDecoder;
 use log::{error, info};
 use tar::Archive;
 use tokio::process::Command;
-use tokio::sync::mpsc::UnboundedSender;
+use tokio::sync::mpsc::Sender;
+use tokio::sync::Mutex;
 use tokio::time::interval;
 
 use crate::model::config::Configuration;
-use crate::model::docs::{DocGenJob, DocGenJobState, DocGenJobUpdate, DocGenTrigger};
+use crate::model::docs::{DocGenEvent, DocGenJob, DocGenJobState, DocGenJobUpdate, DocGenTrigger};
 use crate::model::JobCrate;
 use crate::services::database::Database;
 use crate::services::storage::Storage;
@@ -32,11 +33,14 @@ pub trait DocsGenerator {
     /// Gets all the jobs
     fn get_jobs(&self) -> FaillibleFuture<'_, Vec<DocGenJob>>;
 
+    /// Gets the log for a job
+    fn get_job_log(&self, job_id: i64) -> FaillibleFuture<'_, String>;
+
     /// Queues a job for documentation generation
     fn queue<'a>(&'a self, spec: &'a JobCrate, trigger: &'a DocGenTrigger) -> FaillibleFuture<'a, DocGenJob>;
 
     /// Adds a listener to job updates
-    fn add_update_listener(&self, listener: UnboundedSender<DocGenJobUpdate>);
+    fn add_listener(&self, listener: Sender<DocGenEvent>) -> FaillibleFuture<'_, ()>;
 }
 
 /// Gets the documentation generation service
@@ -71,7 +75,7 @@ struct DocsGeneratorImpl {
     /// The storage layer
     service_storage: Arc<dyn Storage + Send + Sync>,
     /// The active listeners
-    listeners: Arc<Mutex<Vec<UnboundedSender<DocGenJobUpdate>>>>,
+    listeners: Arc<Mutex<Vec<Sender<DocGenEvent>>>>,
 }
 
 impl DocsGenerator for DocsGeneratorImpl {
@@ -88,6 +92,21 @@ impl DocsGenerator for DocsGeneratorImpl {
         })
     }
 
+    /// Gets the log for a job
+    fn get_job_log(&self, job_id: i64) -> FaillibleFuture<'_, String> {
+        Box::pin(async move {
+            let mut connection = self.service_db_pool.acquire_read().await?;
+            let job = in_transaction(&mut connection, |transaction| async move {
+                let database = Database::new(transaction);
+                database.get_docgen_job(job_id).await
+            })
+            .await?;
+            drop(connection);
+            let data = self.service_storage.download_doc_file(&Self::job_log_location(&job)).await?;
+            Ok(String::from_utf8(data)?)
+        })
+    }
+
     /// Queues a job for documentation generation
     fn queue<'a>(&'a self, spec: &'a JobCrate, trigger: &'a DocGenTrigger) -> FaillibleFuture<'a, DocGenJob> {
         Box::pin(async move {
@@ -97,39 +116,64 @@ impl DocsGenerator for DocsGeneratorImpl {
                 database.create_docgen_job(spec, trigger).await
             })
             .await?;
+            drop(connection);
+            self.send_event(DocGenEvent::Queued(Box::new(job.clone()))).await?;
             Ok(job)
         })
     }
 
     /// Adds a listener to job updates
-    fn add_update_listener(&self, listener: UnboundedSender<DocGenJobUpdate>) {
-        self.listeners.lock().unwrap().push(listener);
+    fn add_listener(&self, listener: Sender<DocGenEvent>) -> FaillibleFuture<'_, ()> {
+        Box::pin(async move {
+            self.listeners.lock().await.push(listener);
+            Ok(())
+        })
     }
 }
 
 impl DocsGeneratorImpl {
+    /// Gets the location in storage of the log for a documentation job
+    fn job_log_location(job: &DocGenJob) -> String {
+        format!("{}/{}/log_{}.txt", job.package, job.version, job.id)
+    }
+
+    /// Send an event to listeners
+    async fn send_event(&self, event: DocGenEvent) -> Result<(), ApiError> {
+        let mut listeners = self.listeners.lock().await;
+        let mut index = if listeners.is_empty() {
+            Some(listeners.len() - 1)
+        } else {
+            None
+        };
+        while let Some(i) = index {
+            if listeners[i].send(event.clone()).await.is_err() {
+                // remove
+                listeners.swap_remove(i);
+            }
+            index = if i == 0 { None } else { Some(i - 1) };
+        }
+        Ok(())
+    }
+
     /// Update a job
-    async fn update_job(&self, job_id: i64, state: DocGenJobState, output: Option<&str>) -> Result<(), ApiError> {
+    async fn update_job(&self, job_id: i64, state: DocGenJobState, log: Option<&str>) -> Result<(), ApiError> {
         let mut connection = self.service_db_pool.acquire_write("update_docgen_job").await?;
         in_transaction(&mut connection, |transaction| async move {
             let database = Database::new(transaction);
-            database.update_docgen_job(job_id, state, output.unwrap_or_default()).await
+            database.update_docgen_job(job_id, state).await
         })
         .await?;
         drop(connection);
 
         // send updates
         let now = Local::now().naive_local();
-        self.listeners.lock().unwrap().retain_mut(|sender| {
-            sender
-                .send(DocGenJobUpdate {
-                    job_id,
-                    state,
-                    last_update: now,
-                    output: output.unwrap_or_default().to_string(),
-                })
-                .is_ok()
-        });
+        self.send_event(DocGenEvent::Update(DocGenJobUpdate {
+            job_id,
+            state,
+            last_update: now,
+            log: log.map(str::to_string),
+        }))
+        .await?;
         Ok(())
     }
 
@@ -204,8 +248,9 @@ impl DocsGeneratorImpl {
             Err(e) => {
                 // upload the log
                 let log = e.details.unwrap();
-                let path = format!("{}/{}/log.txt", job.package, job.version);
-                self.service_storage.store_doc_data(&path, log.as_bytes().to_vec()).await?;
+                self.service_storage
+                    .store_doc_data(&Self::job_log_location(job), log.as_bytes().to_vec())
+                    .await?;
                 (DocGenJobState::Failure, Some(log))
             }
         };

@@ -19,7 +19,7 @@ use cookie::Key;
 use futures::{Stream, StreamExt};
 use serde::Deserialize;
 use tokio::fs::File;
-use tokio_stream::wrappers::UnboundedReceiverStream;
+use tokio_stream::wrappers::ReceiverStream;
 use tokio_util::io::ReaderStream;
 
 use crate::application::Application;
@@ -397,7 +397,7 @@ pub async fn api_v1_get_doc_gen_job_updates(
         Ok(r) => r,
         Err(e) => return Err(response_error(e)),
     };
-    let stream = ServerSentEventStream::new(UnboundedReceiverStream::new(receiver).map(Event::from_data));
+    let stream = ServerSentEventStream::new(ReceiverStream::new(receiver).map(Event::from_data));
     Ok(stream.into_response())
 }
 

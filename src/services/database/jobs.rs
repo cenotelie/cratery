@@ -10,7 +10,7 @@ use chrono::Local;
 use super::Database;
 use crate::model::docs::{DocGenJob, DocGenJobState, DocGenTrigger};
 use crate::model::JobCrate;
-use crate::utils::apierror::ApiError;
+use crate::utils::apierror::{error_not_found, ApiError};
 use crate::utils::comma_sep_to_vec;
 
 impl<'c> Database<'c> {
@@ -19,9 +19,9 @@ impl<'c> Database<'c> {
         let rows = sqlx::query!(
             "SELECT id, package, version, targets, state,
             queuedOn AS queued_on, startedOn AS started_on, finishedOn AS finished_on, lastUpdate AS last_update,
-            triggerUser AS trigger_user, triggerEvent AS trigger_event, output
+            triggerUser AS trigger_user, triggerEvent AS trigger_event
             FROM DocGenJob
-            ORDER BY id"
+            ORDER BY id DESC"
         )
         .fetch_all(&mut *self.transaction.borrow().await)
         .await?;
@@ -45,10 +45,44 @@ impl<'c> Database<'c> {
                         Some(self.get_user_profile(row.trigger_user).await?)
                     },
                 )),
-                output: row.output,
             });
         }
         Ok(jobs)
+    }
+
+    /// Gets a single documentation job
+    pub async fn get_docgen_job(&self, job_id: i64) -> Result<DocGenJob, ApiError> {
+        let row = sqlx::query!(
+            "SELECT id, package, version, targets, state,
+            queuedOn AS queued_on, startedOn AS started_on, finishedOn AS finished_on, lastUpdate AS last_update,
+            triggerUser AS trigger_user, triggerEvent AS trigger_event
+            FROM DocGenJob
+            WHERE id = $1
+            LIMIT 1",
+            job_id
+        )
+        .fetch_optional(&mut *self.transaction.borrow().await)
+        .await?
+        .ok_or_else(error_not_found)?;
+        Ok(DocGenJob {
+            id: row.id,
+            package: row.package,
+            version: row.version,
+            targets: comma_sep_to_vec(&row.targets),
+            state: DocGenJobState::from(row.state),
+            queued_on: row.queued_on,
+            started_on: row.started_on,
+            finished_on: row.finished_on,
+            last_update: row.last_update,
+            trigger: DocGenTrigger::from((
+                row.trigger_event,
+                if row.trigger_user < 0 {
+                    None
+                } else {
+                    Some(self.get_user_profile(row.trigger_user).await?)
+                },
+            )),
+        })
     }
 
     /// Creates and queue a documentation generation job
@@ -58,10 +92,10 @@ impl<'c> Database<'c> {
         let row = sqlx::query!(
             "SELECT id, package, version, targets, state,
             queuedOn AS queued_on, startedOn AS started_on, finishedOn AS finished_on, lastUpdate AS last_update,
-            triggerUser AS trigger_user, triggerEvent AS trigger_event, output
+            triggerUser AS trigger_user, triggerEvent AS trigger_event
             FROM DocGenJob
             WHERE state = $1 AND package = $2 AND version = $3
-            ORDER BY id
+            ORDER BY id DESC
             LIMIT 1",
             state_value,
             spec.name,
@@ -89,7 +123,6 @@ impl<'c> Database<'c> {
                         Some(self.get_user_profile(row.trigger_user).await?)
                     },
                 )),
-                output: row.output,
             });
         }
 
@@ -130,7 +163,6 @@ impl<'c> Database<'c> {
             finished_on: now,
             last_update: now,
             trigger: trigger.clone(),
-            output: String::new(),
         })
     }
 
@@ -140,7 +172,7 @@ impl<'c> Database<'c> {
         let row = sqlx::query!(
             "SELECT id, package, version, targets, state,
             queuedOn AS queued_on, startedOn AS started_on, finishedOn AS finished_on, lastUpdate AS last_update,
-            triggerUser AS trigger_user, triggerEvent AS trigger_event, output
+            triggerUser AS trigger_user, triggerEvent AS trigger_event
             FROM DocGenJob
             WHERE state = $1
             ORDER BY id
@@ -168,12 +200,11 @@ impl<'c> Database<'c> {
                     Some(self.get_user_profile(row.trigger_user).await?)
                 },
             )),
-            output: row.output,
         }))
     }
 
     /// Updates an existing job
-    pub async fn update_docgen_job(&self, job_id: i64, state: DocGenJobState, output: &str) -> Result<(), ApiError> {
+    pub async fn update_docgen_job(&self, job_id: i64, state: DocGenJobState) -> Result<(), ApiError> {
         let now = Local::now().naive_local();
         let state_value = state.value();
         if state == DocGenJobState::Working {
@@ -188,21 +219,19 @@ impl<'c> Database<'c> {
         } else if state.is_final() {
             // final state
             sqlx::query!(
-                "UPDATE DocGenJob SET state = $2, finishedOn = $3, lastUpdate = $3, output = concat(output, $4) WHERE id = $1",
+                "UPDATE DocGenJob SET state = $2, finishedOn = $3, lastUpdate = $3 WHERE id = $1",
                 job_id,
                 state_value,
-                now,
-                output
+                now
             )
             .execute(&mut *self.transaction.borrow().await)
             .await?;
         } else {
             sqlx::query!(
-                "UPDATE DocGenJob SET state = $2, lastUpdate = $3, output = concat(output, $4) WHERE id = $1",
+                "UPDATE DocGenJob SET state = $2, lastUpdate = $3 WHERE id = $1",
                 job_id,
                 state_value,
-                now,
-                output
+                now
             )
             .execute(&mut *self.transaction.borrow().await)
             .await?;
