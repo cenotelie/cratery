@@ -37,6 +37,7 @@ pub fn get_resources() -> EmbeddedResources {
     // JS
     add!(resources, "api.js");
     add!(resources, "index.js");
+    add!(resources, "stream.js");
     // images
     add!(resources, "cenotelie.png");
     add!(resources, "favicon.png");

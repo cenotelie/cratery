@@ -65,7 +65,7 @@
       </div>
     </div>
   </section>
-  <div id="modal-failure-info" tabindex="-1" class="overflow-y-auto overflow-x-hidden fixed top-0 right-0 left-0 z-50 w-full md:inset-0 h-modal md:h-full" style="display: none;">
+  <div id="modal-log" tabindex="-1" class="overflow-y-auto overflow-x-hidden fixed top-0 right-0 left-0 z-50 w-full md:inset-0 h-modal md:h-full" style="display: none;">
     <div class="overflow-y-auto overflow-x-hidden fixed top-0 right-0 left-0 z-51 w-full md:inset-0 h-modal md:h-full" style="background-color: black; opacity: 0.75;"></div>
     <div class="relative" style="margin: auto; margin-top: 10%; width: 800px;">
         <div class="relative p-4 bg-white rounded-lg shadow dark:bg-gray-800 md:p-8">
@@ -73,11 +73,11 @@
               <h3 class="mb-3 text-2xl font-bold text-gray-900 dark:text-white">Log</h3>
             </div>
             <form class="mb-3 space-y-8">
-              <textarea id="modal-failure-info-log" rows="10" class="block p-2.5 w-full text-sm text-gray-900 bg-gray-50 rounded-lg border border-gray-300 focus:ring-blue-500 focus:border-blue-500 dark:bg-gray-700 dark:border-gray-600 dark:placeholder-gray-400 dark:text-white dark:focus:ring-blue-500 dark:focus:border-blue-500"></textarea>
+              <textarea id="modal-log-value" rows="10" class="block p-2.5 w-full text-sm text-gray-900 bg-gray-50 rounded-lg border border-gray-300 focus:ring-blue-500 focus:border-blue-500 dark:bg-gray-700 dark:border-gray-600 dark:placeholder-gray-400 dark:text-white dark:focus:ring-blue-500 dark:focus:border-blue-500"></textarea>
             </form>
             <div class="justify-between items-center pt-0 space-y-4 sm:flex sm:space-y-0">
               <div class="items-center space-y-4 sm:space-x-4 sm:flex sm:space-y-0">
-                <button id="modal-failure-info-close" type="button"  class="py-2 px-4 w-full text-sm font-medium text-gray-500 bg-white rounded-lg border border-gray-200 sm:w-auto hover:bg-gray-100 focus:ring-4 focus:outline-none focus:ring-primary-300 hover:text-gray-900 focus:z-10 dark:bg-gray-700 dark:text-gray-300 dark:border-gray-500 dark:hover:text-white dark:hover:bg-gray-600 dark:focus:ring-gray-600">Close</button>
+                <button id="modal-log-close" type="button"  class="py-2 px-4 w-full text-sm font-medium text-gray-500 bg-white rounded-lg border border-gray-200 sm:w-auto hover:bg-gray-100 focus:ring-4 focus:outline-none focus:ring-primary-300 hover:text-gray-900 focus:z-10 dark:bg-gray-700 dark:text-gray-300 dark:border-gray-500 dark:hover:text-white dark:hover:bg-gray-600 dark:focus:ring-gray-600">Close</button>
               </div>
             </div>
         </div>
@@ -93,6 +93,7 @@
 <link href="/webapp/index.css" rel="stylesheet" />
 <script src="/webapp/api.js"></script>
 <script src="/webapp/index.js"></script>
+<script src="/webapp/stream.js"></script>
 <script>
     function doPageLoad() {
       onPageLoad().then((_user) => {
@@ -101,6 +102,9 @@
           for (const job of jobs) {
             jobsEl.appendChild(renderJob(job));
           }
+          // listen for updates
+          const source = new StreamEventSource("/api/v1/admin/jobs/docgen/updates", null);
+          source.map(message => JSON.parse(message.data)).then(onEvent).catch(() => {});
         })
       });
     }
@@ -116,15 +120,17 @@
       statusEl.className = `bg-${color}-100 text-${color}-800 text-xs font-medium me-2 px-2.5 py-0.5 rounded dark:bg-${color}-900 dark:text-${color}-300`;
       statusEl.style.display = "inline-block";
       statusEl.appendChild(document.createTextNode(getJobStatusText(job.state)));
-      if (job.state === "Failure") {
+      if (job.state === "Failure" || job.state === "Success") {
         statusEl.style.cursor = "pointer";
         statusEl.onclick = () => {
-          document.getElementById('modal-failure-info-log').value = job.output;
-          const closeEl = document.getElementById('modal-failure-info-close');
-          closeEl.addEventListener('click', function() {
+          apiGetDocGenJobLog(job.id).then((log) => {
+            document.getElementById('modal-log-value').value = log;
+          });
+          const closeEl = document.getElementById('modal-log-close');
+          const modalEl = document.getElementById('modal-log');
+          closeEl.addEventListener('click', () => {
             modalEl.style.display = "none";
           });
-          const modalEl = document.getElementById('modal-failure-info');
           modalEl.style.display = "unset";
         };
       }
@@ -144,15 +150,15 @@
       const cell5 = document.createElement("td");
       cell5.className = "px-6 py-4";
 
-      cell3.appendChild(renderUpdate(job.queuedOn, "queued"));
+      cell3.appendChild(renderJobUpdate(job.queuedOn, "queued"));
       if (job.state === "Working" || job.state === "Success" || job.state === "Failure") {
-        cell3.appendChild(renderUpdate(job.startedOn, "started work"));
+        cell3.appendChild(renderJobUpdate(job.startedOn, "started work"));
       }
       if (job.state === "Success") {
-        cell3.appendChild(renderUpdate(job.finishedOn, "finished on success"));
+        cell3.appendChild(renderJobUpdate(job.finishedOn, "finished on success"));
       }
       if (job.state === "Failure") {
-        cell3.appendChild(renderUpdate(job.finishedOn, "finished on failure"));
+        cell3.appendChild(renderJobUpdate(job.finishedOn, "finished on failure"));
       }
 
       cell4.appendChild(renderTrigger(job.trigger));
@@ -173,7 +179,6 @@
         cell5.appendChild(refreshEl);
       }
 
-
       row.appendChild(cell1);
       row.appendChild(cell2);
       row.appendChild(cell3);
@@ -182,7 +187,7 @@
       return row;
     }
 
-    function renderUpdate(timestamp, text) {
+    function renderJobUpdate(timestamp, text) {
       const element = document.createElement("span");
       element.className = "text-base text-gray-900 dark:text-white";
       element.style.display = "block";
@@ -217,6 +222,10 @@
         return wrapper;
       }
       return null;
+    }
+
+    function onEvent(event) {
+      console.log(event);
     }
 </script>
 </html>

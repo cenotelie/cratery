@@ -388,6 +388,15 @@ pub async fn api_v1_get_doc_gen_jobs(auth_data: AuthData, State(state): State<Ar
     response(state.application.get_doc_gen_jobs(&auth_data).await)
 }
 
+/// Gets the log for a documentation generation job
+pub async fn api_v1_get_doc_gen_job_log(
+    auth_data: AuthData,
+    State(state): State<Arc<AxumState>>,
+    Path(job_id): Path<i64>,
+) -> ApiResult<String> {
+    response(state.application.get_doc_gen_job_log(&auth_data, job_id).await)
+}
+
 /// Gets a stream of updates for documentation generation jobs
 pub async fn api_v1_get_doc_gen_job_updates(
     auth_data: AuthData,
