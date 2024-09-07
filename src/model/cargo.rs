@@ -72,6 +72,7 @@ pub struct YesNoResult {
 
 impl YesNoResult {
     /// Creates a new instance
+    #[must_use]
     pub fn new() -> YesNoResult {
         YesNoResult { ok: true }
     }
@@ -88,6 +89,7 @@ pub struct YesNoMsgResult {
 
 impl YesNoMsgResult {
     /// Creates a new instance
+    #[must_use]
     pub fn new(msg: String) -> YesNoMsgResult {
         YesNoMsgResult { ok: true, msg }
     }
@@ -452,11 +454,13 @@ pub struct IndexCrateDependency {
 
 impl IndexCrateDependency {
     /// Gets the crate name for this dependency
+    #[must_use]
     pub fn get_name(&self) -> &str {
         self.package.as_deref().unwrap_or(&self.name)
     }
 
     /// Gets whether this dependency is active, for the specified targets and features
+    #[must_use]
     pub fn is_active_for(&self, active_targets: &[String], active_features: &[&str]) -> bool {
         let is_in_targets = match self.target.as_ref() {
             None => true,

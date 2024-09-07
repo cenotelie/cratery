@@ -132,11 +132,13 @@ impl Application {
     }
 
     /// Gets the storage service
+    #[must_use]
     pub fn get_service_storage(&self) -> Arc<dyn Storage + Send + Sync> {
         self.service_storage.clone()
     }
 
     /// Gets the index service
+    #[must_use]
     pub fn get_service_index(&self) -> &(dyn Index + Send + Sync) {
         self.service_index.as_ref()
     }

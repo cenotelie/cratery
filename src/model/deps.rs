@@ -31,6 +31,7 @@ pub struct DepsAnalysis {
 
 impl DepsAnalysis {
     /// Creates the analysis
+    #[must_use]
     pub fn new(graph: &DepsGraph, deps: &[IndexCrateDependency], advisories: Vec<DepAdvisory>) -> Self {
         Self {
             direct_dependencies: deps
@@ -91,6 +92,7 @@ pub struct DepAdvisory {
 impl IndexCrateMetadata {
     /// Assumes this is the metadata for a crate in an external registry, including crates.io
     /// Find and rewrite the registry for built-in crates
+    #[must_use]
     pub fn rewrite_builtin_deps(mut self, parent_registry: &Option<String>) -> Self {
         for d in &mut self.deps {
             if d.registry.is_none() {
@@ -120,6 +122,7 @@ pub struct DepsGraph {
 
 impl DepsGraph {
     /// Builds an empty graph for the specified targets
+    #[must_use]
     pub fn new(targets: &[String]) -> Self {
         Self {
             targets: targets.to_vec(),
@@ -136,6 +139,7 @@ impl DepsGraph {
     }
 
     /// Gets whether this is a known failing crate
+    #[must_use]
     pub fn is_unknown(&self, registry: Option<&str>, name: &str) -> bool {
         self.unknowns.iter().any(|(r, n)| r.as_deref() == registry && n == name)
     }
@@ -222,6 +226,7 @@ pub enum DepsGraphCrateOrigin {
 impl DepsGraphCrateOrigin {
     /// Gets the origin for a sub-dependency of a specified kind with a dependant of the current origin
     #[allow(clippy::match_same_arms)]
+    #[must_use]
     pub fn child_of_kind(self, kind: DependencyKind) -> Option<DepsGraphCrateOrigin> {
         match (self, kind) {
             (_, DependencyKind::Dev) => None, // drop all other dev-dependencies

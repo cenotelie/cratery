@@ -28,6 +28,7 @@ pub trait RustSecChecker {
 }
 
 /// Gets the rustsec service
+#[must_use]
 pub fn get_rustsec(config: &Configuration) -> Arc<dyn RustSecChecker + Send + Sync> {
     Arc::new(RustSecCheckerImpl {
         data: Mutex::new(RustSecData::new(config.data_dir.clone(), config.deps_stale_registry)),

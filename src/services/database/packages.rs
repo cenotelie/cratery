@@ -464,7 +464,7 @@ impl Database {
         let rows = sqlx::query!("SELECT version, downloads FROM PackageVersion WHERE package = $1", package)
             .fetch_all(&mut *self.transaction.borrow().await)
             .await?;
-        let mut stats = DownloadStats::new();
+        let mut stats = DownloadStats::default();
         for row in rows {
             stats.add_version(row.version, row.downloads.as_deref());
         }

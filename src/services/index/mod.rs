@@ -33,6 +33,7 @@ pub trait Index {
 }
 
 /// Gets path elements for a package in the file system
+#[must_use]
 pub fn package_file_path(lowercase: &str) -> (&str, Option<&str>) {
     match lowercase.len() {
         0 => panic!("Empty name is not possible"),
@@ -44,6 +45,7 @@ pub fn package_file_path(lowercase: &str) -> (&str, Option<&str>) {
 }
 
 /// Produce the path elements that contains the metadata for the crate
+#[must_use]
 pub fn build_package_file_path(mut root: PathBuf, name: &str) -> PathBuf {
     let lowercase = name.to_ascii_lowercase();
     let (first, second) = package_file_path(&lowercase);

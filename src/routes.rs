@@ -742,6 +742,7 @@ pub async fn index_serve(
     ))
 }
 
+#[allow(clippy::implicit_hasher)]
 pub async fn index_serve_info_refs(
     auth_data: AuthData,
     State(state): State<Arc<AxumState>>,

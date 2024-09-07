@@ -57,10 +57,9 @@ pub struct DownloadStats {
     pub versions: Vec<DownloadStatsForVersion>,
 }
 
-impl DownloadStats {
+impl Default for DownloadStats {
     /// Creates stats with initialized dates
-    #[must_use]
-    pub fn new() -> Self {
+    fn default() -> Self {
         let today = Local::now().naive_local().date();
         let first = today.checked_sub_days(Days::new(SERIES_LENGTH as u64 - 1)).unwrap();
         let mut days = Vec::with_capacity(SERIES_LENGTH);
@@ -75,7 +74,9 @@ impl DownloadStats {
             versions: Vec::new(),
         }
     }
+}
 
+impl DownloadStats {
     /// Adds the data for a version
     pub fn add_version(&mut self, version: String, data: Option<&[u8]>) {
         let mut counts = vec![0; SERIES_LENGTH];

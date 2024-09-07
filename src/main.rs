@@ -6,7 +6,7 @@
 
 #![forbid(unsafe_code)]
 #![warn(clippy::pedantic)]
-#![allow(clippy::module_name_repetitions)]
+#![allow(clippy::module_name_repetitions, clippy::missing_panics_doc, clippy::missing_errors_doc)]
 
 use std::net::SocketAddr;
 use std::pin::pin;
@@ -23,13 +23,13 @@ use crate::application::Application;
 use crate::routes::AxumState;
 use crate::utils::sigterm::waiting_sigterm;
 
-mod application;
-mod migrations;
-mod model;
-mod routes;
-mod services;
-mod utils;
-mod webapp;
+pub mod application;
+pub mod migrations;
+pub mod model;
+pub mod routes;
+pub mod services;
+pub mod utils;
+pub mod webapp;
 
 /// The name of this program
 pub const CRATE_NAME: &str = env!("CARGO_PKG_NAME");

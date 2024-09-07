@@ -7,6 +7,7 @@
 use rand::Rng;
 
 /// Generate a new name
+#[must_use]
 pub fn generate_name() -> String {
     let adjective = ADJECTIVES[rand::thread_rng().gen_range(0..ADJECTIVES.len())];
     let noun = NOUNS[rand::thread_rng().gen_range(0..NOUNS.len())];

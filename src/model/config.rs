@@ -455,6 +455,7 @@ impl Configuration {
     }
 
     /// Gets the path to a file in the home folder
+    #[must_use]
     pub fn get_home_path_for(&self, path: &[&str]) -> PathBuf {
         let mut result = PathBuf::from(&self.home_dir);
         for e in path {
@@ -464,16 +465,19 @@ impl Configuration {
     }
 
     /// Gets the name of the file for the database
+    #[must_use]
     pub fn get_database_filename(&self) -> String {
         format!("{}/registry.db", self.data_dir)
     }
 
     /// Gets the corresponding database url
+    #[must_use]
     pub fn get_database_url(&self) -> String {
         format!("sqlite://{}/registry.db", self.data_dir)
     }
 
     /// Gets the corresponding index git config
+    #[must_use]
     pub fn get_index_git_config(&self) -> IndexConfig {
         self.index.clone()
     }

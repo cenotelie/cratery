@@ -105,6 +105,7 @@ pub struct SimpleAdvisoryRange {
 
 impl SimpleAdvisoryRange {
     /// Gets whether the specified version is affected by this range
+    #[must_use]
     pub fn affects(&self, version: &Version) -> bool {
         if let Some(fixed) = self.fixed.as_ref() {
             version >= &self.introduced && version < fixed
@@ -137,6 +138,7 @@ pub struct SimpleAdvisory {
 
 impl SimpleAdvisory {
     /// Gets whether the specified version is affected by this advisory
+    #[must_use]
     pub fn affects(&self, version: &Version) -> bool {
         if self.versions.iter().any(|v| v == version) {
             return true;

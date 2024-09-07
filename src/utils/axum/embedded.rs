@@ -46,6 +46,7 @@ impl EmbeddedResources {
 }
 
 /// Gets the content type for a file
+#[must_use]
 pub fn get_content_type(path: &str) -> &'static str {
     let extension = path.rfind('.').map(|index| &path[(index + 1)..]);
     match extension {
@@ -73,6 +74,7 @@ pub enum WebappResource {
 
 impl WebappResource {
     /// Gets the content type for the resource
+    #[must_use]
     pub fn content_type(&self) -> &str {
         match self {
             Self::Embedded(res) => res.content_type,
@@ -81,6 +83,7 @@ impl WebappResource {
     }
 
     /// Transforms into the contained data
+    #[must_use]
     pub fn into_data(self) -> Cow<'static, [u8]> {
         match self {
             Self::Embedded(res) => Cow::Borrowed(res.content),

@@ -24,11 +24,13 @@ pub enum DocGenJobState {
 
 impl DocGenJobState {
     /// Gets whether the state indicates that the job is finished
+    #[must_use]
     pub fn is_final(self) -> bool {
         matches!(self, Self::Success | Self::Failure)
     }
 
     /// Gets the serialisation value for the database
+    #[must_use]
     pub fn value(self) -> i64 {
         match self {
             Self::Queued => 0,
@@ -63,6 +65,7 @@ pub enum DocGenTrigger {
 
 impl DocGenTrigger {
     /// Gets the serialisation value for the database
+    #[must_use]
     pub fn value(&self) -> i64 {
         match self {
             Self::Upload { by: _ } => 0,
@@ -72,6 +75,7 @@ impl DocGenTrigger {
     }
 
     /// Gets the user that triggered the job, if any
+    #[must_use]
     pub fn by(&self) -> Option<&RegistryUser> {
         match self {
             Self::Upload { by } | Self::Manual { by } => Some(by),

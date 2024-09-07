@@ -167,6 +167,7 @@ pub struct OAuthToken {
 }
 
 /// Finds a field in a JSON blob
+#[must_use]
 pub fn find_field_in_blob<'v>(blob: &'v serde_json::Value, path: &str) -> Option<&'v str> {
     let mut last = blob;
     for item in path.split('.') {
