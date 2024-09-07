@@ -11,12 +11,10 @@ use std::ops::{Deref, DerefMut};
 use std::str::FromStr;
 use std::sync::{Arc, Mutex};
 
-use futures::Future;
 use log::error;
 use serde_derive::{Deserialize, Serialize};
-use sqlx::pool::PoolConnection;
 use sqlx::sqlite::{SqliteConnectOptions, SqliteJournalMode, SqlitePoolOptions};
-use sqlx::{Acquire, Pool, Sqlite, SqliteConnection, Transaction};
+use sqlx::{Pool, Sqlite, SqliteConnection, Transaction};
 
 use super::apierror::ApiError;
 use crate::utils::shared::{ResourceLock, SharedResource, StillSharedError};
@@ -71,16 +69,20 @@ impl RwSqlitePool {
     }
 
     /// Acquires a READ-only connection
-    pub async fn acquire_read(&self) -> Result<PoolConnection<Sqlite>, sqlx::Error> {
-        self.read.acquire().await
+    pub async fn acquire_read(&self) -> Result<AppTransaction, sqlx::Error> {
+        Ok(AppTransaction {
+            inner: SharedResource::new(self.read.begin().await?),
+        })
     }
 
     /// Acquires a write connection
-    pub async fn acquire_write(&self, operation: &'static str) -> Result<PoolConnection<Sqlite>, sqlx::Error> {
-        match self.write.acquire().await {
+    pub async fn acquire_write(&self, operation: &'static str) -> Result<AppTransaction, sqlx::Error> {
+        match self.write.begin().await {
             Ok(c) => {
                 *self.current_write_op.lock().unwrap() = Some(operation);
-                Ok(c)
+                Ok(AppTransaction {
+                    inner: SharedResource::new(c),
+                })
             }
             Err(e) => {
                 if matches!(e, sqlx::Error::PoolTimedOut) {
@@ -98,26 +100,35 @@ pub const SCHEMA_METADATA_VERSION: &str = "version";
 
 /// A simple application transaction
 #[derive(Clone)]
-pub struct AppTransaction<'c> {
+pub struct AppTransaction {
     /// The inner transaction
-    inner: SharedResource<Transaction<'c, Sqlite>>,
+    inner: SharedResource<Transaction<'static, Sqlite>>,
 }
 
-impl<'c> AppTransaction<'c> {
+impl AppTransaction {
     /// Borrows the shared transaction
-    pub async fn borrow<'t>(&'t self) -> CheckedOutAppTransaction<'c, 't> {
+    pub async fn borrow(&self) -> CheckedOutAppTransaction<'_> {
         let lock = self.inner.borrow().await;
         CheckedOutAppTransaction { lock }
+    }
+
+    /// Consumes this wrapper instance and get back the original resource
+    ///
+    /// # Errors
+    ///
+    /// Return a `StillSharedError` when the resource is still shared and the original cannot be given back.
+    pub fn into_original(self) -> Result<Transaction<'static, Sqlite>, StillSharedError> {
+        self.inner.into_original()
     }
 }
 
 /// A transaction that has been checked out for work
-pub struct CheckedOutAppTransaction<'c, 't> {
+pub struct CheckedOutAppTransaction<'t> {
     /// The lock for the mutex
-    lock: ResourceLock<'t, Transaction<'c, Sqlite>>,
+    lock: ResourceLock<'t, Transaction<'static, Sqlite>>,
 }
 
-impl<'c, 't> Deref for CheckedOutAppTransaction<'c, 't> {
+impl<'t> Deref for CheckedOutAppTransaction<'t> {
     type Target = SqliteConnection;
 
     fn deref(&self) -> &Self::Target {
@@ -125,39 +136,9 @@ impl<'c, 't> Deref for CheckedOutAppTransaction<'c, 't> {
     }
 }
 
-impl<'c, 't> DerefMut for CheckedOutAppTransaction<'c, 't> {
+impl<'t> DerefMut for CheckedOutAppTransaction<'t> {
     fn deref_mut(&mut self) -> &mut Self::Target {
         &mut self.lock
-    }
-}
-
-/// Executes a piece of work in the context of a transaction
-/// The transaction is committed if the operation succeed,
-/// or rolled back if it fails
-///
-/// # Errors
-///
-/// Returns an instance of the `E` type argument
-pub async fn in_transaction<'c, F, FUT, T, E>(connection: &'c mut SqliteConnection, workload: F) -> Result<T, E>
-where
-    F: FnOnce(AppTransaction<'c>) -> FUT,
-    FUT: Future<Output = Result<T, E>>,
-    E: From<sqlx::Error> + From<StillSharedError>,
-{
-    let app_transaction = AppTransaction {
-        inner: SharedResource::new(connection.begin().await?),
-    };
-    let result = workload(app_transaction.clone()).await;
-    let transaction = app_transaction.inner.into_original()?;
-    match result {
-        Ok(r) => {
-            transaction.commit().await?;
-            Ok(r)
-        }
-        Err(error) => {
-            transaction.rollback().await?;
-            Err(error)
-        }
     }
 }
 

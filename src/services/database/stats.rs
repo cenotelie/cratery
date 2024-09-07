@@ -10,7 +10,7 @@ use crate::model::stats::GlobalStats;
 use crate::model::CrateVersion;
 use crate::utils::apierror::ApiError;
 
-impl<'c> Database<'c> {
+impl Database {
     /// Gets the global statistics for the registry
     pub async fn get_crates_stats(&self) -> Result<GlobalStats, ApiError> {
         let total_crates = sqlx::query!("SELECT COUNT(name) AS total_crates FROM Package")

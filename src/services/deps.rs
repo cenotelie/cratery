@@ -22,12 +22,12 @@ use crate::model::cargo::{IndexCrateDependency, IndexCrateMetadata};
 use crate::model::config::{Configuration, ExternalRegistryProtocol};
 use crate::model::deps::{DepAdvisory, DepsAnalysis, DepsGraph, DepsGraphCrateOrigin, BUILTIN_CRATES_REGISTRY_URI};
 use crate::model::JobCrate;
-use crate::services::database::Database;
+use crate::services::database::{db_transaction_read, db_transaction_write};
 use crate::services::emails::EmailSender;
 use crate::services::index::Index;
 use crate::services::rustsec::RustSecChecker;
 use crate::utils::apierror::{error_backend_failure, error_not_found, specialize, ApiError};
-use crate::utils::db::{in_transaction, RwSqlitePool};
+use crate::utils::db::RwSqlitePool;
 use crate::utils::{stale_instant, FaillibleFuture};
 
 /// Creates a worker for the continuous check of dependencies for head crates
@@ -86,14 +86,10 @@ async fn deps_worker_job(
         return Ok(());
     }
 
-    let jobs = {
-        let mut connection = pool.acquire_read().await?;
-        in_transaction(&mut connection, |transaction| async move {
-            let database = Database::new(transaction);
-            database.get_unanalyzed_crates(configuration.deps_stale_analysis).await
-        })
-        .await?
-    };
+    let jobs = db_transaction_read(pool, |database| async move {
+        database.get_unanalyzed_crates(configuration.deps_stale_analysis).await
+    })
+    .await?;
     for job in jobs {
         deps_worker_job_on_crate_version(
             configuration,
@@ -120,28 +116,17 @@ async fn deps_worker_job_on_crate_version(
         .await?;
     let has_outdated = analysis.direct_dependencies.iter().any(|info| info.is_outdated);
     let has_cves = !analysis.advisories.is_empty();
-    let (old_has_outdated, old_has_cves) = {
-        let mut connection = pool.acquire_write("set_crate_deps_analysis").await?;
-        in_transaction(&mut connection, |transaction| async move {
-            let database = Database::new(transaction);
-            database
-                .set_crate_deps_analysis(&job.name, &job.version, has_outdated, has_cves)
-                .await
-        })
-        .await?
-    };
+    let (old_has_outdated, old_has_cves) = db_transaction_write(pool, "set_crate_deps_analysis", |database| async move {
+        database
+            .set_crate_deps_analysis(&job.name, &job.version, has_outdated, has_cves)
+            .await
+    })
+    .await?;
     if (has_outdated != old_has_outdated && configuration.deps_notify_outdated)
         || (has_cves != old_has_cves && configuration.deps_notify_cves)
     {
         // must send some notification
-        let owners = {
-            let mut connection = pool.acquire_read().await?;
-            in_transaction(&mut connection, |transaction| async move {
-                let database = Database::new(transaction);
-                database.get_crate_owners(&job.name).await
-            })
-            .await?
-        };
+        let owners = db_transaction_read(pool, |database| async move { database.get_crate_owners(&job.name).await }).await?;
         let owners = owners.users.into_iter().map(|owner| owner.email).collect::<Vec<_>>();
         if has_outdated != old_has_outdated {
             // new outdated dependencies ...

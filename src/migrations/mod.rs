@@ -10,7 +10,7 @@ use log::info;
 use sqlx::{Executor, SqliteConnection};
 
 use crate::utils::apierror::ApiError;
-use crate::utils::db::{in_transaction, Migration, MigrationContent, MigrationError, VersionNumber, SCHEMA_METADATA_VERSION};
+use crate::utils::db::{AppTransaction, Migration, MigrationContent, MigrationError, VersionNumber, SCHEMA_METADATA_VERSION};
 
 /// The migrations
 const MIGRATIONS: &[Migration<'static>] = &[
@@ -102,13 +102,13 @@ CREATE INDEX IF NOT EXISTS SchemaMetadataIndex ON SchemaMetadata(name);";
 /// # Errors
 ///
 /// Return a `MigrationError` when migration fails
-async fn migrate_db(connection: &mut SqliteConnection, migrations: &[Migration<'_>]) -> Result<(), MigrationError> {
-    let current_version = match get_schema_metadata(connection, SCHEMA_METADATA_VERSION).await {
+async fn migrate_db(transaction: AppTransaction, migrations: &[Migration<'_>]) -> Result<(), MigrationError> {
+    let current_version = match get_schema_metadata(&mut *transaction.borrow().await, SCHEMA_METADATA_VERSION).await {
         Ok(Some(version)) => Some(version),
         Ok(None) => None,
         _ => {
             // assume missing table => insert metadata table
-            connection.execute(CREATE_METADATA_TABLE_SQL).await?;
+            transaction.borrow().await.execute(CREATE_METADATA_TABLE_SQL).await?;
             None
         }
     };
@@ -133,24 +133,20 @@ async fn migrate_db(connection: &mut SqliteConnection, migrations: &[Migration<'
     }
     for migration in &migrations[start_from..] {
         info!("Database migrating to {} ...", migration.target);
-        in_transaction(connection, |transaction| async move {
-            match &migration.content {
-                MigrationContent::Sql(script) => {
-                    let script = String::from_utf8_lossy(script);
-                    transaction.borrow().await.execute(script.as_ref()).await?;
-                }
+        match &migration.content {
+            MigrationContent::Sql(script) => {
+                let script = String::from_utf8_lossy(script);
+                transaction.borrow().await.execute(script.as_ref()).await?;
             }
-            set_schema_metadata(&mut *transaction.borrow().await, SCHEMA_METADATA_VERSION, migration.target).await?;
-            Ok::<_, MigrationError>(())
-        })
-        .await?;
+        }
+        set_schema_metadata(&mut *transaction.borrow().await, SCHEMA_METADATA_VERSION, migration.target).await?;
     }
     info!("Database successfully migrated.");
     Ok(())
 }
 
 /// Migrate to the last version
-pub async fn migrate_to_last(connection: &mut SqliteConnection) -> Result<i32, ApiError> {
-    migrate_db(connection, MIGRATIONS).await?;
+pub async fn migrate_to_last(transaction: AppTransaction) -> Result<i32, ApiError> {
+    migrate_db(transaction, MIGRATIONS).await?;
     Ok(0)
 }

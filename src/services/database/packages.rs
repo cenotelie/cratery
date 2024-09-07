@@ -25,7 +25,7 @@ use crate::model::{CrateVersion, CrateVersionDepsCheckState, JobCrate};
 use crate::utils::apierror::{error_forbidden, error_invalid_request, error_not_found, specialize, ApiError};
 use crate::utils::comma_sep_to_vec;
 
-impl<'c> Database<'c> {
+impl Database {
     /// Search for crates
     pub async fn search_crates(&self, query: &str, per_page: Option<usize>) -> Result<SearchResults, ApiError> {
         let per_page = match per_page {

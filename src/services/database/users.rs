@@ -22,7 +22,7 @@ use crate::utils::apierror::{
 };
 use crate::utils::token::{check_hash, generate_token, hash_token};
 
-impl<'c> Database<'c> {
+impl Database {
     /// Gets the data about the current user
     pub async fn get_current_user(&self, authentication: &Authentication) -> Result<RegistryUser, ApiError> {
         self.get_user_profile(authentication.uid()?).await

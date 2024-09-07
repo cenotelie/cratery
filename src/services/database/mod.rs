@@ -10,21 +10,84 @@ pub mod packages;
 pub mod stats;
 pub mod users;
 
-use crate::utils::apierror::{error_forbidden, error_unauthorized, ApiError};
-use crate::utils::db::AppTransaction;
+use std::future::Future;
 
-/// Represents the application
-pub struct Database<'c> {
-    /// The connection
-    pub(crate) transaction: AppTransaction<'c>,
+use crate::utils::apierror::{error_forbidden, error_unauthorized, ApiError};
+use crate::utils::db::{AppTransaction, RwSqlitePool};
+
+/// Executes a piece of work in the context of a transaction
+/// The transaction is committed if the operation succeed,
+/// or rolled back if it fails
+///
+/// # Errors
+///
+/// Returns an instance of the `E` type argument
+pub async fn db_transaction_read<F, FUT, T, E>(pool: &RwSqlitePool, workload: F) -> Result<T, E>
+where
+    F: FnOnce(Database) -> FUT,
+    FUT: Future<Output = Result<T, E>>,
+    E: From<sqlx::Error>,
+{
+    let transaction = pool.acquire_read().await?;
+    let result = {
+        let database = Database {
+            transaction: transaction.clone(),
+        };
+        workload(database).await
+    };
+    let transaction = transaction.into_original().unwrap();
+    match result {
+        Ok(t) => {
+            transaction.commit().await?;
+            Ok(t)
+        }
+        Err(error) => {
+            transaction.rollback().await?;
+            Err(error)
+        }
+    }
 }
 
-impl<'c> Database<'c> {
-    /// Creates a new instance
-    pub fn new(transaction: AppTransaction<'c>) -> Database<'c> {
-        Database { transaction }
+/// Executes a piece of work in the context of a transaction
+/// The transaction is committed if the operation succeed,
+/// or rolled back if it fails
+///
+/// # Errors
+///
+/// Returns an instance of the `E` type argument
+pub async fn db_transaction_write<F, FUT, T, E>(pool: &RwSqlitePool, operation: &'static str, workload: F) -> Result<T, E>
+where
+    F: FnOnce(Database) -> FUT,
+    FUT: Future<Output = Result<T, E>>,
+    E: From<sqlx::Error>,
+{
+    let transaction = pool.acquire_write(operation).await?;
+    let result = {
+        let database = Database {
+            transaction: transaction.clone(),
+        };
+        workload(database).await
+    };
+    let transaction = transaction.into_original().unwrap();
+    match result {
+        Ok(t) => {
+            transaction.commit().await?;
+            Ok(t)
+        }
+        Err(error) => {
+            transaction.rollback().await?;
+            Err(error)
+        }
     }
+}
 
+/// Represents the application
+pub struct Database {
+    /// The connection
+    pub(crate) transaction: AppTransaction,
+}
+
+impl Database {
     /// Checks the security for an operation and returns the identifier of the target user (login)
     pub async fn check_is_user(&self, email: &str) -> Result<i64, ApiError> {
         let maybe_row = sqlx::query!("SELECT id FROM RegistryUser WHERE isActive = TRUE AND email = $1", email)

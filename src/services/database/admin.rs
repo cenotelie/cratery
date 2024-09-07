@@ -12,7 +12,7 @@ use crate::model::auth::{Authentication, RegistryUserToken, RegistryUserTokenWit
 use crate::utils::apierror::{error_forbidden, error_invalid_request, specialize, ApiError};
 use crate::utils::token::{generate_token, hash_token};
 
-impl<'c> Database<'c> {
+impl Database {
     /// Gets the global tokens for the registry, usually for CI purposes
     pub async fn get_global_tokens(&self, authentication: &Authentication) -> Result<Vec<RegistryUserToken>, ApiError> {
         if !authentication.can_admin {

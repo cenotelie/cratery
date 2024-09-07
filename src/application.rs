@@ -4,6 +4,7 @@
 
 //! Main application
 
+use std::future::Future;
 use std::ops::Deref;
 use std::sync::Arc;
 
@@ -20,7 +21,7 @@ use crate::model::docs::{DocGenEvent, DocGenJob, DocGenTrigger};
 use crate::model::packages::CrateInfo;
 use crate::model::stats::{DownloadStats, GlobalStats};
 use crate::model::{AppEvent, CrateVersion, JobCrate, RegistryInformation};
-use crate::services::database::Database;
+use crate::services::database::{db_transaction_read, db_transaction_write, Database};
 use crate::services::deps::DepsChecker;
 use crate::services::docs::DocsGenerator;
 use crate::services::emails::EmailSender;
@@ -29,7 +30,7 @@ use crate::services::rustsec::RustSecChecker;
 use crate::services::storage::Storage;
 use crate::utils::apierror::{error_invalid_request, error_unauthorized, specialize, ApiError};
 use crate::utils::axum::auth::{AuthData, Token};
-use crate::utils::db::{in_transaction, AppTransaction, RwSqlitePool};
+use crate::utils::db::RwSqlitePool;
 
 /// The state of this application for axum
 pub struct Application {
@@ -75,7 +76,10 @@ impl Application {
         }
         let service_db_pool = RwSqlitePool::new(&configuration.get_database_url())?;
         // migrate the database, if appropriate
-        crate::migrations::migrate_to_last(&mut *service_db_pool.acquire_write("migrate_to_last").await?).await?;
+        db_transaction_write(&service_db_pool, "migrate_to_last", |database| async move {
+            crate::migrations::migrate_to_last(database.transaction).await
+        })
+        .await?;
 
         let service_storage = crate::services::storage::get_storage(&configuration.deref().clone());
         let service_index = crate::services::index::get_index(&configuration).await?;
@@ -87,15 +91,10 @@ impl Application {
             crate::services::docs::get_docs_generator(configuration.clone(), service_db_pool.clone(), service_storage.clone());
 
         // check undocumented packages
-        let job_specs = {
-            let mut connection = service_db_pool.acquire_read().await?;
-            in_transaction(&mut connection, |transaction| async move {
-                let app = Database::new(transaction);
-                let jobs = app.get_undocumented_crates().await?;
-                Ok::<_, ApiError>(jobs)
-            })
-            .await
-        }?;
+        let job_specs = db_transaction_read(&service_db_pool, |database| async move {
+            database.get_undocumented_crates().await
+        })
+        .await?;
         for spec in &job_specs {
             service_docs_generator.queue(spec, &DocGenTrigger::MissingOnLaunch).await?;
         }
@@ -142,14 +141,6 @@ impl Application {
         self.service_index.as_ref()
     }
 
-    /// Creates the application with transaction
-    pub fn with_transaction<'a, 'c>(&'a self, transaction: AppTransaction<'c>) -> ApplicationWithTransaction<'a, 'c> {
-        ApplicationWithTransaction {
-            application: self,
-            database: Database { transaction },
-        }
-    }
-
     /// The worker to handle the update of token usage
     async fn events_handler(&self, mut receiver: Receiver<AppEvent>) {
         const BUFFER_SIZE: usize = 16;
@@ -171,9 +162,7 @@ impl Application {
 
     /// Handles a set of events
     async fn events_handler_handle(&self, events: &[AppEvent]) -> Result<(), ApiError> {
-        let mut connection = self.service_db_pool.acquire_write("events_handler_handle").await?;
-        in_transaction(&mut connection, |transaction| async move {
-            let app = self.with_transaction(transaction);
+        self.db_transaction_write("events_handler_handle", |app| async move {
             for event in events {
                 match event {
                     AppEvent::TokenUse(usage) => {
@@ -186,17 +175,59 @@ impl Application {
             }
             Ok::<_, ApiError>(())
         })
-        .await?;
-        Ok(())
+        .await
+    }
+
+    /// Executes a piece of work in the context of a transaction
+    /// The transaction is committed if the operation succeed,
+    /// or rolled back if it fails
+    ///
+    /// # Errors
+    ///
+    /// Returns an instance of the `E` type argument
+    async fn db_transaction_read<'s, F, FUT, T, E>(&'s self, workload: F) -> Result<T, E>
+    where
+        F: FnOnce(ApplicationWithTransaction<'s>) -> FUT,
+        FUT: Future<Output = Result<T, E>>,
+        E: From<sqlx::Error>,
+    {
+        db_transaction_read(&self.service_db_pool, |database| async move {
+            workload(ApplicationWithTransaction {
+                database,
+                application: self,
+            })
+            .await
+        })
+        .await
+    }
+
+    /// Executes a piece of work in the context of a transaction
+    /// The transaction is committed if the operation succeed,
+    /// or rolled back if it fails
+    ///
+    /// # Errors
+    ///
+    /// Returns an instance of the `E` type argument
+    async fn db_transaction_write<'s, F, FUT, T, E>(&'s self, operation: &'static str, workload: F) -> Result<T, E>
+    where
+        F: FnOnce(ApplicationWithTransaction<'s>) -> FUT,
+        FUT: Future<Output = Result<T, E>>,
+        E: From<sqlx::Error>,
+    {
+        db_transaction_write(&self.service_db_pool, operation, |database| async move {
+            workload(ApplicationWithTransaction {
+                database,
+                application: self,
+            })
+            .await
+        })
+        .await
     }
 
     /// Attempts the authentication of a user
     pub async fn authenticate(&self, auth_data: &AuthData) -> Result<Authentication, ApiError> {
-        let mut connection = self.service_db_pool.acquire_read().await?;
-        in_transaction(&mut connection, |transaction| async move {
-            self.with_transaction(transaction).authenticate(auth_data).await
-        })
-        .await
+        self.db_transaction_read(|app| async move { app.authenticate(auth_data).await })
+            .await
     }
 
     /// Gets the registry configuration
@@ -208,9 +239,7 @@ impl Application {
 
     /// Gets the data about the current user
     pub async fn get_current_user(&self, auth_data: &AuthData) -> Result<RegistryUser, ApiError> {
-        let mut connection = self.service_db_pool.acquire_read().await?;
-        in_transaction(&mut connection, |transaction| async move {
-            let app = self.with_transaction(transaction);
+        self.db_transaction_read(|app| async move {
             let authentication = app.authenticate(auth_data).await?;
             app.database.get_current_user(&authentication).await
         })
@@ -219,9 +248,7 @@ impl Application {
 
     /// Attempts to login using an OAuth code
     pub async fn login_with_oauth_code(&self, code: &str) -> Result<RegistryUser, ApiError> {
-        let mut connection = self.service_db_pool.acquire_write("login_with_oauth_code").await?;
-        in_transaction(&mut connection, |transaction| async move {
-            let app = self.with_transaction(transaction);
+        self.db_transaction_write("login_with_oauth_code", |app| async move {
             app.database.login_with_oauth_code(&self.configuration, code).await
         })
         .await
@@ -229,9 +256,7 @@ impl Application {
 
     /// Gets the known users
     pub async fn get_users(&self, auth_data: &AuthData) -> Result<Vec<RegistryUser>, ApiError> {
-        let mut connection = self.service_db_pool.acquire_read().await?;
-        in_transaction(&mut connection, |transaction| async move {
-            let app = self.with_transaction(transaction);
+        self.db_transaction_read(|app| async move {
             let authentication = app.authenticate(auth_data).await?;
             app.database.get_users(&authentication).await
         })
@@ -240,9 +265,7 @@ impl Application {
 
     /// Updates the information of a user
     pub async fn update_user(&self, auth_data: &AuthData, target: &RegistryUser) -> Result<RegistryUser, ApiError> {
-        let mut connection = self.service_db_pool.acquire_write("update_user").await?;
-        in_transaction(&mut connection, |transaction| async move {
-            let app = self.with_transaction(transaction);
+        self.db_transaction_write("update_user", |app| async move {
             let authentication = app.authenticate(auth_data).await?;
             app.database.update_user(&authentication, target).await
         })
@@ -251,9 +274,7 @@ impl Application {
 
     /// Attempts to deactivate a user
     pub async fn deactivate_user(&self, auth_data: &AuthData, target: &str) -> Result<(), ApiError> {
-        let mut connection = self.service_db_pool.acquire_write("deactivate_user").await?;
-        in_transaction(&mut connection, |transaction| async move {
-            let app = self.with_transaction(transaction);
+        self.db_transaction_write("deactivate_user", |app| async move {
             let authentication = app.authenticate(auth_data).await?;
             app.database.deactivate_user(&authentication, target).await
         })
@@ -262,9 +283,7 @@ impl Application {
 
     /// Attempts to re-activate a user
     pub async fn reactivate_user(&self, auth_data: &AuthData, target: &str) -> Result<(), ApiError> {
-        let mut connection = self.service_db_pool.acquire_write("reactivate_user").await?;
-        in_transaction(&mut connection, |transaction| async move {
-            let app = self.with_transaction(transaction);
+        self.db_transaction_write("reactivate_user", |app| async move {
             let authentication = app.authenticate(auth_data).await?;
             app.database.reactivate_user(&authentication, target).await
         })
@@ -273,9 +292,7 @@ impl Application {
 
     /// Attempts to delete a user
     pub async fn delete_user(&self, auth_data: &AuthData, target: &str) -> Result<(), ApiError> {
-        let mut connection = self.service_db_pool.acquire_write("delete_user").await?;
-        in_transaction(&mut connection, |transaction| async move {
-            let app = self.with_transaction(transaction);
+        self.db_transaction_write("delete_user", |app| async move {
             let authentication = app.authenticate(auth_data).await?;
             app.database.delete_user(&authentication, target).await
         })
@@ -284,9 +301,7 @@ impl Application {
 
     /// Gets the tokens for a user
     pub async fn get_tokens(&self, auth_data: &AuthData) -> Result<Vec<RegistryUserToken>, ApiError> {
-        let mut connection = self.service_db_pool.acquire_read().await?;
-        in_transaction(&mut connection, |transaction| async move {
-            let app = self.with_transaction(transaction);
+        self.db_transaction_read(|app| async move {
             let authentication = app.authenticate(auth_data).await?;
             app.database.get_tokens(&authentication).await
         })
@@ -301,9 +316,7 @@ impl Application {
         can_write: bool,
         can_admin: bool,
     ) -> Result<RegistryUserTokenWithSecret, ApiError> {
-        let mut connection = self.service_db_pool.acquire_write("create_token").await?;
-        in_transaction(&mut connection, |transaction| async move {
-            let app = self.with_transaction(transaction);
+        self.db_transaction_write("create_token", |app| async move {
             let authentication = app.authenticate(auth_data).await?;
             app.database.create_token(&authentication, name, can_write, can_admin).await
         })
@@ -312,9 +325,7 @@ impl Application {
 
     /// Revoke a previous token
     pub async fn revoke_token(&self, auth_data: &AuthData, token_id: i64) -> Result<(), ApiError> {
-        let mut connection = self.service_db_pool.acquire_write("revoke_token").await?;
-        in_transaction(&mut connection, |transaction| async move {
-            let app = self.with_transaction(transaction);
+        self.db_transaction_write("revoke_token", |app| async move {
             let authentication = app.authenticate(auth_data).await?;
             app.database.revoke_token(&authentication, token_id).await
         })
@@ -323,9 +334,7 @@ impl Application {
 
     /// Gets the global tokens for the registry, usually for CI purposes
     pub async fn get_global_tokens(&self, auth_data: &AuthData) -> Result<Vec<RegistryUserToken>, ApiError> {
-        let mut connection = self.service_db_pool.acquire_read().await?;
-        in_transaction(&mut connection, |transaction| async move {
-            let app = self.with_transaction(transaction);
+        self.db_transaction_read(|app| async move {
             let authentication = app.authenticate(auth_data).await?;
             app.database.get_global_tokens(&authentication).await
         })
@@ -334,9 +343,7 @@ impl Application {
 
     /// Creates a global token for the registry
     pub async fn create_global_token(&self, auth_data: &AuthData, name: &str) -> Result<RegistryUserTokenWithSecret, ApiError> {
-        let mut connection = self.service_db_pool.acquire_write("create_global_token").await?;
-        in_transaction(&mut connection, |transaction| async move {
-            let app = self.with_transaction(transaction);
+        self.db_transaction_write("create_global_token", |app| async move {
             let authentication = app.authenticate(auth_data).await?;
             app.database.create_global_token(&authentication, name).await
         })
@@ -345,9 +352,7 @@ impl Application {
 
     /// Revokes a globel token for the registry
     pub async fn revoke_global_token(&self, auth_data: &AuthData, token_id: i64) -> Result<(), ApiError> {
-        let mut connection = self.service_db_pool.acquire_write("revoke_global_token").await?;
-        in_transaction(&mut connection, |transaction| async move {
-            let app = self.with_transaction(transaction);
+        self.db_transaction_write("revoke_global_token", |app| async move {
             let authentication = app.authenticate(auth_data).await?;
             app.database.revoke_global_token(&authentication, token_id).await
         })
@@ -362,9 +367,7 @@ impl Application {
 
         let (user, result, targets) = {
             let package = &package;
-            let mut connection = self.service_db_pool.acquire_write("publish_crate_version").await?;
-            in_transaction(&mut connection, |transaction| async move {
-                let app = self.with_transaction(transaction);
+            self.db_transaction_write("publish_crate_version", |app| async move {
                 let authentication = app.authenticate(auth_data).await?;
                 let user = app.database.get_user_profile(authentication.uid()?).await?;
                 // publish
@@ -392,10 +395,8 @@ impl Application {
 
     /// Gets all the data about a crate
     pub async fn get_crate_info(&self, auth_data: &AuthData, package: &str) -> Result<CrateInfo, ApiError> {
-        let (versions, targets) = {
-            let mut connection = self.service_db_pool.acquire_read().await?;
-            in_transaction(&mut connection, |transaction| async move {
-                let app = self.with_transaction(transaction);
+        let (versions, targets) = self
+            .db_transaction_read(|app| async move {
                 let _authentication = app.authenticate(auth_data).await?;
                 let versions = app
                     .database
@@ -404,8 +405,7 @@ impl Application {
                 let targets = app.database.get_crate_targets(package).await?;
                 Ok::<_, ApiError>((versions, targets))
             })
-            .await
-        }?;
+            .await?;
         let metadata = self
             .service_storage
             .download_crate_metadata(package, &versions.last().unwrap().index.vers)
@@ -419,16 +419,13 @@ impl Application {
 
     /// Downloads the last README for a crate
     pub async fn get_crate_last_readme(&self, auth_data: &AuthData, package: &str) -> Result<Vec<u8>, ApiError> {
-        let version = {
-            let mut connection = self.service_db_pool.acquire_read().await?;
-            in_transaction(&mut connection, |transaction| async move {
-                let app = self.with_transaction(transaction);
+        let version = self
+            .db_transaction_read(|app| async move {
                 let _authentication = app.authenticate(auth_data).await?;
                 let version = app.database.get_crate_last_version(package).await?;
                 Ok::<_, ApiError>(version)
             })
-            .await
-        }?;
+            .await?;
         let readme = self.service_storage.download_crate_readme(package, &version).await?;
         Ok(readme)
     }
@@ -442,16 +439,12 @@ impl Application {
 
     /// Downloads the content for a crate
     pub async fn get_crate_content(&self, auth_data: &AuthData, package: &str, version: &str) -> Result<Vec<u8>, ApiError> {
-        {
-            let mut connection = self.service_db_pool.acquire_read().await?;
-            in_transaction(&mut connection, |transaction| async move {
-                let app = self.with_transaction(transaction);
-                let _authentication = app.authenticate(auth_data).await?;
-                app.database.check_crate_exists(package, version).await?;
-                Ok::<_, ApiError>(())
-            })
-            .await?;
-        }
+        self.db_transaction_read(|app| async move {
+            let _authentication = app.authenticate(auth_data).await?;
+            app.database.check_crate_exists(package, version).await?;
+            Ok::<_, ApiError>(())
+        })
+        .await?;
         let content = self.service_storage.download_crate(package, version).await?;
         self.app_events_sender
             .send(AppEvent::CrateDownload(CrateVersion {
@@ -469,9 +462,7 @@ impl Application {
         package: &str,
         version: &str,
     ) -> Result<YesNoResult, ApiError> {
-        let mut connection = self.service_db_pool.acquire_write("yank_crate_version").await?;
-        in_transaction(&mut connection, |transaction| async move {
-            let app = self.with_transaction(transaction);
+        self.db_transaction_write("yank_crate_version", |app| async move {
             let authentication = app.authenticate(auth_data).await?;
             app.database.yank_crate_version(&authentication, package, version).await
         })
@@ -485,9 +476,7 @@ impl Application {
         package: &str,
         version: &str,
     ) -> Result<YesNoResult, ApiError> {
-        let mut connection = self.service_db_pool.acquire_write("unyank_crate_version").await?;
-        in_transaction(&mut connection, |transaction| async move {
-            let app = self.with_transaction(transaction);
+        self.db_transaction_write("unyank_crate_version", |app| async move {
             let authentication = app.authenticate(auth_data).await?;
             app.database.unyank_crate_version(&authentication, package, version).await
         })
@@ -496,9 +485,7 @@ impl Application {
 
     /// Gets the packages that need documentation generation
     pub async fn get_undocumented_crates(&self, auth_data: &AuthData) -> Result<Vec<CrateVersion>, ApiError> {
-        let mut connection = self.service_db_pool.acquire_read().await?;
-        in_transaction(&mut connection, |transaction| async move {
-            let app = self.with_transaction(transaction);
+        self.db_transaction_read(|app| async move {
             let _authentication = app.authenticate(auth_data).await?;
             let crates = app.database.get_undocumented_crates().await?;
             Ok(crates.into_iter().map(CrateVersion::from).collect())
@@ -533,10 +520,8 @@ impl Application {
         package: &str,
         version: &str,
     ) -> Result<DocGenJob, ApiError> {
-        let (user, targets) = {
-            let mut connection = self.service_db_pool.acquire_write("regen_crate_version_doc").await?;
-            in_transaction(&mut connection, |transaction| async move {
-                let app = self.with_transaction(transaction);
+        let (user, targets) = self
+            .db_transaction_write("yank_crate_version", |app| async move {
                 let authentication = app.authenticate(auth_data).await?;
                 let user = app.database.get_user_profile(authentication.uid()?).await?;
                 let targets = app.database.get_crate_targets(package).await?;
@@ -545,8 +530,7 @@ impl Application {
                     .await?;
                 Ok::<_, ApiError>((user, targets))
             })
-            .await
-        }?;
+            .await?;
 
         self.service_docs_generator
             .queue(
@@ -562,9 +546,7 @@ impl Application {
 
     /// Gets all the packages that are outdated while also being the latest version
     pub async fn get_crates_outdated_heads(&self, auth_data: &AuthData) -> Result<Vec<CrateVersion>, ApiError> {
-        let mut connection = self.service_db_pool.acquire_read().await?;
-        in_transaction(&mut connection, |transaction| async move {
-            let app = self.with_transaction(transaction);
+        self.db_transaction_read(|app| async move {
             let _authentication = app.authenticate(auth_data).await?;
             app.database.get_crates_outdated_heads().await
         })
@@ -573,9 +555,7 @@ impl Application {
 
     /// Gets the download statistics for a crate
     pub async fn get_crate_dl_stats(&self, auth_data: &AuthData, package: &str) -> Result<DownloadStats, ApiError> {
-        let mut connection = self.service_db_pool.acquire_read().await?;
-        in_transaction(&mut connection, |transaction| async move {
-            let app = self.with_transaction(transaction);
+        self.db_transaction_read(|app| async move {
             let _authentication = app.authenticate(auth_data).await?;
             app.database.get_crate_dl_stats(package).await
         })
@@ -584,9 +564,7 @@ impl Application {
 
     /// Gets the list of owners for a package
     pub async fn get_crate_owners(&self, auth_data: &AuthData, package: &str) -> Result<OwnersQueryResult, ApiError> {
-        let mut connection = self.service_db_pool.acquire_read().await?;
-        in_transaction(&mut connection, |transaction| async move {
-            let app = self.with_transaction(transaction);
+        self.db_transaction_read(|app| async move {
             let _authentication = app.authenticate(auth_data).await?;
             app.database.get_crate_owners(package).await
         })
@@ -600,9 +578,7 @@ impl Application {
         package: &str,
         new_users: &[String],
     ) -> Result<YesNoMsgResult, ApiError> {
-        let mut connection = self.service_db_pool.acquire_write("add_crate_owners").await?;
-        in_transaction(&mut connection, |transaction| async move {
-            let app = self.with_transaction(transaction);
+        self.db_transaction_write("add_crate_owners", |app| async move {
             let authentication = app.authenticate(auth_data).await?;
             app.database.add_crate_owners(&authentication, package, new_users).await
         })
@@ -616,9 +592,7 @@ impl Application {
         package: &str,
         old_users: &[String],
     ) -> Result<YesNoResult, ApiError> {
-        let mut connection = self.service_db_pool.acquire_write("remove_crate_owners").await?;
-        in_transaction(&mut connection, |transaction| async move {
-            let app = self.with_transaction(transaction);
+        self.db_transaction_write("remove_crate_owners", |app| async move {
             let authentication = app.authenticate(auth_data).await?;
             app.database.remove_crate_owners(&authentication, package, old_users).await
         })
@@ -627,9 +601,7 @@ impl Application {
 
     /// Gets the targets for a crate
     pub async fn get_crate_targets(&self, auth_data: &AuthData, package: &str) -> Result<Vec<String>, ApiError> {
-        let mut connection = self.service_db_pool.acquire_read().await?;
-        in_transaction(&mut connection, |transaction| async move {
-            let app = self.with_transaction(transaction);
+        self.db_transaction_read(|app| async move {
             let _authentication = app.authenticate(auth_data).await?;
             app.database.get_crate_targets(package).await
         })
@@ -638,9 +610,7 @@ impl Application {
 
     /// Sets the targets for a crate
     pub async fn set_crate_targets(&self, auth_data: &AuthData, package: &str, targets: &[String]) -> Result<(), ApiError> {
-        let mut connection = self.service_db_pool.acquire_write("set_crate_targets").await?;
-        in_transaction(&mut connection, |transaction| async move {
-            let app = self.with_transaction(transaction);
+        self.db_transaction_write("set_crate_targets", |app| async move {
             let authentication = app.authenticate(auth_data).await?;
             for target in targets {
                 if !self.configuration.self_builtin_targets.contains(target) {
@@ -654,9 +624,7 @@ impl Application {
 
     /// Gets the global statistics for the registry
     pub async fn get_crates_stats(&self, auth_data: &AuthData) -> Result<GlobalStats, ApiError> {
-        let mut connection = self.service_db_pool.acquire_read().await?;
-        in_transaction(&mut connection, |transaction| async move {
-            let app = self.with_transaction(transaction);
+        self.db_transaction_read(|app| async move {
             let _authentication = app.authenticate(auth_data).await?;
             app.database.get_crates_stats().await
         })
@@ -670,9 +638,7 @@ impl Application {
         query: &str,
         per_page: Option<usize>,
     ) -> Result<SearchResults, ApiError> {
-        let mut connection = self.service_db_pool.acquire_read().await?;
-        in_transaction(&mut connection, |transaction| async move {
-            let app = self.with_transaction(transaction);
+        self.db_transaction_read(|app| async move {
             let _authentication = app.authenticate(auth_data).await?;
             app.database.search_crates(query, per_page).await
         })
@@ -686,27 +652,26 @@ impl Application {
         package: &str,
         version: &str,
     ) -> Result<DepsAnalysis, ApiError> {
-        let mut connection = self.service_db_pool.acquire_read().await?;
-        let targets = in_transaction(&mut connection, |transaction| async move {
-            let app = self.with_transaction(transaction);
-            let _authentication = app.authenticate(auth_data).await?;
-            app.database.check_crate_exists(package, version).await?;
-            app.database.get_crate_targets(package).await
-        })
-        .await?;
+        let targets = self
+            .db_transaction_read(|app| async move {
+                let _authentication = app.authenticate(auth_data).await?;
+                app.database.check_crate_exists(package, version).await?;
+                app.database.get_crate_targets(package).await
+            })
+            .await?;
         self.service_deps_checker.check_crate(package, version, &targets).await
     }
 }
 
 /// The application, running with a transaction
-pub struct ApplicationWithTransaction<'a, 'c> {
+pub struct ApplicationWithTransaction<'a> {
     /// The application with its services
     application: &'a Application,
     /// The database access encapsulating a transaction
-    database: Database<'c>,
+    database: Database,
 }
 
-impl<'a, 'c> ApplicationWithTransaction<'a, 'c> {
+impl<'a> ApplicationWithTransaction<'a> {
     /// Attempts the authentication of a user
     pub async fn authenticate(&self, auth_data: &AuthData) -> Result<Authentication, ApiError> {
         if let Some(token) = &auth_data.token {
@@ -719,7 +684,7 @@ impl<'a, 'c> ApplicationWithTransaction<'a, 'c> {
     }
 
     /// Tries to authenticate using a token
-    pub async fn authenticate_token(&self, token: &Token) -> Result<Authentication, ApiError> {
+    async fn authenticate_token(&self, token: &Token) -> Result<Authentication, ApiError> {
         if token.id == self.application.configuration.self_service_login
             && token.secret == self.application.configuration.self_service_token
         {

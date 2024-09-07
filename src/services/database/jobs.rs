@@ -13,7 +13,7 @@ use crate::model::JobCrate;
 use crate::utils::apierror::{error_not_found, ApiError};
 use crate::utils::comma_sep_to_vec;
 
-impl<'c> Database<'c> {
+impl Database {
     /// Gets the documentation generation jobs
     pub async fn get_docgen_jobs(&self) -> Result<Vec<DocGenJob>, ApiError> {
         let rows = sqlx::query!(
