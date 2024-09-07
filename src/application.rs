@@ -231,17 +231,18 @@ impl Application {
     }
 
     /// Gets the registry configuration
-    pub fn get_registry_information(&self) -> RegistryInformation {
-        RegistryInformation {
+    pub async fn get_registry_information(&self, auth_data: &AuthData) -> Result<RegistryInformation, ApiError> {
+        let _authentication = self.authenticate(auth_data).await?;
+        Ok(RegistryInformation {
             registry_name: self.configuration.self_local_name.clone(),
-        }
+        })
     }
 
     /// Gets the data about the current user
     pub async fn get_current_user(&self, auth_data: &AuthData) -> Result<RegistryUser, ApiError> {
         self.db_transaction_read(|app| async move {
             let authentication = app.authenticate(auth_data).await?;
-            app.database.get_current_user(&authentication).await
+            app.database.get_user_profile(authentication.uid()?).await
         })
         .await
     }
@@ -258,7 +259,8 @@ impl Application {
     pub async fn get_users(&self, auth_data: &AuthData) -> Result<Vec<RegistryUser>, ApiError> {
         self.db_transaction_read(|app| async move {
             let authentication = app.authenticate(auth_data).await?;
-            app.database.get_users(&authentication).await
+            app.check_can_admin_registry(&authentication).await?;
+            app.database.get_users().await
         })
         .await
     }
@@ -267,7 +269,16 @@ impl Application {
     pub async fn update_user(&self, auth_data: &AuthData, target: &RegistryUser) -> Result<RegistryUser, ApiError> {
         self.db_transaction_write("update_user", |app| async move {
             let authentication = app.authenticate(auth_data).await?;
-            app.database.update_user(&authentication, target).await
+            let principal_uid = authentication.uid()?;
+            let can_admin = if target.id == principal_uid {
+                // same user
+                authentication.can_admin && app.database.get_is_admin(principal_uid).await?
+            } else {
+                // different users, requires admin
+                app.check_can_admin_registry(&authentication).await?;
+                true
+            };
+            app.database.update_user(principal_uid, target, can_admin).await
         })
         .await
     }
@@ -276,7 +287,8 @@ impl Application {
     pub async fn deactivate_user(&self, auth_data: &AuthData, target: &str) -> Result<(), ApiError> {
         self.db_transaction_write("deactivate_user", |app| async move {
             let authentication = app.authenticate(auth_data).await?;
-            app.database.deactivate_user(&authentication, target).await
+            let principal_uid = app.check_can_admin_registry(&authentication).await?;
+            app.database.deactivate_user(principal_uid, target).await
         })
         .await
     }
@@ -285,7 +297,8 @@ impl Application {
     pub async fn reactivate_user(&self, auth_data: &AuthData, target: &str) -> Result<(), ApiError> {
         self.db_transaction_write("reactivate_user", |app| async move {
             let authentication = app.authenticate(auth_data).await?;
-            app.database.reactivate_user(&authentication, target).await
+            app.check_can_admin_registry(&authentication).await?;
+            app.database.reactivate_user(target).await
         })
         .await
     }
@@ -294,7 +307,8 @@ impl Application {
     pub async fn delete_user(&self, auth_data: &AuthData, target: &str) -> Result<(), ApiError> {
         self.db_transaction_write("delete_user", |app| async move {
             let authentication = app.authenticate(auth_data).await?;
-            app.database.delete_user(&authentication, target).await
+            let principal_uid = app.check_can_admin_registry(&authentication).await?;
+            app.database.delete_user(principal_uid, target).await
         })
         .await
     }
@@ -303,7 +317,8 @@ impl Application {
     pub async fn get_tokens(&self, auth_data: &AuthData) -> Result<Vec<RegistryUserToken>, ApiError> {
         self.db_transaction_read(|app| async move {
             let authentication = app.authenticate(auth_data).await?;
-            app.database.get_tokens(&authentication).await
+            authentication.check_can_admin()?;
+            app.database.get_tokens(authentication.uid()?).await
         })
         .await
     }
@@ -318,7 +333,10 @@ impl Application {
     ) -> Result<RegistryUserTokenWithSecret, ApiError> {
         self.db_transaction_write("create_token", |app| async move {
             let authentication = app.authenticate(auth_data).await?;
-            app.database.create_token(&authentication, name, can_write, can_admin).await
+            authentication.check_can_admin()?;
+            app.database
+                .create_token(authentication.uid()?, name, can_write, can_admin)
+                .await
         })
         .await
     }
@@ -327,7 +345,8 @@ impl Application {
     pub async fn revoke_token(&self, auth_data: &AuthData, token_id: i64) -> Result<(), ApiError> {
         self.db_transaction_write("revoke_token", |app| async move {
             let authentication = app.authenticate(auth_data).await?;
-            app.database.revoke_token(&authentication, token_id).await
+            authentication.check_can_admin()?;
+            app.database.revoke_token(authentication.uid()?, token_id).await
         })
         .await
     }
@@ -336,7 +355,8 @@ impl Application {
     pub async fn get_global_tokens(&self, auth_data: &AuthData) -> Result<Vec<RegistryUserToken>, ApiError> {
         self.db_transaction_read(|app| async move {
             let authentication = app.authenticate(auth_data).await?;
-            app.database.get_global_tokens(&authentication).await
+            app.check_can_admin_registry(&authentication).await?;
+            app.database.get_global_tokens().await
         })
         .await
     }
@@ -345,7 +365,8 @@ impl Application {
     pub async fn create_global_token(&self, auth_data: &AuthData, name: &str) -> Result<RegistryUserTokenWithSecret, ApiError> {
         self.db_transaction_write("create_global_token", |app| async move {
             let authentication = app.authenticate(auth_data).await?;
-            app.database.create_global_token(&authentication, name).await
+            app.check_can_admin_registry(&authentication).await?;
+            app.database.create_global_token(name).await
         })
         .await
     }
@@ -354,7 +375,8 @@ impl Application {
     pub async fn revoke_global_token(&self, auth_data: &AuthData, token_id: i64) -> Result<(), ApiError> {
         self.db_transaction_write("revoke_global_token", |app| async move {
             let authentication = app.authenticate(auth_data).await?;
-            app.database.revoke_global_token(&authentication, token_id).await
+            app.check_can_admin_registry(&authentication).await?;
+            app.database.revoke_global_token(token_id).await
         })
         .await
     }
@@ -369,9 +391,10 @@ impl Application {
             let package = &package;
             self.db_transaction_write("publish_crate_version", |app| async move {
                 let authentication = app.authenticate(auth_data).await?;
+                authentication.check_can_write()?;
                 let user = app.database.get_user_profile(authentication.uid()?).await?;
                 // publish
-                let result = app.database.publish_crate_version(&authentication, package).await?;
+                let result = app.database.publish_crate_version(user.id, package).await?;
                 let targets = app.database.get_crate_targets(&package.metadata.name).await?;
                 Ok::<_, ApiError>((user, result, targets))
             })
@@ -464,7 +487,8 @@ impl Application {
     ) -> Result<YesNoResult, ApiError> {
         self.db_transaction_write("yank_crate_version", |app| async move {
             let authentication = app.authenticate(auth_data).await?;
-            app.database.yank_crate_version(&authentication, package, version).await
+            app.check_can_manage_crate(&authentication, package).await?;
+            app.database.yank_crate_version(package, version).await
         })
         .await
     }
@@ -478,7 +502,8 @@ impl Application {
     ) -> Result<YesNoResult, ApiError> {
         self.db_transaction_write("unyank_crate_version", |app| async move {
             let authentication = app.authenticate(auth_data).await?;
-            app.database.unyank_crate_version(&authentication, package, version).await
+            app.check_can_manage_crate(&authentication, package).await?;
+            app.database.unyank_crate_version(package, version).await
         })
         .await
     }
@@ -495,19 +520,19 @@ impl Application {
 
     /// Gets the documentation jobs
     pub async fn get_doc_gen_jobs(&self, auth_data: &AuthData) -> Result<Vec<DocGenJob>, ApiError> {
-        let _auth = self.authenticate(auth_data).await?;
+        let _authentication = self.authenticate(auth_data).await?;
         self.service_docs_generator.get_jobs().await
     }
 
     /// Gets the log for a documentation generation job
     pub async fn get_doc_gen_job_log(&self, auth_data: &AuthData, job_id: i64) -> Result<String, ApiError> {
-        let _auth = self.authenticate(auth_data).await?;
+        let _authentication = self.authenticate(auth_data).await?;
         self.service_docs_generator.get_job_log(job_id).await
     }
 
     /// Adds a listener to job updates
     pub async fn get_doc_gen_job_updates(&self, auth_data: &AuthData) -> Result<Receiver<DocGenEvent>, ApiError> {
-        let _auth = self.authenticate(auth_data).await?;
+        let _authentication = self.authenticate(auth_data).await?;
         let (sender, receiver) = channel(16);
         self.service_docs_generator.add_listener(sender).await?;
         Ok(receiver)
@@ -521,13 +546,12 @@ impl Application {
         version: &str,
     ) -> Result<DocGenJob, ApiError> {
         let (user, targets) = self
-            .db_transaction_write("yank_crate_version", |app| async move {
+            .db_transaction_write("regen_crate_version_doc", |app| async move {
                 let authentication = app.authenticate(auth_data).await?;
-                let user = app.database.get_user_profile(authentication.uid()?).await?;
+                let principal_uid = app.check_can_manage_crate(&authentication, package).await?;
+                let user = app.database.get_user_profile(principal_uid).await?;
                 let targets = app.database.get_crate_targets(package).await?;
-                app.database
-                    .regen_crate_version_doc(&authentication, package, version)
-                    .await?;
+                app.database.regen_crate_version_doc(package, version).await?;
                 Ok::<_, ApiError>((user, targets))
             })
             .await?;
@@ -580,7 +604,8 @@ impl Application {
     ) -> Result<YesNoMsgResult, ApiError> {
         self.db_transaction_write("add_crate_owners", |app| async move {
             let authentication = app.authenticate(auth_data).await?;
-            app.database.add_crate_owners(&authentication, package, new_users).await
+            app.check_can_manage_crate(&authentication, package).await?;
+            app.database.add_crate_owners(package, new_users).await
         })
         .await
     }
@@ -594,7 +619,8 @@ impl Application {
     ) -> Result<YesNoResult, ApiError> {
         self.db_transaction_write("remove_crate_owners", |app| async move {
             let authentication = app.authenticate(auth_data).await?;
-            app.database.remove_crate_owners(&authentication, package, old_users).await
+            app.check_can_manage_crate(&authentication, package).await?;
+            app.database.remove_crate_owners(package, old_users).await
         })
         .await
     }
@@ -612,12 +638,13 @@ impl Application {
     pub async fn set_crate_targets(&self, auth_data: &AuthData, package: &str, targets: &[String]) -> Result<(), ApiError> {
         self.db_transaction_write("set_crate_targets", |app| async move {
             let authentication = app.authenticate(auth_data).await?;
+            app.check_can_manage_crate(&authentication, package).await?;
             for target in targets {
                 if !self.configuration.self_builtin_targets.contains(target) {
                     return Err(specialize(error_invalid_request(), format!("Unknown target: {target}")));
                 }
             }
-            app.database.set_crate_targets(&authentication, package, targets).await
+            app.database.set_crate_targets(package, targets).await
         })
         .await
     }
@@ -664,7 +691,7 @@ impl Application {
 }
 
 /// The application, running with a transaction
-pub struct ApplicationWithTransaction<'a> {
+struct ApplicationWithTransaction<'a> {
     /// The application with its services
     application: &'a Application,
     /// The database access encapsulating a transaction
@@ -673,7 +700,7 @@ pub struct ApplicationWithTransaction<'a> {
 
 impl<'a> ApplicationWithTransaction<'a> {
     /// Attempts the authentication of a user
-    pub async fn authenticate(&self, auth_data: &AuthData) -> Result<Authentication, ApiError> {
+    async fn authenticate(&self, auth_data: &AuthData) -> Result<Authentication, ApiError> {
         if let Some(token) = &auth_data.token {
             self.authenticate_token(token).await
         } else {
@@ -702,5 +729,21 @@ impl<'a> ApplicationWithTransaction<'a> {
             })
             .await?;
         Ok(user)
+    }
+
+    /// Checks that the given authentication can perform admin tasks
+    async fn check_can_admin_registry(&self, authentication: &Authentication) -> Result<i64, ApiError> {
+        authentication.check_can_admin()?;
+        let principal_uid = authentication.uid()?;
+        self.database.check_is_admin(principal_uid).await?;
+        Ok(principal_uid)
+    }
+
+    /// Checks that the given authentication can manage a given crate
+    async fn check_can_manage_crate(&self, authentication: &Authentication, package: &str) -> Result<i64, ApiError> {
+        authentication.check_can_write()?;
+        let principal_uid = authentication.uid()?;
+        self.database.check_is_crate_manager(principal_uid, package).await?;
+        Ok(principal_uid)
     }
 }

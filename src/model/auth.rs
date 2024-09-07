@@ -7,7 +7,7 @@
 use chrono::NaiveDateTime;
 use serde_derive::{Deserialize, Serialize};
 
-use crate::utils::apierror::{error_invalid_request, specialize, ApiError};
+use crate::utils::apierror::{error_forbidden, error_invalid_request, specialize, ApiError};
 
 /// Represents a data about a successful authentication
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -73,6 +73,30 @@ impl Authentication {
             Err(specialize(
                 error_invalid_request(),
                 String::from("Expected a user to be authenticated"),
+            ))
+        }
+    }
+
+    /// Checks that this authentication enables writing
+    pub fn check_can_write(&self) -> Result<(), ApiError> {
+        if self.can_write {
+            Ok(())
+        } else {
+            Err(specialize(
+                error_forbidden(),
+                String::from("writing is forbidden for this authentication"),
+            ))
+        }
+    }
+
+    /// Checks that this authentication enables admin tasks
+    pub fn check_can_admin(&self) -> Result<(), ApiError> {
+        if self.can_admin {
+            Ok(())
+        } else {
+            Err(specialize(
+                error_forbidden(),
+                String::from("administration is forbidden for this authentication"),
             ))
         }
     }

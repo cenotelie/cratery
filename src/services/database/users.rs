@@ -23,11 +23,6 @@ use crate::utils::apierror::{
 use crate::utils::token::{check_hash, generate_token, hash_token};
 
 impl Database {
-    /// Gets the data about the current user
-    pub async fn get_current_user(&self, authentication: &Authentication) -> Result<RegistryUser, ApiError> {
-        self.get_user_profile(authentication.uid()?).await
-    }
-
     /// Retrieves a user profile
     pub async fn get_user_profile(&self, uid: i64) -> Result<RegistryUser, ApiError> {
         let maybe_row = sqlx::query_as!(
@@ -132,14 +127,7 @@ impl Database {
     }
 
     /// Gets the known users
-    pub async fn get_users(&self, authentication: &Authentication) -> Result<Vec<RegistryUser>, ApiError> {
-        if !authentication.can_admin {
-            return Err(specialize(
-                error_forbidden(),
-                String::from("administration is forbidden for this authentication"),
-            ));
-        }
-        self.check_is_admin(authentication.uid()?).await?;
+    pub async fn get_users(&self) -> Result<Vec<RegistryUser>, ApiError> {
         let rows = sqlx::query_as!(
             RegistryUser,
             "SELECT id, isActive AS is_active, email, login, name, roles FROM RegistryUser ORDER BY login",
@@ -150,30 +138,22 @@ impl Database {
     }
 
     /// Updates the information of a user
-    pub async fn update_user(&self, authentication: &Authentication, target: &RegistryUser) -> Result<RegistryUser, ApiError> {
-        let uid = authentication.uid()?;
-        let is_admin = if target.id == uid {
-            self.get_is_admin(uid).await?
-        } else {
-            if !authentication.can_admin {
-                return Err(specialize(
-                    error_forbidden(),
-                    String::from("administration is forbidden for this authentication"),
-                ));
-            }
-            self.check_is_admin(uid).await?;
-            true
-        };
+    pub async fn update_user(
+        &self,
+        principal_uid: i64,
+        target: &RegistryUser,
+        can_admin: bool,
+    ) -> Result<RegistryUser, ApiError> {
         let row = sqlx::query!("SELECT login, roles FROM RegistryUser WHERE id = $1 LIMIT 1", target.id)
             .fetch_optional(&mut *self.transaction.borrow().await)
             .await?
             .ok_or_else(error_not_found)?;
         let old_roles = row.roles;
-        if !is_admin && target.roles != old_roles {
+        if !can_admin && target.roles != old_roles {
             // not admin and changing roles
             return Err(specialize(error_forbidden(), String::from("only admins can change roles")));
         }
-        if is_admin && target.id == uid && target.roles.split(',').all(|role| role.trim() != "admin") {
+        if can_admin && target.id == principal_uid && target.roles.split(',').all(|role| role.trim() != "admin") {
             // admin and removing admin role from self
             return Err(specialize(error_forbidden(), String::from("admins cannot remove themselves")));
         }
@@ -207,17 +187,9 @@ impl Database {
     }
 
     /// Attempts to deactivate a user
-    pub async fn deactivate_user(&self, authentication: &Authentication, target: &str) -> Result<(), ApiError> {
-        if !authentication.can_admin {
-            return Err(specialize(
-                error_forbidden(),
-                String::from("administration is forbidden for this authentication"),
-            ));
-        }
-        let uid = authentication.uid()?;
+    pub async fn deactivate_user(&self, principal_uid: i64, target: &str) -> Result<(), ApiError> {
         let target_uid = self.check_is_user(target).await?;
-        self.check_is_admin(uid).await?;
-        if uid == target_uid {
+        if principal_uid == target_uid {
             // cannot deactivate self
             return Err(specialize(error_forbidden(), String::from("cannot self deactivate")));
         }
@@ -228,15 +200,7 @@ impl Database {
     }
 
     /// Attempts to re-activate a user
-    pub async fn reactivate_user(&self, authentication: &Authentication, target: &str) -> Result<(), ApiError> {
-        if !authentication.can_admin {
-            return Err(specialize(
-                error_forbidden(),
-                String::from("administration is forbidden for this authentication"),
-            ));
-        }
-        let uid = authentication.uid()?;
-        self.check_is_admin(uid).await?;
+    pub async fn reactivate_user(&self, target: &str) -> Result<(), ApiError> {
         sqlx::query!("UPDATE RegistryUser SET isActive = TRUE WHERE email = $1", target)
             .execute(&mut *self.transaction.borrow().await)
             .await?;
@@ -244,21 +208,13 @@ impl Database {
     }
 
     /// Attempts to delete a user
-    pub async fn delete_user(&self, authentication: &Authentication, target: &str) -> Result<(), ApiError> {
-        if !authentication.can_admin {
-            return Err(specialize(
-                error_forbidden(),
-                String::from("administration is forbidden for this authentication"),
-            ));
-        }
-        let uid = authentication.uid()?;
-        self.check_is_admin(uid).await?;
+    pub async fn delete_user(&self, principal_uid: i64, target: &str) -> Result<(), ApiError> {
         let target_uid = sqlx::query!("SELECT id FROM RegistryUser WHERE email = $1", target)
             .fetch_optional(&mut *self.transaction.borrow().await)
             .await?
             .ok_or_else(error_not_found)?
             .id;
-        if uid == target_uid {
+        if principal_uid == target_uid {
             return Err(specialize(error_forbidden(), String::from("cannot delete self")));
         }
         sqlx::query!("DELETE FROM RegistryUserToken WHERE user = $1", target_uid)
@@ -274,14 +230,7 @@ impl Database {
     }
 
     /// Gets the tokens for a user
-    pub async fn get_tokens(&self, authentication: &Authentication) -> Result<Vec<RegistryUserToken>, ApiError> {
-        if !authentication.can_admin {
-            return Err(specialize(
-                error_forbidden(),
-                String::from("administration is forbidden for this authentication"),
-            ));
-        }
-        let uid = authentication.uid()?;
+    pub async fn get_tokens(&self, uid: i64) -> Result<Vec<RegistryUserToken>, ApiError> {
         let rows = sqlx::query!(
             "SELECT id, name, lastUsed AS last_used, canWrite AS can_write, canAdmin AS can_admin FROM RegistryUserToken WHERE user = $1 ORDER BY id",
             uid
@@ -303,18 +252,11 @@ impl Database {
     /// Creates a token for the current user
     pub async fn create_token(
         &self,
-        authentication: &Authentication,
+        uid: i64,
         name: &str,
         can_write: bool,
         can_admin: bool,
     ) -> Result<RegistryUserTokenWithSecret, ApiError> {
-        if !authentication.can_admin {
-            return Err(specialize(
-                error_forbidden(),
-                String::from("administration is forbidden for this authentication"),
-            ));
-        }
-        let uid = authentication.uid()?;
         let token_secret = generate_token(64);
         let token_hash = hash_token(&token_secret);
         let now = Local::now().naive_local();
@@ -341,14 +283,7 @@ impl Database {
     }
 
     /// Revoke a previous token
-    pub async fn revoke_token(&self, authentication: &Authentication, token_id: i64) -> Result<(), ApiError> {
-        if !authentication.can_admin {
-            return Err(specialize(
-                error_forbidden(),
-                String::from("administration is forbidden for this authentication"),
-            ));
-        }
-        let uid = authentication.uid()?;
+    pub async fn revoke_token(&self, uid: i64, token_id: i64) -> Result<(), ApiError> {
         sqlx::query!("DELETE FROM RegistryUserToken WHERE user = $1 AND id = $2", uid, token_id)
             .execute(&mut *self.transaction.borrow().await)
             .await?;

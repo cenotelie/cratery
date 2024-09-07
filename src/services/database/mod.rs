@@ -12,7 +12,7 @@ pub mod users;
 
 use std::future::Future;
 
-use crate::utils::apierror::{error_forbidden, error_unauthorized, ApiError};
+use crate::utils::apierror::{error_forbidden, error_not_found, error_unauthorized, specialize, ApiError};
 use crate::utils::db::{AppTransaction, RwSqlitePool};
 
 /// Executes a piece of work in the context of a transaction
@@ -98,7 +98,7 @@ impl Database {
     }
 
     /// Checks that a user is an admin
-    async fn get_is_admin(&self, uid: i64) -> Result<bool, ApiError> {
+    pub async fn get_is_admin(&self, uid: i64) -> Result<bool, ApiError> {
         let roles = sqlx::query!("SELECT roles FROM RegistryUser WHERE id = $1", uid)
             .fetch_optional(&mut *self.transaction.borrow().await)
             .await?
@@ -114,6 +114,40 @@ impl Database {
             Ok(())
         } else {
             Err(error_forbidden())
+        }
+    }
+
+    /// Checks that a package exists
+    pub async fn check_crate_exists(&self, package: &str, version: &str) -> Result<(), ApiError> {
+        let _row = sqlx::query!(
+            "SELECT id FROM PackageVersion WHERE package = $1 AND version = $2 LIMIT 1",
+            package,
+            version
+        )
+        .fetch_optional(&mut *self.transaction.borrow().await)
+        .await?
+        .ok_or_else(error_not_found)?;
+        Ok(())
+    }
+
+    /// Checks the ownership of a package
+    pub async fn check_is_crate_manager(&self, uid: i64, package: &str) -> Result<i64, ApiError> {
+        if self.check_is_admin(uid).await.is_ok() {
+            return Ok(uid);
+        }
+        let row = sqlx::query!(
+            "SELECT id from PackageOwner WHERE package = $1 AND owner = $2 LIMIT 1",
+            package,
+            uid
+        )
+        .fetch_optional(&mut *self.transaction.borrow().await)
+        .await?;
+        match row {
+            Some(_) => Ok(uid),
+            None => Err(specialize(
+                error_forbidden(),
+                String::from("User is not an owner of this package"),
+            )),
         }
     }
 }

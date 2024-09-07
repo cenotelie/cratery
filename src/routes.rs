@@ -38,7 +38,7 @@ use crate::utils::axum::auth::{AuthData, AxumStateForCookies};
 use crate::utils::axum::embedded::{EmbeddedResources, WebappResource};
 use crate::utils::axum::extractors::Base64;
 use crate::utils::axum::sse::{Event, ServerSentEventStream};
-use crate::utils::axum::{response, response_error, response_ok, ApiResult};
+use crate::utils::axum::{response, response_error, ApiResult};
 use crate::utils::token::generate_token;
 
 /// The state of this application for axum
@@ -288,8 +288,11 @@ fn get_content_type(name: &str) -> &'static str {
 }
 
 /// Get server configuration
-pub async fn api_v1_get_registry_information(State(state): State<Arc<AxumState>>) -> ApiResult<RegistryInformation> {
-    Ok(response_ok(state.application.get_registry_information()))
+pub async fn api_v1_get_registry_information(
+    auth_data: AuthData,
+    State(state): State<Arc<AxumState>>,
+) -> ApiResult<RegistryInformation> {
+    response(state.application.get_registry_information(&auth_data).await)
 }
 
 /// Get the current user
