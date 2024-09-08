@@ -31,6 +31,9 @@ pub mod services;
 pub mod utils;
 pub mod webapp;
 
+#[cfg(test)]
+mod tests;
+
 /// The name of this program
 pub const CRATE_NAME: &str = env!("CARGO_PKG_NAME");
 /// The commit that was used to build the application
@@ -177,7 +180,7 @@ async fn main() {
     setup_log();
     info!("{} commit={} tag={}", CRATE_NAME, GIT_HASH, GIT_TAG);
 
-    let application = Application::launch().await.unwrap();
+    let application = Application::launch::<services::StandardServiceProvider>().await.unwrap();
 
     let cookie_key = Key::from(
         std::env::var("REGISTRY_WEB_COOKIE_SECRET")

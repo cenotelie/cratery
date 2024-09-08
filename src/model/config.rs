@@ -359,6 +359,63 @@ pub struct Configuration {
     pub self_builtin_targets: Vec<String>,
 }
 
+impl Default for Configuration {
+    fn default() -> Self {
+        Self {
+            log_level: String::from("INFO"),
+            log_datetime_format: String::from("[%Y-%m-%d %H:%M:%S]"),
+            web_listenon_ip: IpAddr::V4(Ipv4Addr::new(0, 0, 0, 0)),
+            web_listenon_port: 80,
+            web_public_uri: String::from("http://localhost"),
+            web_domain: String::from("localhost"),
+            web_body_limit: 10 * 1024 * 1024,
+            web_hot_reload_path: None,
+            home_dir: String::from("/home/cratery"),
+            data_dir: String::from("/data"),
+            index: IndexConfig {
+                home_dir: String::from("/home/cratery"),
+                location: String::from("/data/index"),
+                allow_protocol_git: true,
+                allow_protocol_sparse: true,
+                remote_origin: None,
+                remote_ssh_key_file_name: None,
+                remote_push_changes: false,
+                user_name: String::from("Cratery"),
+                user_email: String::from("cratery@localhost"),
+                public: IndexPublicConfig {
+                    dl: String::from("http://localhost/api/v1/crates"),
+                    api: String::from("http://localhost"),
+                    auth_required: true,
+                },
+            },
+            storage: StorageConfig::FileSystem,
+            storage_timeout: 3000,
+            oauth_login_uri: String::new(),
+            oauth_token_uri: String::new(),
+            oauth_callback_uri: String::new(),
+            oauth_userinfo_uri: String::new(),
+            oauth_userinfo_path_email: String::from("email"),
+            oauth_userinfo_path_fullname: String::from("fullName"),
+            oauth_client_id: String::new(),
+            oauth_client_secret: String::new(),
+            oauth_client_scope: String::new(),
+            external_registries: Vec::new(),
+            deps_check_period: 60,
+            deps_stale_registry: 60 * 1000,
+            deps_stale_analysis: 24 * 60,
+            deps_notify_outdated: false,
+            deps_notify_cves: false,
+            email: EmailConfig::default(),
+            self_local_name: String::from("localhost"),
+            self_service_login: String::new(),
+            self_service_token: String::new(),
+            self_toolchain_version: String::new(),
+            self_toolchain_host: String::new(),
+            self_builtin_targets: Vec::new(),
+        }
+    }
+}
+
 impl Configuration {
     /// Gets the configuration from environment variables
     ///

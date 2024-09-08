@@ -44,7 +44,7 @@ pub trait Storage {
 
 /// Gets the backing storage for the documentation
 #[must_use]
-pub fn get_storage(config: &Configuration) -> Arc<dyn Storage + Send + Sync> {
+pub fn get_service(config: &Configuration) -> Arc<dyn Storage + Send + Sync> {
     Arc::new(StorageImpl::from(config))
 }
 

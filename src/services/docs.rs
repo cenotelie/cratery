@@ -44,7 +44,7 @@ pub trait DocsGenerator {
 }
 
 /// Gets the documentation generation service
-pub fn get_docs_generator(
+pub fn get_service(
     configuration: Arc<Configuration>,
     service_db_pool: RwSqlitePool,
     service_storage: Arc<dyn Storage + Send + Sync>,

@@ -60,7 +60,7 @@ pub fn build_package_file_path(mut root: PathBuf, name: &str) -> PathBuf {
 }
 
 /// Gets the index service
-pub async fn get_index(config: &Configuration) -> Result<Arc<dyn Index + Send + Sync>, ApiError> {
+pub async fn get_service(config: &Configuration) -> Result<Arc<dyn Index + Send + Sync>, ApiError> {
     let index = git::GitIndex::new(config.get_index_git_config()).await?;
     Ok(Arc::new(index))
 }

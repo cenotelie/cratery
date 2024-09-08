@@ -28,6 +28,7 @@ use crate::services::emails::EmailSender;
 use crate::services::index::Index;
 use crate::services::rustsec::RustSecChecker;
 use crate::services::storage::Storage;
+use crate::services::ServiceProvider;
 use crate::utils::apierror::{error_invalid_request, error_unauthorized, specialize, ApiError};
 use crate::utils::axum::auth::{AuthData, Token};
 use crate::utils::db::RwSqlitePool;
@@ -61,11 +62,9 @@ const DB_EMPTY: &[u8] = include_bytes!("empty.db");
 
 impl Application {
     /// Creates a new application
-    pub async fn launch() -> Result<Arc<Self>, ApiError> {
+    pub async fn launch<P: ServiceProvider>() -> Result<Arc<Self>, ApiError> {
         // load configuration
-        let configuration = Arc::new(Configuration::from_env().await?);
-        // write the auth data
-        configuration.write_auth_config().await?;
+        let configuration = Arc::new(P::get_configuration().await?);
 
         // connection pool to the database
         let db_filename = configuration.get_database_filename();
@@ -81,14 +80,13 @@ impl Application {
         })
         .await?;
 
-        let service_storage = crate::services::storage::get_storage(&configuration.deref().clone());
-        let service_index = crate::services::index::get_index(&configuration).await?;
-        let service_rustsec = crate::services::rustsec::get_rustsec(&configuration);
-        let service_deps_checker =
-            crate::services::deps::get_deps_checker(configuration.clone(), service_index.clone(), service_rustsec.clone());
-        let service_email_sender = crate::services::emails::get_deps_checker(configuration.clone());
+        let service_storage = P::get_storage(&configuration.deref().clone());
+        let service_index = P::get_index(&configuration).await?;
+        let service_rustsec = P::get_rustsec(&configuration);
+        let service_deps_checker = P::get_deps_checker(configuration.clone(), service_index.clone(), service_rustsec.clone());
+        let service_email_sender = P::get_email_sender(configuration.clone());
         let service_docs_generator =
-            crate::services::docs::get_docs_generator(configuration.clone(), service_db_pool.clone(), service_storage.clone());
+            P::get_docs_generator(configuration.clone(), service_db_pool.clone(), service_storage.clone());
 
         // check undocumented packages
         let job_specs = db_transaction_read(&service_db_pool, |database| async move {
@@ -187,7 +185,7 @@ impl Application {
     /// # Errors
     ///
     /// Returns an instance of the `E` type argument
-    async fn db_transaction_read<'s, F, FUT, T, E>(&'s self, workload: F) -> Result<T, E>
+    pub(crate) async fn db_transaction_read<'s, F, FUT, T, E>(&'s self, workload: F) -> Result<T, E>
     where
         F: FnOnce(ApplicationWithTransaction<'s>) -> FUT,
         FUT: Future<Output = Result<T, E>>,
@@ -210,7 +208,7 @@ impl Application {
     /// # Errors
     ///
     /// Returns an instance of the `E` type argument
-    async fn db_transaction_write<'s, F, FUT, T, E>(&'s self, operation: &'static str, workload: F) -> Result<T, E>
+    pub(crate) async fn db_transaction_write<'s, F, FUT, T, E>(&'s self, operation: &'static str, workload: F) -> Result<T, E>
     where
         F: FnOnce(ApplicationWithTransaction<'s>) -> FUT,
         FUT: Future<Output = Result<T, E>>,
@@ -693,11 +691,11 @@ impl Application {
 }
 
 /// The application, running with a transaction
-struct ApplicationWithTransaction<'a> {
+pub(crate) struct ApplicationWithTransaction<'a> {
     /// The application with its services
-    application: &'a Application,
+    pub(crate) application: &'a Application,
     /// The database access encapsulating a transaction
-    database: Database,
+    pub(crate) database: Database,
 }
 
 impl<'a> ApplicationWithTransaction<'a> {

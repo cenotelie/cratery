@@ -214,7 +214,7 @@ pub trait DepsChecker {
 }
 
 /// Gets the dependencies checker service
-pub fn get_deps_checker(
+pub fn get_service(
     configuration: Arc<Configuration>,
     service_index: Arc<dyn Index + Send + Sync>,
     service_rustsec: Arc<dyn RustSecChecker + Send + Sync>,

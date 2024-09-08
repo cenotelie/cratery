@@ -82,6 +82,18 @@ pub struct AuthData {
     pub token: Option<Token>,
 }
 
+impl From<Token> for AuthData {
+    fn from(token: Token) -> Self {
+        Self {
+            cookie_domain: Cow::Borrowed("localhost"),
+            cookie_id_name: Cow::Borrowed("cratery"),
+            cookie_key: Key::from(&[0; 64]),
+            cookie_jar: CookieJar::default(),
+            token: Some(token),
+        }
+    }
+}
+
 #[async_trait]
 impl<S> FromRequestParts<Arc<S>> for AuthData
 where

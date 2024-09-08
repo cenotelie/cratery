@@ -20,7 +20,7 @@ pub const BUILTIN_CRATES_REGISTRY_URI: &str = "<builtin>";
 pub const BUILTIN_CRATES_LIST: &[&str] = &["core", "alloc", "std"];
 
 /// The complete dependency analysis
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Default, Clone, Serialize, Deserialize)]
 pub struct DepsAnalysis {
     /// The direct dependencies
     #[serde(rename = "directDependencies")]

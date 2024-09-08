@@ -24,7 +24,7 @@ pub trait EmailSender {
 
 /// Gets the email sender service
 #[must_use]
-pub fn get_deps_checker(config: Arc<Configuration>) -> Arc<dyn EmailSender + Send + Sync> {
+pub fn get_service(config: Arc<Configuration>) -> Arc<dyn EmailSender + Send + Sync> {
     Arc::new(EmailSenderImpl { config })
 }
 

@@ -47,12 +47,6 @@ impl RwSqlitePool {
                 ),
             write: SqlitePoolOptions::new()
                 .max_connections(1)
-                .before_acquire(|_connection, _metadata| {
-                    Box::pin(async move {
-                        // println!("before_acquire");
-                        Ok(true)
-                    })
-                })
                 .after_release({
                     let current_write_op = current_write_op.clone();
                     move |_connection, _metadata| {
