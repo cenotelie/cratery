@@ -11,12 +11,16 @@ use chrono::Local;
 use tokio::runtime::Builder;
 
 use crate::application::Application;
+use crate::model::auth::ROLE_ADMIN;
 use crate::utils::apierror::ApiError;
 use crate::utils::axum::auth::{AuthData, Token};
 use crate::utils::token::{generate_token, hash_token};
 
 pub mod mocks;
 pub mod security;
+
+pub const ADMIN_UID: i64 = 1;
+pub const ADMIN_NAME: &str = "admin";
 
 /// Wrapper for async tests
 pub fn async_test<F, FUT>(payload: F) -> Result<(), ApiError>
@@ -28,8 +32,9 @@ where
     runtime.block_on(async move {
         let application = Application::launch::<mocks::MockService>().await?;
         println!("data_dir={}", &application.configuration.data_dir);
-        setup_add_admin(&application).await?;
-        let token_secret = setup_create_token(&application, 1, true, true).await?;
+        // create the first user ad admin and its token
+        setup_create_admin(&application, ADMIN_NAME).await?;
+        let token_secret = setup_create_token(&application, ADMIN_UID, true, true).await?;
         let admin_auth = AuthData::from(Token {
             id: String::from("admin"),
             secret: token_secret,
@@ -41,12 +46,35 @@ where
     Ok(())
 }
 
-/// Adds an admin user
-pub async fn setup_add_admin(application: &Application) -> Result<(), ApiError> {
-    application.db_transaction_write("setup_add_admin", |app| async move {
-        sqlx::query("INSERT INTO RegistryUser (isActive, email, login, name, roles) VALUES (TRUE, 'admin', 'admin', 'admin', 'admin')").execute(&mut *app.database.transaction.borrow().await).await?;
-        Ok::<(), ApiError>(())
-    }).await?;
+pub async fn setup_create_admin(application: &Application, name: &str) -> Result<(), ApiError> {
+    setup_create_user(application, name, ROLE_ADMIN).await
+}
+
+pub async fn setup_create_user(application: &Application, name: &str, roles: &str) -> Result<(), ApiError> {
+    setup_create_user_base(application, name, true, roles).await
+}
+
+pub async fn setup_create_user_inactive(application: &Application, name: &str, roles: &str) -> Result<(), ApiError> {
+    setup_create_user_base(application, name, false, roles).await
+}
+
+pub async fn setup_create_user_base(
+    application: &Application,
+    name: &str,
+    is_active: bool,
+    roles: &str,
+) -> Result<(), ApiError> {
+    application
+        .db_transaction_write("setup_add_admin", |app| async move {
+            sqlx::query("INSERT INTO RegistryUser (isActive, email, login, name, roles) VALUES ($2, $1, $1, $1, $3)")
+                .bind(name)
+                .bind(is_active)
+                .bind(roles)
+                .execute(&mut *app.database.transaction.borrow().await)
+                .await?;
+            Ok::<(), ApiError>(())
+        })
+        .await?;
     Ok(())
 }
 

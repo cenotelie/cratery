@@ -9,6 +9,9 @@ use serde_derive::{Deserialize, Serialize};
 
 use crate::utils::apierror::{error_forbidden, error_invalid_request, specialize, ApiError};
 
+/// The admin role
+pub const ROLE_ADMIN: &str = "admin";
+
 /// Represents a data about a successful authentication
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct Authentication {

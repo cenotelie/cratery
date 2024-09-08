@@ -12,7 +12,7 @@ use chrono::Local;
 use super::Database;
 use crate::model::auth::{
     find_field_in_blob, Authentication, AuthenticationPrincipal, OAuthToken, RegistryUserToken, RegistryUserTokenWithSecret,
-    TokenKind, TokenUsage,
+    TokenKind, TokenUsage, ROLE_ADMIN,
 };
 use crate::model::cargo::RegistryUser;
 use crate::model::config::Configuration;
@@ -105,7 +105,7 @@ impl Database {
             login = generate_name();
         }
         let full_name = find_field_in_blob(&user_info, &configuration.oauth_userinfo_path_fullname).unwrap_or(&login);
-        let roles = if count == 0 { "admin" } else { "" };
+        let roles = if count == 0 { ROLE_ADMIN } else { "" };
         let id = sqlx::query!(
             "INSERT INTO RegistryUser (isActive, email, login, name, roles) VALUES (TRUE, $1, $2, $3, $4) RETURNING id",
             email,
@@ -153,7 +153,7 @@ impl Database {
             // not admin and changing roles
             return Err(specialize(error_forbidden(), String::from("only admins can change roles")));
         }
-        if can_admin && target.id == principal_uid && target.roles.split(',').all(|role| role.trim() != "admin") {
+        if can_admin && target.id == principal_uid && target.roles.split(',').all(|role| role.trim() != ROLE_ADMIN) {
             // admin and removing admin role from self
             return Err(specialize(error_forbidden(), String::from("admins cannot remove themselves")));
         }

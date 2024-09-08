@@ -12,6 +12,7 @@ pub mod users;
 
 use std::future::Future;
 
+use crate::model::auth::ROLE_ADMIN;
 use crate::utils::apierror::{error_forbidden, error_not_found, error_unauthorized, specialize, ApiError};
 use crate::utils::db::{AppTransaction, RwSqlitePool};
 
@@ -104,7 +105,7 @@ impl Database {
             .await?
             .ok_or_else(error_forbidden)?
             .roles;
-        Ok(roles.split(',').any(|role| role.trim() == "admin"))
+        Ok(roles.split(',').any(|role| role.trim() == ROLE_ADMIN))
     }
 
     /// Checks that a user is an admin
