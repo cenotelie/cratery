@@ -373,7 +373,7 @@ dependencies = [
 
 [[package]]
 name = "cratery"
-version = "1.9.1"
+version = "1.9.2"
 dependencies = [
  "axum",
  "base64",
