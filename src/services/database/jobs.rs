@@ -39,10 +39,10 @@ impl Database {
                 last_update: row.last_update,
                 trigger: DocGenTrigger::from((
                     row.trigger_event,
-                    if row.trigger_user < 0 {
-                        None
+                    if let Some(uid) = row.trigger_user {
+                        Some(self.get_user_profile(uid).await?)
                     } else {
-                        Some(self.get_user_profile(row.trigger_user).await?)
+                        None
                     },
                 )),
             });
@@ -76,10 +76,10 @@ impl Database {
             last_update: row.last_update,
             trigger: DocGenTrigger::from((
                 row.trigger_event,
-                if row.trigger_user < 0 {
-                    None
+                if let Some(uid) = row.trigger_user {
+                    Some(self.get_user_profile(uid).await?)
                 } else {
-                    Some(self.get_user_profile(row.trigger_user).await?)
+                    None
                 },
             )),
         })
@@ -117,17 +117,17 @@ impl Database {
                 last_update: row.last_update,
                 trigger: DocGenTrigger::from((
                     row.trigger_event,
-                    if row.trigger_user < 0 {
-                        None
+                    if let Some(uid) = row.trigger_user {
+                        Some(self.get_user_profile(uid).await?)
                     } else {
-                        Some(self.get_user_profile(row.trigger_user).await?)
+                        None
                     },
                 )),
             });
         }
 
         let trigger_event = trigger.value();
-        let trigger_user = trigger.by().map_or(-1, |u| u.id);
+        let trigger_user = trigger.by().map(|u| u.id);
         let now = Local::now().naive_local();
         let targets = spec.targets.join(",");
         let state_value = DocGenJobState::Queued.value();
@@ -194,10 +194,10 @@ impl Database {
             last_update: row.last_update,
             trigger: DocGenTrigger::from((
                 row.trigger_event,
-                if row.trigger_user < 0 {
-                    None
+                if let Some(uid) = row.trigger_user {
+                    Some(self.get_user_profile(uid).await?)
                 } else {
-                    Some(self.get_user_profile(row.trigger_user).await?)
+                    None
                 },
             )),
         }))

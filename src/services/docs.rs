@@ -133,9 +133,9 @@ impl DocsGeneratorImpl {
     async fn send_event(&self, event: DocGenEvent) -> Result<(), ApiError> {
         let mut listeners = self.listeners.lock().await;
         let mut index = if listeners.is_empty() {
-            Some(listeners.len() - 1)
-        } else {
             None
+        } else {
+            Some(listeners.len() - 1)
         };
         while let Some(i) = index {
             if listeners[i].send(event.clone()).await.is_err() {

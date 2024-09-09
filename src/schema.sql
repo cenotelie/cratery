@@ -5,7 +5,7 @@ CREATE TABLE IF NOT EXISTS SchemaMetadata (
 
 CREATE INDEX IF NOT EXISTS SchemaMetadataIndex ON SchemaMetadata(name);
 
-INSERT INTO SchemaMetadata VALUES ('version', '1.7.0');
+INSERT INTO SchemaMetadata VALUES ('version', '1.7.1');
 
 CREATE TABLE RegistryUser (
     id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
@@ -83,7 +83,7 @@ CREATE TABLE DocGenJob (
     startedOn TIMESTAMP NOT NULL,
     finishedOn TIMESTAMP NOT NULL,
     lastUpdate TIMESTAMP NOT NULL,
-    triggerUser INTEGER NOT NULL REFERENCES RegistryUser(id),
+    triggerUser INTEGER REFERENCES RegistryUser(id),
     triggerEvent INTEGER NOT NULL,
     output TEXT NOT NULL
 );
