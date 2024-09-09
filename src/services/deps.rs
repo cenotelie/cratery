@@ -399,10 +399,11 @@ impl DepsCheckerImpl {
         reg_location.push(reg_name);
         if is_stale {
             if tokio::fs::try_exists(&reg_location).await? {
-                crate::utils::execute_git(&reg_location, &["pull", "origin", "master"]).await?;
+                crate::utils::execute_git(&reg_location, &["fetch", "origin", "master"]).await?;
+                crate::utils::execute_git(&reg_location, &["reset", "--hard", "origin/master"]).await?;
             } else {
                 tokio::fs::create_dir_all(&reg_location).await?;
-                crate::utils::execute_git(&reg_location, &["clone", index_uri, "."]).await?;
+                crate::utils::execute_git(&reg_location, &["clone", "--branch", "master", index_uri, "."]).await?;
             }
             data.last_touch.insert(reg_name.to_string(), now);
         }

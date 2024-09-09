@@ -99,7 +99,12 @@ impl RustSecData {
         reg_location.push(DATA_SUB_DIR);
         if is_stale {
             if tokio::fs::try_exists(&reg_location).await? {
-                crate::utils::execute_git(&reg_location, &["pull", "origin", RUSTSEC_DB_GIT_BRANCH]).await?;
+                crate::utils::execute_git(&reg_location, &["fetch", "origin", RUSTSEC_DB_GIT_BRANCH]).await?;
+                crate::utils::execute_git(
+                    &reg_location,
+                    &["reset", "--hard", &format!("origin/{RUSTSEC_DB_GIT_BRANCH}")],
+                )
+                .await?;
             } else {
                 tokio::fs::create_dir_all(&reg_location).await?;
                 crate::utils::execute_git(

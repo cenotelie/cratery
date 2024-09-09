@@ -125,6 +125,8 @@
         statusEl.onclick = () => {
           apiGetDocGenJobLog(job.id).then((log) => {
             document.getElementById('modal-log-value').value = log;
+          }).catch((error) => {
+            document.getElementById('modal-log-value').value = JSON.stringify(error);
           });
           const closeEl = document.getElementById('modal-log-close');
           const modalEl = document.getElementById('modal-log');
@@ -196,13 +198,13 @@
     }
 
     function renderTrigger(trigger) {
-      const keys = Object.getOwnPropertyNames(trigger);
-      if (keys.includes("MissingOnLaunch")) {
+      if (trigger === "MissingOnLaunch") {
         const element = document.createElement("span");
         element.className = "text-base text-gray-900 dark:text-white";
         element.appendChild(document.createTextNode("doc missing on launch"));
         return element;
       }
+      const keys = Object.getOwnPropertyNames(trigger);
       if (keys.includes("Upload") || keys.includes("Manual")) {
         const wrapper = document.createElement("div");
         wrapper.className = "flex items-center me-4";

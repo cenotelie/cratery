@@ -63,7 +63,10 @@ pub async fn execute_at_location(location: &Path, command: &str, args: &[&str], 
     if output.status.success() {
         Ok(output.stdout)
     } else {
-        Err(specialize(error_backend_failure(), String::from_utf8(output.stdout)?))
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        let error = format!("-- stdout\n{stdout}\n\n-- stderr\n{stderr}");
+        Err(specialize(error_backend_failure(), error))
     }
 }
 

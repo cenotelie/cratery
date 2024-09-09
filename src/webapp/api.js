@@ -1,359 +1,230 @@
-function apiGetVersion() {
-  return fetch("/api/v1/version").then((response) => {
-    if (response.status !== 200) {
-      throw response.text();
-    } else {
-      return response.json();
-    }
-  });
+async function onResponseJson(response) {
+  if (response.status !== 200) {
+    throw await response.json();
+  } else {
+    return await response.json();
+  }
 }
 
-function apiGetRegistryInformation() {
-  return fetch("/api/v1/registry-information").then((response) => {
-    if (response.status !== 200) {
-      throw response.text();
-    } else {
-      return response.json();
-    }
-  });
+async function apiGetVersion() {
+  const response = await fetch("/api/v1/version");
+  return await onResponseJson(response);
 }
 
-function apiMe() {
-  return fetch("/api/v1/me").then((response) => {
-    if (response.status !== 200) {
-      throw response.text();
-    } else {
-      return response.json();
-    }
-  });
+async function apiGetRegistryInformation() {
+  const response = await fetch("/api/v1/registry-information");
+  return await onResponseJson(response);
 }
 
-function apiOAuthLoginWithCode(code) {
-  return fetch("/api/v1/oauth/code", { method: "POST", body: code }).then(
-    (response) => {
-      if (response.status !== 200) {
-        throw response.text();
-      } else {
-        return response.json();
-      }
-    }
-  );
+async function apiMe() {
+  const response = await fetch("/api/v1/me");
+  return await onResponseJson(response);
 }
 
-function apiLogout() {
-  return fetch("/api/v1/logout", {
+async function apiOAuthLoginWithCode(code) {
+  const response = await fetch("/api/v1/oauth/code", {
     method: "POST",
-  }).then((r) => r.text());
-}
-
-function apiGetUserTokens() {
-  return fetch("/api/v1/me/tokens").then((response) => {
-    if (response.status !== 200) {
-      throw response.text();
-    } else {
-      return response.json();
-    }
+    body: code,
   });
+  return await onResponseJson(response);
 }
 
-function apiCreateUserToken(name, canWrite, canAdmin) {
-  return fetch(`/api/v1/me/tokens?canWrite=${canWrite}&canAdmin=${canAdmin}`, {
-    method: "PUT",
-    body: name,
-  }).then((response) => {
-    if (response.status !== 200) {
-      throw response.text();
-    } else {
-      return response.json();
-    }
+async function apiLogout() {
+  const response = await fetch("/api/v1/logout", {
+    method: "POST",
   });
+  return await response.text();
 }
 
-function apiRevokeUserToken(token_id) {
-  return fetch(`/api/v1/me/tokens/${token_id}`, { method: "DELETE" }).then(
-    (response) => {
-      if (response.status !== 200) {
-        throw response.text();
-      } else {
-        return response.text();
-      }
+async function apiGetUserTokens() {
+  const response = await fetch("/api/v1/me/tokens");
+  return await onResponseJson(response);
+}
+
+async function apiCreateUserToken(name, canWrite, canAdmin) {
+  const response = await fetch(
+    `/api/v1/me/tokens?canWrite=${canWrite}&canAdmin=${canAdmin}`,
+    {
+      method: "PUT",
+      body: name,
     }
   );
+  return await onResponseJson(response);
 }
 
-function apiGetGlobalTokens() {
-  return fetch("/api/v1/admin/tokens").then((response) => {
-    if (response.status !== 200) {
-      throw response.text();
-    } else {
-      return response.json();
-    }
+async function apiRevokeUserToken(token_id) {
+  const response = await fetch(`/api/v1/me/tokens/${token_id}`, {
+    method: "DELETE",
   });
+  return await onResponseJson(response);
 }
 
-function apiCreateGlobalToken(name) {
-  return fetch("/api/v1/admin/tokens", {
+async function apiGetGlobalTokens() {
+  const response = await fetch("/api/v1/admin/tokens");
+  return await onResponseJson(response);
+}
+
+async function apiCreateGlobalToken(name) {
+  const response = await fetch("/api/v1/admin/tokens", {
     method: "PUT",
     body: name,
-  }).then((response) => {
-    if (response.status !== 200) {
-      throw response.text();
-    } else {
-      return response.json();
-    }
   });
+  return await onResponseJson(response);
 }
 
-function apiRevokeGlobalToken(token_id) {
-  return fetch(`/api/v1/admin/tokens/${token_id}`, { method: "DELETE" }).then(
-    (response) => {
-      if (response.status !== 200) {
-        throw response.text();
-      } else {
-        return response.text();
-      }
-    }
-  );
-}
-
-function apiGetDocGenJobs() {
-  return fetch("/api/v1/admin/jobs/docgen").then((response) => {
-    if (response.status !== 200) {
-      throw response.text();
-    } else {
-      return response.json();
-    }
+async function apiRevokeGlobalToken(token_id) {
+  const response = await fetch(`/api/v1/admin/tokens/${token_id}`, {
+    method: "DELETE",
   });
+  return await onResponseJson(response);
 }
 
-function apiGetDocGenJobLog(jobId) {
-  return fetch(`/api/v1/admin/jobs/docgen/${jobId}/log`).then((response) => {
-    if (response.status !== 200) {
-      throw response.text();
-    } else {
-      return response.json();
-    }
-  });
+async function apiGetDocGenJobs() {
+  const response = await fetch("/api/v1/admin/jobs/docgen");
+  return await onResponseJson(response);
 }
 
-function apiGetUsers() {
-  return fetch("/api/v1/admin/users").then((response) => {
-    if (response.status !== 200) {
-      throw response.text();
-    } else {
-      return response.json();
-    }
-  });
+async function apiGetDocGenJobLog(jobId) {
+  const response = await fetch(`/api/v1/admin/jobs/docgen/${jobId}/log`);
+  return await onResponseJson(response);
 }
 
-function apiUpdateUser(user) {
-  return fetch(`/api/v1/admin/users/${btoa(user.email)}`, {
+async function apiGetUsers() {
+  const response = await fetch("/api/v1/admin/users");
+  return await onResponseJson(response);
+}
+
+async function apiUpdateUser(user) {
+  const response = await fetch(`/api/v1/admin/users/${btoa(user.email)}`, {
     method: "PATCH",
     body: JSON.stringify(user),
     headers: [["content-type", "application/json"]],
-  }).then((response) => {
-    if (response.status !== 200) {
-      throw response.text();
-    } else {
-      return response.json();
-    }
   });
+  return await onResponseJson(response);
 }
 
-function apiDeleteUser(email) {
-  return fetch(`/api/v1/admin/users/${btoa(email)}`, {
+async function apiDeleteUser(email) {
+  const response = await fetch(`/api/v1/admin/users/${btoa(email)}`, {
     method: "DELETE",
-  }).then((response) => {
-    if (response.status !== 200) {
-      throw response.text();
-    } else {
-      return response.json();
-    }
   });
+  return await onResponseJson(response);
 }
 
-function apiDeactivateUser(email) {
-  return fetch(`/api/v1/admin/users/${btoa(email)}/deactivate`, {
-    method: "POST",
-  }).then((response) => {
-    if (response.status !== 200) {
-      throw response.text();
-    } else {
-      return response.text();
+async function apiDeactivateUser(email) {
+  const response = await fetch(
+    `/api/v1/admin/users/${btoa(email)}/deactivate`,
+    {
+      method: "POST",
     }
-  });
+  );
+  return await onResponseJson(response);
 }
 
-function apiReactivateUser(email) {
-  return fetch(`/api/v1/admin/users/${btoa(email)}/reactivate`, {
-    method: "POST",
-  }).then((response) => {
-    if (response.status !== 200) {
-      throw response.text();
-    } else {
-      return response.text();
+async function apiReactivateUser(email) {
+  const response = await fetch(
+    `/api/v1/admin/users/${btoa(email)}/reactivate`,
+    {
+      method: "POST",
     }
-  });
+  );
+  return await onResponseJson(response);
 }
 
-function apiGetCratesStats() {
-  return fetch("/api/v1/crates/stats").then((response) => {
-    if (response.status !== 200) {
-      throw response.text();
-    } else {
-      return response.json();
-    }
-  });
+async function apiGetCratesStats() {
+  const response = await fetch("/api/v1/crates/stats");
+  return await onResponseJson(response);
 }
 
-function apiGetCratesOutdatedHeads() {
-  return fetch("/api/v1/crates/outdated").then((response) => {
-    if (response.status !== 200) {
-      throw response.text();
-    } else {
-      return response.json();
-    }
-  });
+async function apiGetCratesOutdatedHeads() {
+  const response = await fetch("/api/v1/crates/outdated");
+  return await onResponseJson(response);
 }
 
-function apiLookupCrates(input) {
-  return fetch("/api/v1/crates?q=" + encodeURIComponent(input))
-    .then((response) => {
-      if (response.status !== 200) {
-        throw response.text();
-      } else {
-        return response.json();
-      }
-    })
-    .then((response) => response.crates);
+async function apiLookupCrates(input) {
+  const response = await fetch("/api/v1/crates?q=" + encodeURIComponent(input));
+  const responseJson = await onResponseJson(response);
+  return responseJson.crates;
 }
 
-function apiGetCrate(crate) {
-  return fetch(`/api/v1/crates/${crate}`).then((response) => {
-    if (response.status !== 200) {
-      throw response.text();
-    } else {
-      return response.json();
-    }
-  });
+async function apiGetCrate(crate) {
+  const response = await fetch(`/api/v1/crates/${crate}`);
+  return await onResponseJson(response);
 }
 
-function apiGetCrateLastReadme(crate) {
-  return fetch(`/api/v1/crates/${crate}/readme`).then((response) => {
-    if (response.status !== 200) {
-      throw response.text();
-    } else {
-      return response.text();
-    }
-  });
+async function apiGetCrateLastReadme(crate) {
+  const response = await fetch(`/api/v1/crates/${crate}/readme`);
+  if (response.status !== 200) {
+    throw await response.json();
+  } else {
+    return await response.text();
+  }
 }
 
-function apiGetCrateReadmeAt(crate, version) {
-  return fetch(`/api/v1/crates/${crate}/${version}/readme`).then((response) => {
-    if (response.status !== 200) {
-      throw response.text();
-    } else {
-      return response.text();
-    }
-  });
+async function apiGetCrateReadmeAt(crate, version) {
+  const response = await fetch(`/api/v1/crates/${crate}/${version}/readme`);
+  if (response.status !== 200) {
+    throw await response.json();
+  } else {
+    return await response.text();
+  }
 }
 
-function apiGetCrateOwners(crate) {
-  return fetch(`/api/v1/crates/${crate}/owners`).then((response) => {
-    if (response.status !== 200) {
-      throw response.text();
-    } else {
-      return response.json();
-    }
-  });
+async function apiGetCrateOwners(crate) {
+  const response = await fetch(`/api/v1/crates/${crate}/owners`);
+  return await onResponseJson(response);
 }
 
-function apiAddCrateOwner(crate, email) {
-  return fetch(`/api/v1/crates/${crate}/owners`, {
+async function apiAddCrateOwner(crate, email) {
+  const response = await fetch(`/api/v1/crates/${crate}/owners`, {
     method: "PUT",
     body: JSON.stringify({ users: [email] }),
     headers: [["content-type", "application/json"]],
-  }).then((response) => {
-    if (response.status !== 200) {
-      throw response.text();
-    } else {
-      return response.json();
-    }
   });
+  return await onResponseJson(response);
 }
 
-function apiRemoveCrateOwners(crate, email) {
-  return fetch(`/api/v1/crates/${crate}/owners`, {
+async function apiRemoveCrateOwners(crate, email) {
+  const response = await fetch(`/api/v1/crates/${crate}/owners`, {
     method: "DELETE",
     body: JSON.stringify({ users: [email] }),
     headers: [["content-type", "application/json"]],
-  }).then((response) => {
-    if (response.status !== 200) {
-      throw response.text();
-    } else {
-      return response.json();
-    }
   });
+  return await onResponseJson(response);
 }
 
-function apiGetCrateTargets(crate) {
-  return fetch(`/api/v1/crates/${crate}/targets`).then((response) => {
-    if (response.status !== 200) {
-      throw response.text();
-    } else {
-      return response.json();
-    }
-  });
+async function apiGetCrateTargets(crate) {
+  const response = await fetch(`/api/v1/crates/${crate}/targets`);
+  return await onResponseJson(response);
 }
 
-function apiSetCrateTargets(crate, targets) {
-  return fetch(`/api/v1/crates/${crate}/targets`, {
+async function apiSetCrateTargets(crate, targets) {
+  const response = await fetch(`/api/v1/crates/${crate}/targets`, {
     method: "PATCH",
     body: JSON.stringify(targets),
     headers: [["content-type", "application/json"]],
-  }).then((response) => {
-    if (response.status !== 200) {
-      throw response.text();
-    } else {
-      return response.json();
-    }
   });
+  return await onResponseJson(response);
 }
 
-function apiRegenCrateDoc(crate, version) {
-  return fetch(`/api/v1/crates/${crate}/${version}/docsregen`, {
+async function apiRegenCrateDoc(crate, version) {
+  const response = await fetch(`/api/v1/crates/${crate}/${version}/docsregen`, {
     method: "POST",
-  }).then((response) => {
-    if (response.status !== 200) {
-      throw response.text();
-    } else {
-      return response.json();
-    }
   });
+  return await onResponseJson(response);
 }
 
-function apiCheckCrateDeps(crate, version) {
-  return fetch(`/api/v1/crates/${crate}/${version}/checkdeps`, {
+async function apiCheckCrateDeps(crate, version) {
+  const response = await fetch(`/api/v1/crates/${crate}/${version}/checkdeps`, {
     method: "GET",
-  }).then((response) => {
-    if (response.status !== 200) {
-      throw response.text();
-    } else {
-      return response.json();
-    }
   });
+  return await onResponseJson(response);
 }
 
-function apiGetCrateDlStats(crate) {
-  return fetch(`/api/v1/crates/${crate}/dlstats`, {
+async function apiGetCrateDlStats(crate) {
+  const response = await fetch(`/api/v1/crates/${crate}/dlstats`, {
     method: "GET",
-  }).then((response) => {
-    if (response.status !== 200) {
-      throw response.text();
-    } else {
-      return response.json();
-    }
   });
+  return await onResponseJson(response);
 }
 
 function getQueryParameters(queryString) {
