@@ -540,7 +540,7 @@ impl Application {
         auth_data: &AuthData,
         package: &str,
         version: &str,
-    ) -> Result<DocGenJob, ApiError> {
+    ) -> Result<Vec<DocGenJob>, ApiError> {
         let (user, targets) = self
             .db_transaction_write("regen_crate_version_doc", |app| async move {
                 let authentication = app.authenticate(auth_data).await?;

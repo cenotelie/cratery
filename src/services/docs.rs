@@ -37,7 +37,7 @@ pub trait DocsGenerator {
     fn get_job_log(&self, job_id: i64) -> FaillibleFuture<'_, String>;
 
     /// Queues a job for documentation generation
-    fn queue<'a>(&'a self, spec: &'a JobCrate, trigger: &'a DocGenTrigger) -> FaillibleFuture<'a, DocGenJob>;
+    fn queue<'a>(&'a self, spec: &'a JobCrate, trigger: &'a DocGenTrigger) -> FaillibleFuture<'a, Vec<DocGenJob>>;
 
     /// Adds a listener to job updates
     fn add_listener(&self, listener: Sender<DocGenEvent>) -> FaillibleFuture<'_, ()>;
@@ -103,14 +103,30 @@ impl DocsGenerator for DocsGeneratorImpl {
     }
 
     /// Queues a job for documentation generation
-    fn queue<'a>(&'a self, spec: &'a JobCrate, trigger: &'a DocGenTrigger) -> FaillibleFuture<'a, DocGenJob> {
+    fn queue<'a>(&'a self, spec: &'a JobCrate, trigger: &'a DocGenTrigger) -> FaillibleFuture<'a, Vec<DocGenJob>> {
         Box::pin(async move {
-            let job = db_transaction_write(&self.service_db_pool, "create_docgen_job", |database| async move {
-                database.create_docgen_job(spec, trigger).await
+            let jobs = db_transaction_write(&self.service_db_pool, "create_docgen_job", |database| async move {
+                if spec.targets.is_empty() {
+                    // no target, use the host default target
+                    database
+                        .create_docgen_jobs(
+                            &JobCrate {
+                                name: spec.name.clone(),
+                                version: spec.version.clone(),
+                                targets: vec![self.configuration.self_toolchain_host.clone()],
+                            },
+                            trigger,
+                        )
+                        .await
+                } else {
+                    database.create_docgen_jobs(spec, trigger).await
+                }
             })
             .await?;
-            self.send_event(DocGenEvent::Queued(Box::new(job.clone()))).await?;
-            Ok(job)
+            for job in &jobs {
+                self.send_event(DocGenEvent::Queued(Box::new(job.clone()))).await?;
+            }
+            Ok(jobs)
         })
     }
 
@@ -223,12 +239,20 @@ impl DocsGeneratorImpl {
         info!("generating doc for {} {}", job.package, job.version);
         let content = self.service_storage.download_crate(&job.package, &job.version).await?;
         let temp_folder = Self::extract_content(&job.package, &job.version, &content)?;
-        let (final_state, output) = match self.generate_doc(&temp_folder).await {
-            Ok(mut project_folder) => {
+        let project_folder = Self::get_project_folder_in(&temp_folder).await?;
+
+        let (final_state, output) = match self.generate_doc(&project_folder, &job.target).await {
+            Ok(log) => {
+                self.service_storage
+                    .store_doc_data(&Self::job_log_location(job), log.as_bytes().to_vec())
+                    .await?;
+                let mut project_folder = project_folder.clone();
                 project_folder.push("target");
+                project_folder.push(&job.target);
                 project_folder.push("doc");
                 let doc_folder = project_folder;
-                self.upload_package(&job.package, &job.version, &doc_folder).await?;
+                self.upload_package(&doc_folder, &format!("{}/{}/{}", &job.package, &job.version, &job.target))
+                    .await?;
                 (DocGenJobState::Success, None)
             }
             Err(e) => {
@@ -260,21 +284,25 @@ impl DocsGeneratorImpl {
         Ok(PathBuf::from(target))
     }
 
-    /// Generate the documentation for the package in a specific folder
-    async fn generate_doc(&self, temp_folder: &Path) -> Result<PathBuf, ApiError> {
-        let mut path: PathBuf = temp_folder.to_path_buf();
+    /// Gets the project folder in the specified temp
+    async fn get_project_folder_in(temp_folder: &Path) -> Result<PathBuf, ApiError> {
+        let temp_folder = temp_folder.to_path_buf();
         // get the first sub dir
-        let mut dir = tokio::fs::read_dir(&path).await?;
-        let first = dir.next_entry().await?.unwrap();
-        path = first.path();
+        let mut dir = tokio::fs::read_dir(&temp_folder).await?;
+        Ok(dir.next_entry().await?.unwrap().path())
+    }
 
+    /// Generate the documentation for the package in a specific folder
+    async fn generate_doc(&self, project_folder: &Path, target: &str) -> Result<String, ApiError> {
         let mut command = Command::new("cargo");
         command
-            .current_dir(&path)
+            .current_dir(project_folder)
             .arg("rustdoc")
             .arg("-Zunstable-options")
             .arg("-Zrustdoc-map")
             .arg("--all-features")
+            .arg("--target")
+            .arg(target)
             .arg("--config")
             .arg("build.rustdocflags=[\"-Zunstable-options\",\"--extern-html-root-takes-precedence\"]")
             .arg("--config")
@@ -295,19 +323,20 @@ impl DocsGeneratorImpl {
             .spawn()?;
         drop(child.stdin.take()); // close stdin
         let output = child.wait_with_output().await?;
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        let log = format!("-- stdout\n{stdout}\n\n-- stderr\n{stderr}");
 
-        if !output.status.success() {
-            let stdout = String::from_utf8_lossy(&output.stdout);
-            let stderr = String::from_utf8_lossy(&output.stderr);
-            let error = format!("-- stdout\n{stdout}\n\n-- stderr\n{stderr}");
-            return Err(specialize(error_backend_failure(), error));
+        if output.status.success() {
+            Ok(log)
+        } else {
+            Err(specialize(error_backend_failure(), log))
         }
-        Ok(path)
     }
 
     /// Uploads the documentation for package
-    async fn upload_package(&self, name: &str, version: &str, doc_folder: &Path) -> Result<(), ApiError> {
-        let files = Self::upload_package_find_files(doc_folder, &format!("{name}/{version}")).await?;
+    async fn upload_package(&self, doc_folder: &Path, key_prefix: &str) -> Result<(), ApiError> {
+        let files = Self::upload_package_find_files(doc_folder, key_prefix).await?;
         let results = n_at_a_time(
             files.into_iter().map(|(key, path)| {
                 let service_storage = self.service_storage.clone();
@@ -324,9 +353,9 @@ impl DocsGeneratorImpl {
     }
 
     /// Find target to upload in a folder and its sub-folders
-    async fn upload_package_find_files(folder: &Path, prefix: &str) -> Result<Vec<(String, PathBuf)>, std::io::Error> {
+    async fn upload_package_find_files(folder: &Path, key_prefix: &str) -> Result<Vec<(String, PathBuf)>, std::io::Error> {
         let mut results = Vec::new();
-        let mut to_explore = vec![(folder.to_path_buf(), prefix.to_string())];
+        let mut to_explore = vec![(folder.to_path_buf(), key_prefix.to_string())];
         while let Some((folder, prefix)) = to_explore.pop() {
             let mut dir = tokio::fs::read_dir(folder).await?;
             while let Some(entry) = dir.next_entry().await? {

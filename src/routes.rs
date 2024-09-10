@@ -595,7 +595,7 @@ pub async fn api_v1_regen_crate_version_doc(
     auth_data: AuthData,
     State(state): State<Arc<AxumState>>,
     Path(PathInfoCrateVersion { package, version }): Path<PathInfoCrateVersion>,
-) -> ApiResult<DocGenJob> {
+) -> ApiResult<Vec<DocGenJob>> {
     response(
         state
             .application

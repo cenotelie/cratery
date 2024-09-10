@@ -166,7 +166,7 @@ impl StorageImpl {
     /// Stores a documentation file
     async fn store_doc_file(&self, path: &str, file: &Path) -> Result<(), ApiError> {
         let content = tokio::fs::read(file).await?;
-        self.write_to_file(&format!("/docs/{path}"), content).await?;
+        self.store_doc_data(path, content).await?;
         Ok(())
     }
 

@@ -11,7 +11,6 @@ use super::Database;
 use crate::model::docs::{DocGenJob, DocGenJobState, DocGenTrigger};
 use crate::model::JobCrate;
 use crate::utils::apierror::{error_not_found, ApiError};
-use crate::utils::comma_sep_to_vec;
 
 impl Database {
     /// Gets the documentation generation jobs
@@ -31,7 +30,7 @@ impl Database {
                 id: row.id,
                 package: row.package,
                 version: row.version,
-                targets: comma_sep_to_vec(&row.targets),
+                target: row.targets,
                 state: DocGenJobState::from(row.state),
                 queued_on: row.queued_on,
                 started_on: row.started_on,
@@ -68,7 +67,7 @@ impl Database {
             id: row.id,
             package: row.package,
             version: row.version,
-            targets: comma_sep_to_vec(&row.targets),
+            target: row.targets,
             state: DocGenJobState::from(row.state),
             queued_on: row.queued_on,
             started_on: row.started_on,
@@ -85,8 +84,23 @@ impl Database {
         })
     }
 
-    /// Creates and queue a documentation generation job
-    pub async fn create_docgen_job(&self, spec: &JobCrate, trigger: &DocGenTrigger) -> Result<DocGenJob, ApiError> {
+    /// Creates and queue documentation jobs
+    pub async fn create_docgen_jobs(&self, spec: &JobCrate, trigger: &DocGenTrigger) -> Result<Vec<DocGenJob>, ApiError> {
+        let mut jobs = Vec::new();
+        for target in &spec.targets {
+            jobs.push(self.create_docgen_job(&spec.name, &spec.version, target, trigger).await?);
+        }
+        Ok(jobs)
+    }
+
+    /// Creates and queue a single documentation job
+    pub async fn create_docgen_job(
+        &self,
+        package: &str,
+        version: &str,
+        target: &str,
+        trigger: &DocGenTrigger,
+    ) -> Result<DocGenJob, ApiError> {
         // look for already existing queued job
         let state_value = DocGenJobState::Queued.value();
         let row = sqlx::query!(
@@ -98,8 +112,8 @@ impl Database {
             ORDER BY id DESC
             LIMIT 1",
             state_value,
-            spec.name,
-            spec.version
+            package,
+            version
         )
         .fetch_optional(&mut *self.transaction.borrow().await)
         .await?;
@@ -109,7 +123,7 @@ impl Database {
                 id: row.id,
                 package: row.package,
                 version: row.version,
-                targets: comma_sep_to_vec(&row.targets),
+                target: row.targets,
                 state: DocGenJobState::from(row.state),
                 queued_on: row.queued_on,
                 started_on: row.started_on,
@@ -129,7 +143,6 @@ impl Database {
         let trigger_event = trigger.value();
         let trigger_user = trigger.by().map(|u| u.id);
         let now = Local::now().naive_local();
-        let targets = spec.targets.join(",");
         let state_value = DocGenJobState::Queued.value();
         let job_id = sqlx::query!(
             "INSERT INTO DocGenJob (
@@ -141,9 +154,9 @@ impl Database {
             $5, $5, $5, $5,
             $6, $7, ''
         ) RETURNING id",
-            spec.name,
-            spec.version,
-            targets,
+            package,
+            version,
+            target,
             state_value,
             now,
             trigger_user,
@@ -154,9 +167,9 @@ impl Database {
         .id;
         Ok(DocGenJob {
             id: job_id,
-            package: spec.name.clone(),
-            version: spec.version.clone(),
-            targets: spec.targets.clone(),
+            package: package.to_string(),
+            version: version.to_string(),
+            target: target.to_string(),
             state: DocGenJobState::Queued,
             queued_on: now,
             started_on: now,
@@ -186,7 +199,7 @@ impl Database {
             id: row.id,
             package: row.package,
             version: row.version,
-            targets: comma_sep_to_vec(&row.targets),
+            target: row.targets,
             state: DocGenJobState::from(row.state),
             queued_on: row.queued_on,
             started_on: row.started_on,

@@ -104,7 +104,7 @@ pub struct DocGenJob {
     /// The crate's version
     pub version: String,
     /// The targets for the crate
-    pub targets: Vec<String>,
+    pub target: String,
     /// The state of the job
     pub state: DocGenJobState,
     /// Timestamp when the job was queued

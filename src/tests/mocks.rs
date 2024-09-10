@@ -8,14 +8,13 @@ use std::env::temp_dir;
 use std::path::PathBuf;
 use std::sync::Arc;
 
-use chrono::NaiveDateTime;
 use semver::Version;
 use tokio::sync::mpsc::Sender;
 
 use crate::model::cargo::{CrateMetadata, IndexCrateMetadata};
 use crate::model::config::Configuration;
 use crate::model::deps::DepsAnalysis;
-use crate::model::docs::{DocGenEvent, DocGenJob, DocGenJobState, DocGenTrigger};
+use crate::model::docs::{DocGenEvent, DocGenJob, DocGenTrigger};
 use crate::model::osv::SimpleAdvisory;
 use crate::model::JobCrate;
 use crate::services::deps::DepsChecker;
@@ -128,21 +127,8 @@ impl DocsGenerator for MockService {
         resolved_default()
     }
 
-    fn queue<'a>(&'a self, _spec: &'a JobCrate, trigger: &'a DocGenTrigger) -> FaillibleFuture<'a, DocGenJob> {
-        Box::pin(async {
-            Ok(DocGenJob {
-                id: -1,
-                package: String::new(),
-                version: String::new(),
-                targets: Vec::new(),
-                state: DocGenJobState::Queued,
-                queued_on: NaiveDateTime::default(),
-                started_on: NaiveDateTime::default(),
-                finished_on: NaiveDateTime::default(),
-                last_update: NaiveDateTime::default(),
-                trigger: trigger.clone(),
-            })
-        })
+    fn queue<'a>(&'a self, _spec: &'a JobCrate, _trigger: &'a DocGenTrigger) -> FaillibleFuture<'a, Vec<DocGenJob>> {
+        Box::pin(async { Ok(Vec::new()) })
     }
 
     fn add_listener(&self, _listener: Sender<DocGenEvent>) -> FaillibleFuture<'_, ()> {
