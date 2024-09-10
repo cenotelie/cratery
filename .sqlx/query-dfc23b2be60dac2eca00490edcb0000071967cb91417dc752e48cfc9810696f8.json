@@ -1,0 +1,26 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT name, isDeprecated AS is_deprecated From Package WHERE name LIKE $1 AND (isDeprecated = $2 OR $3)",
+  "describe": {
+    "columns": [
+      {
+        "name": "name",
+        "ordinal": 0,
+        "type_info": "Text"
+      },
+      {
+        "name": "is_deprecated",
+        "ordinal": 1,
+        "type_info": "Bool"
+      }
+    ],
+    "parameters": {
+      "Right": 3
+    },
+    "nullable": [
+      false,
+      false
+    ]
+  },
+  "hash": "dfc23b2be60dac2eca00490edcb0000071967cb91417dc752e48cfc9810696f8"
+}

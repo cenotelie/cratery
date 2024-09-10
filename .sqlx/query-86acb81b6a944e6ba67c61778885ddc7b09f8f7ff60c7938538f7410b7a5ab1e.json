@@ -1,6 +1,6 @@
 {
   "db_name": "SQLite",
-  "query": "SELECT package, version, depsHasOutdated AS has_outdated, depsLastCheck AS last_check, targets\n            FROM PackageVersion\n            INNER JOIN Package ON PackageVersion.package = Package.name\n            WHERE yanked = FALSE",
+  "query": "SELECT package, version, isDeprecated AS is_deprecated, depsHasOutdated AS has_outdated, depsLastCheck AS last_check, targets\n            FROM PackageVersion\n            INNER JOIN Package ON PackageVersion.package = Package.name\n            WHERE yanked = FALSE",
   "describe": {
     "columns": [
       {
@@ -14,18 +14,23 @@
         "type_info": "Text"
       },
       {
-        "name": "has_outdated",
+        "name": "is_deprecated",
         "ordinal": 2,
         "type_info": "Bool"
       },
       {
-        "name": "last_check",
+        "name": "has_outdated",
         "ordinal": 3,
+        "type_info": "Bool"
+      },
+      {
+        "name": "last_check",
+        "ordinal": 4,
         "type_info": "Datetime"
       },
       {
         "name": "targets",
-        "ordinal": 4,
+        "ordinal": 5,
         "type_info": "Text"
       }
     ],
@@ -37,8 +42,9 @@
       false,
       false,
       false,
+      false,
       false
     ]
   },
-  "hash": "5a3925df81fe66e7c0e7ebe187d1cb77b99252d8163addd83ccc297dd7ecb3ad"
+  "hash": "86acb81b6a944e6ba67c61778885ddc7b09f8f7ff60c7938538f7410b7a5ab1e"
 }

@@ -131,7 +131,8 @@ async fn main_serve_app(application: Arc<Application>, cookie_key: Key) -> Resul
                         .route("/:package/owners", put(routes::api_v1_cargo_add_crate_owners))
                         .route("/:package/owners", delete(routes::api_v1_cargo_remove_crate_owners))
                         .route("/:package/targets", get(routes::api_v1_get_crate_targets))
-                        .route("/:package/targets", patch(routes::api_v1_set_crate_targets)),
+                        .route("/:package/targets", patch(routes::api_v1_set_crate_targets))
+                        .route("/:package/deprecated", patch(routes::api_v1_set_crate_deprecation)),
                 ),
         )
         // fall back to serving the index

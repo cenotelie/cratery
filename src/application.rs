@@ -418,26 +418,19 @@ impl Application {
 
     /// Gets all the data about a crate
     pub async fn get_crate_info(&self, auth_data: &AuthData, package: &str) -> Result<CrateInfo, ApiError> {
-        let (versions, targets) = self
+        let info = self
             .db_transaction_read(|app| async move {
                 let _authentication = app.authenticate(auth_data).await?;
-                let versions = app
-                    .database
-                    .get_crate_versions(package, self.service_index.get_crate_data(package).await?)
-                    .await?;
-                let targets = app.database.get_crate_targets(package).await?;
-                Ok::<_, ApiError>((versions, targets))
+                app.database
+                    .get_crate_info(package, self.service_index.get_crate_data(package).await?)
+                    .await
             })
             .await?;
         let metadata = self
             .service_storage
-            .download_crate_metadata(package, &versions.last().unwrap().index.vers)
+            .download_crate_metadata(package, &info.versions.last().unwrap().index.vers)
             .await?;
-        Ok(CrateInfo {
-            metadata,
-            versions,
-            targets,
-        })
+        Ok(CrateInfo { metadata, ..info })
     }
 
     /// Downloads the last README for a crate
@@ -649,6 +642,16 @@ impl Application {
         .await
     }
 
+    /// Sets the deprecation status on a crate
+    pub async fn set_crate_deprecation(&self, auth_data: &AuthData, package: &str, deprecated: bool) -> Result<(), ApiError> {
+        self.db_transaction_write("set_crate_deprecation", |app| async move {
+            let authentication = app.authenticate(auth_data).await?;
+            app.check_can_manage_crate(&authentication, package).await?;
+            app.database.set_crate_deprecation(package, deprecated).await
+        })
+        .await
+    }
+
     /// Gets the global statistics for the registry
     pub async fn get_crates_stats(&self, auth_data: &AuthData) -> Result<GlobalStats, ApiError> {
         self.db_transaction_read(|app| async move {
@@ -664,10 +667,11 @@ impl Application {
         auth_data: &AuthData,
         query: &str,
         per_page: Option<usize>,
+        deprecated: Option<bool>,
     ) -> Result<SearchResults, ApiError> {
         self.db_transaction_read(|app| async move {
             let _authentication = app.authenticate(auth_data).await?;
-            app.database.search_crates(query, per_page).await
+            app.database.search_crates(query, per_page, deprecated).await
         })
         .await
     }

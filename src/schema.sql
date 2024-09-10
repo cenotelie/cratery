@@ -5,7 +5,7 @@ CREATE TABLE IF NOT EXISTS SchemaMetadata (
 
 CREATE INDEX IF NOT EXISTS SchemaMetadataIndex ON SchemaMetadata(name);
 
-INSERT INTO SchemaMetadata VALUES ('version', '1.7.1');
+INSERT INTO SchemaMetadata VALUES ('version', '1.8.0');
 
 CREATE TABLE RegistryUser (
     id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
@@ -41,7 +41,8 @@ CREATE TABLE RegistryGlobalToken (
 CREATE TABLE Package (
     name TEXT NOT NULL PRIMARY KEY,
     lowercase TEXT NOT NULL,
-    targets TEXT NOT NULL
+    targets TEXT NOT NULL,
+    isDeprecated BOOLEAN NOT NULL
 );
 
 CREATE INDEX IndexPackage ON Package (name);

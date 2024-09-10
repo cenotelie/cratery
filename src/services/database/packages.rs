@@ -18,7 +18,7 @@ use crate::model::cargo::{
     CrateUploadData, CrateUploadResult, IndexCrateMetadata, OwnersQueryResult, RegistryUser, SearchResultCrate, SearchResults,
     SearchResultsMeta, YesNoMsgResult, YesNoResult,
 };
-use crate::model::packages::CrateInfoVersion;
+use crate::model::packages::{CrateInfo, CrateInfoVersion};
 use crate::model::stats::{DownloadStats, SERIES_LENGTH};
 use crate::model::{CrateVersion, CrateVersionDepsCheckState, JobCrate};
 use crate::utils::apierror::{error_invalid_request, error_not_found, specialize, ApiError};
@@ -26,16 +26,28 @@ use crate::utils::comma_sep_to_vec;
 
 impl Database {
     /// Search for crates
-    pub async fn search_crates(&self, query: &str, per_page: Option<usize>) -> Result<SearchResults, ApiError> {
+    pub async fn search_crates(
+        &self,
+        query: &str,
+        per_page: Option<usize>,
+        deprecated: Option<bool>,
+    ) -> Result<SearchResults, ApiError> {
         let per_page = match per_page {
             None => 10,
             Some(value) if value > 100 => 100,
             Some(value) => value,
         };
         let pattern = format!("%{query}%");
-        let rows = sqlx::query!("SELECT name From Package WHERE name LIKE $1", pattern)
-            .fetch_all(&mut *self.transaction.borrow().await)
-            .await?;
+        let deprecated_value = deprecated.unwrap_or_default();
+        let deprecated_short_circuit = deprecated.is_none(); // short-cirtcuit to true if no input
+        let rows = sqlx::query!(
+            "SELECT name, isDeprecated AS is_deprecated From Package WHERE name LIKE $1 AND (isDeprecated = $2 OR $3)",
+            pattern,
+            deprecated_value,
+            deprecated_short_circuit
+        )
+        .fetch_all(&mut *self.transaction.borrow().await)
+        .await?;
         let mut crates = Vec::new();
         for row_name in rows {
             let row = sqlx::query!("SELECT version, description FROM PackageVersion WHERE package = $1 AND yanked = FALSE ORDER BY id DESC LIMIT 1", row_name.name).fetch_optional(&mut *self.transaction.borrow().await).await?;
@@ -43,6 +55,7 @@ impl Database {
                 crates.push(SearchResultCrate {
                     name: row_name.name,
                     max_version: row.version,
+                    is_deprecated: row_name.is_deprecated,
                     description: row.description,
                 });
             }
@@ -70,12 +83,22 @@ impl Database {
         Ok(row.version)
     }
 
-    /// Gets all the data about versions of a crate
-    pub async fn get_crate_versions(
+    /// Gets all the data about a crate
+    pub async fn get_crate_info(
         &self,
         package: &str,
         versions_in_index: Vec<IndexCrateMetadata>,
-    ) -> Result<Vec<CrateInfoVersion>, ApiError> {
+    ) -> Result<CrateInfo, ApiError> {
+        let row = sqlx::query!(
+            "SELECT isDeprecated AS is_deprecated, targets FROM Package WHERE name = $1 LIMIT 1",
+            package
+        )
+        .fetch_optional(&mut *self.transaction.borrow().await)
+        .await?
+        .ok_or_else(error_not_found)?;
+        let is_deprecated = row.is_deprecated;
+        let targets = comma_sep_to_vec(&row.targets);
+
         let rows = sqlx::query!(
             "SELECT version, upload, uploadedBy AS uploaded_by,
                     hasDocs AS has_docs, docGenAttempted AS doc_gen_attempted,
@@ -86,11 +109,11 @@ impl Database {
         )
         .fetch_all(&mut *self.transaction.borrow().await)
         .await?;
-        let mut result = Vec::new();
+        let mut versions = Vec::new();
         for index_data in versions_in_index {
             if let Some(row) = rows.iter().find(|row| row.version == index_data.vers) {
                 let uploaded_by = self.get_user_profile(row.uploaded_by).await?;
-                result.push(CrateInfoVersion {
+                versions.push(CrateInfoVersion {
                     index: index_data,
                     upload: row.upload,
                     uploaded_by,
@@ -103,7 +126,12 @@ impl Database {
                 });
             }
         }
-        Ok(result)
+        Ok(CrateInfo {
+            metadata: None,
+            is_deprecated,
+            versions,
+            targets,
+        })
     }
 
     /// Publish a crate
@@ -144,7 +172,7 @@ impl Database {
         } else {
             // create the package
             sqlx::query!(
-                "INSERT INTO Package (name, lowercase, targets) VALUES ($1, $2, '')",
+                "INSERT INTO Package (name, lowercase, targets, isDeprecated) VALUES ($1, $2, '', FALSE)",
                 package.metadata.name,
                 lowercase
             )
@@ -313,7 +341,7 @@ impl Database {
         Ok(heads
             .into_iter()
             .filter_map(|element| {
-                if element.deps_last_check < from {
+                if !element.is_deprecated && element.deps_last_check < from {
                     Some(element.into())
                 } else {
                     None
@@ -328,7 +356,7 @@ impl Database {
         Ok(heads
             .into_iter()
             .filter_map(|element| {
-                if element.deps_has_outdated {
+                if !element.is_deprecated && element.deps_has_outdated {
                     Some(element.into())
                 } else {
                     None
@@ -342,6 +370,7 @@ impl Database {
         struct Elem {
             semver: Version,
             version: String,
+            is_deprecated: bool,
             deps_has_outdated: bool,
             deps_last_check: NaiveDateTime,
             targets: String,
@@ -349,7 +378,7 @@ impl Database {
         let mut cache = HashMap::<String, Elem>::new();
         let transaction = &mut *self.transaction.borrow().await;
         let mut stream = sqlx::query!(
-            "SELECT package, version, depsHasOutdated AS has_outdated, depsLastCheck AS last_check, targets
+            "SELECT package, version, isDeprecated AS is_deprecated, depsHasOutdated AS has_outdated, depsLastCheck AS last_check, targets
             FROM PackageVersion
             INNER JOIN Package ON PackageVersion.package = Package.name
             WHERE yanked = FALSE"
@@ -366,6 +395,7 @@ impl Database {
                         entry.insert(Elem {
                             semver,
                             version: row.version,
+                            is_deprecated: row.is_deprecated,
                             deps_has_outdated: row.has_outdated,
                             deps_last_check: row.last_check,
                             targets: row.targets,
@@ -376,6 +406,7 @@ impl Database {
                             entry.insert(Elem {
                                 semver,
                                 version: row.version,
+                                is_deprecated: row.is_deprecated,
                                 deps_has_outdated: row.has_outdated,
                                 deps_last_check: row.last_check,
                                 targets: row.targets,
@@ -390,6 +421,7 @@ impl Database {
             .map(|(name, elem)| CrateVersionDepsCheckState {
                 name,
                 version: elem.version,
+                is_deprecated: elem.is_deprecated,
                 deps_has_outdated: elem.deps_has_outdated,
                 deps_last_check: elem.deps_last_check,
                 targets: elem.targets,
@@ -544,6 +576,14 @@ impl Database {
     pub async fn set_crate_targets(&self, package: &str, targets: &[String]) -> Result<(), ApiError> {
         let targets = targets.join(",");
         sqlx::query!("UPDATE Package SET targets = $2 WHERE name = $1", package, targets)
+            .execute(&mut *self.transaction.borrow().await)
+            .await?;
+        Ok(())
+    }
+
+    /// Sets the deprecation status on a crate
+    pub async fn set_crate_deprecation(&self, package: &str, deprecated: bool) -> Result<(), ApiError> {
+        sqlx::query!("UPDATE Package SET isDeprecated = $2 WHERE name = $1", package, deprecated)
             .execute(&mut *self.transaction.borrow().await)
             .await?;
         Ok(())

@@ -206,6 +206,15 @@ async function apiSetCrateTargets(crate, targets) {
   return await onResponseJson(response);
 }
 
+async function apiSetCrateDeprecation(crate, isDeprecated) {
+  const response = await fetch(`/api/v1/crates/${crate}/deprecated`, {
+    method: "PATCH",
+    body: JSON.stringify(isDeprecated),
+    headers: [["content-type", "application/json"]],
+  });
+  return await onResponseJson(response);
+}
+
 async function apiRegenCrateDoc(crate, version) {
   const response = await fetch(`/api/v1/crates/${crate}/${version}/docsregen`, {
     method: "POST",

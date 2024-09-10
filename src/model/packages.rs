@@ -14,6 +14,9 @@ use super::cargo::{CrateMetadata, IndexCrateMetadata, RegistryUser};
 pub struct CrateInfo {
     /// The last metadata, if any
     pub metadata: Option<CrateMetadata>,
+    /// Whether the entire package is deprecated
+    #[serde(rename = "isDeprecated")]
+    pub is_deprecated: bool,
     /// Gets the versions in the index
     pub versions: Vec<CrateInfoVersion>,
     /// The build targets to use (for docs generation and deps analysis)

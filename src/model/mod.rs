@@ -93,6 +93,9 @@ pub struct CrateVersionDepsCheckState {
     pub name: String,
     /// The crate's version
     pub version: String,
+    /// Whether the entire package is deprecated
+    #[serde(rename = "isDeprecated")]
+    pub is_deprecated: bool,
     /// Whether the version has outdated dependencies
     #[serde(rename = "depsHasOutdated")]
     pub deps_has_outdated: bool,

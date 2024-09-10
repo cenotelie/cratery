@@ -37,6 +37,9 @@
           </svg>
         </a>
       </h3>
+      <div id = "meta-deprecation" class="p-4 mb-4 text-sm text-yellow-800 rounded-lg bg-yellow-50 dark:bg-gray-800 dark:text-yellow-300" style="display: none;" role="alert">
+        <span class="font-medium">This crate is marked as deprecated (all versions) and should not be used.</span>
+      </div>
       <p id="meta-version" class="mb-3 font-normal text-gray-700 dark:text-gray-400"></p>
       <p id="meta-description" class="mb-3 font-normal text-gray-700 dark:text-gray-400"></p>
       <ul class="flex flex-wrap text-sm font-medium text-center text-gray-500 border-b border-gray-200 dark:border-gray-700 dark:text-gray-400">
@@ -157,6 +160,15 @@
         <div id="tab-admin-targets" class="m-4">
           <h5 class="text-xl font-bold tracking-tight text-gray-900 dark:text-white mt-8">Targets <button id="button-add-owner" type="button" class="text-white bg-blue-700 hover:bg-blue-800 focus:ring-4 focus:ring-blue-300 font-medium rounded-lg text-xs px-3 py-2 me-1 mb-2 dark:bg-blue-600 dark:hover:bg-blue-700 focus:outline-none dark:focus:ring-blue-800">add</button></h5>
         </div>
+        <div id="tab-admin-deprecation" class="m-4">
+          <h5 class="text-xl font-bold tracking-tight text-gray-900 dark:text-white mt-8">Deprecation</h5>
+          <p class="mb-3 text-gray-500 dark:text-gray-400">Deprecated crates will not be checked by the dependency analyzer and will be marked with a warning in the web interface.</p>
+          <label class="relative inline-flex items-center cursor-pointer">
+            <input id="tab-admin-deprecation-toggle" type="checkbox" class="sr-only peer">
+            <div class="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-red-300 dark:peer-focus:ring-red-800 rounded-full peer dark:bg-gray-700 peer-checked:after:translate-x-full rtl:peer-checked:after:-translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:start-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all dark:border-gray-600 peer-checked:bg-red-600"></div>
+            <span class="ms-3 text-sm font-medium text-gray-900 dark:text-gray-300">Is deprecated</span>
+          </label>
+        </div>
       </div>
     </div>
   </section>
@@ -243,6 +255,10 @@
         document.getElementById("header-dependencies-warn-icon").setAttribute("stroke", "red");
       }
     }
+
+    if (crate.isDeprecated) {
+      document.getElementById("meta-deprecation").style.display = null;
+    }
     document.getElementById("meta-name").appendChild(document.createTextNode(currentVersion.index.name));
     document.getElementById("meta-name-link").setAttribute("href", `/crates/${currentVersion.index.name}`);
     document.getElementById("meta-version").appendChild(document.createTextNode(`v${currentVersion.index.vers}`));
@@ -287,6 +303,7 @@
     renderDependencies(currentVersion.index.deps, null);
     renderDocs(crate);
 
+    document.getElementById("tab-admin-deprecation-toggle").checked = crate.isDeprecated;
     const canAdmin = currentUser.roles.includes("admin") || owners.users.find(u => u.id === currentUser.id) !== undefined;
     if (canAdmin) {
       document.getElementById("header-admin").parentElement.style.display = null;
@@ -300,6 +317,13 @@
       const tabAdminTargetsEl = document.getElementById("tab-admin-targets");
       for (const target of crate.targets) {
         // TODO render targets here
+      }
+
+      document.getElementById("tab-admin-deprecation-toggle").onchange = () => {
+        apiSetCrateDeprecation(currentVersion.index.name, !crate.isDeprecated).then(() => {
+          crate.isDeprecated = !crate.isDeprecated;
+          document.getElementById("meta-deprecation").style.display = crate.isDeprecated ? null : "none";
+        });
       }
     }
 

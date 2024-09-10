@@ -21,6 +21,9 @@ pub struct SearchResultCrate {
     pub name: String,
     /// The highest version available
     pub max_version: String,
+    /// Whether the entire package is deprecated
+    #[serde(rename = "isDeprecated")]
+    pub is_deprecated: bool,
     /// Textual description of the crate
     pub description: String,
 }

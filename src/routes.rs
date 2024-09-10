@@ -465,6 +465,7 @@ pub async fn api_v1_reactivate_user(
 pub struct SearchForm {
     q: String,
     per_page: Option<usize>,
+    deprecated: Option<bool>,
 }
 
 pub async fn api_v1_cargo_search(
@@ -472,7 +473,12 @@ pub async fn api_v1_cargo_search(
     State(state): State<Arc<AxumState>>,
     form: Query<SearchForm>,
 ) -> ApiResult<SearchResults> {
-    response(state.application.search_crates(&auth_data, &form.q, form.per_page).await)
+    response(
+        state
+            .application
+            .search_crates(&auth_data, &form.q, form.per_page, form.deprecated)
+            .await,
+    )
 }
 
 /// Gets the global statistics for the registry
@@ -668,6 +674,16 @@ pub async fn api_v1_set_crate_targets(
     input: Json<Vec<String>>,
 ) -> ApiResult<()> {
     response(state.application.set_crate_targets(&auth_data, &package, &input).await)
+}
+
+/// Sets the deprecation status on a crate
+pub async fn api_v1_set_crate_deprecation(
+    auth_data: AuthData,
+    State(state): State<Arc<AxumState>>,
+    Path(PathInfoCrate { package }): Path<PathInfoCrate>,
+    input: Json<bool>,
+) -> ApiResult<()> {
+    response(state.application.set_crate_deprecation(&auth_data, &package, input.0).await)
 }
 
 pub async fn index_serve_inner(

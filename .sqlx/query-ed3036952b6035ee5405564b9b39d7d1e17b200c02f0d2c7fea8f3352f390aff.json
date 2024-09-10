@@ -1,0 +1,26 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT isDeprecated AS is_deprecated, targets FROM Package WHERE name = $1 LIMIT 1",
+  "describe": {
+    "columns": [
+      {
+        "name": "is_deprecated",
+        "ordinal": 0,
+        "type_info": "Bool"
+      },
+      {
+        "name": "targets",
+        "ordinal": 1,
+        "type_info": "Text"
+      }
+    ],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": [
+      false,
+      false
+    ]
+  },
+  "hash": "ed3036952b6035ee5405564b9b39d7d1e17b200c02f0d2c7fea8f3352f390aff"
+}

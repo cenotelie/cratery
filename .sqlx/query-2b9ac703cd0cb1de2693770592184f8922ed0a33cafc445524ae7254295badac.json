@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "UPDATE Package SET isDeprecated = $2 WHERE name = $1",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 2
+    },
+    "nullable": []
+  },
+  "hash": "2b9ac703cd0cb1de2693770592184f8922ed0a33cafc445524ae7254295badac"
+}
