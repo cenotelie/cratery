@@ -235,6 +235,9 @@ impl Application {
         let _authentication = self.authenticate(auth_data).await?;
         Ok(RegistryInformation {
             registry_name: self.configuration.self_local_name.clone(),
+            toolchain_host: self.configuration.self_toolchain_host.clone(),
+            toolchain_version: self.configuration.self_toolchain_version.clone(),
+            toolchain_targets: self.configuration.self_builtin_targets.clone(),
         })
     }
 

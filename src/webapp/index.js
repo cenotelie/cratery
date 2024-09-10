@@ -107,3 +107,9 @@ function getJobStatusColor(status) {
     return "gray";
   }
 }
+
+function removeAllChildren(node) {
+  while (node.hasChildNodes()) {
+    node.removeChild(node.lastChild);
+  }
+}

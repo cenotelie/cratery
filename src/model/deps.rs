@@ -36,7 +36,6 @@ impl DepsAnalysis {
         Self {
             direct_dependencies: deps
                 .iter()
-                .filter(|d| d.kind != DependencyKind::Dev)
                 .zip(&graph.crates)
                 .map(|(dep, data)| {
                     let resolved = data

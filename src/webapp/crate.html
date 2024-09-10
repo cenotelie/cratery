@@ -158,7 +158,7 @@
           <h5 class="text-xl font-bold tracking-tight text-gray-900 dark:text-white mt-8">Owners <button id="button-add-owner" type="button" class="text-white bg-blue-700 hover:bg-blue-800 focus:ring-4 focus:ring-blue-300 font-medium rounded-lg text-xs px-3 py-2 me-1 mb-2 dark:bg-blue-600 dark:hover:bg-blue-700 focus:outline-none dark:focus:ring-blue-800">add</button></h5>
         </div>
         <div id="tab-admin-targets" class="m-4">
-          <h5 class="text-xl font-bold tracking-tight text-gray-900 dark:text-white mt-8">Targets <button id="button-add-owner" type="button" class="text-white bg-blue-700 hover:bg-blue-800 focus:ring-4 focus:ring-blue-300 font-medium rounded-lg text-xs px-3 py-2 me-1 mb-2 dark:bg-blue-600 dark:hover:bg-blue-700 focus:outline-none dark:focus:ring-blue-800">add</button></h5>
+          <h5 class="text-xl font-bold tracking-tight text-gray-900 dark:text-white mt-8">Targets <button id="button-add-target" type="button" class="text-white bg-blue-700 hover:bg-blue-800 focus:ring-4 focus:ring-blue-300 font-medium rounded-lg text-xs px-3 py-2 me-1 mb-2 dark:bg-blue-600 dark:hover:bg-blue-700 focus:outline-none dark:focus:ring-blue-800">add</button></h5>
         </div>
         <div id="tab-admin-deprecation" class="m-4">
           <h5 class="text-xl font-bold tracking-tight text-gray-900 dark:text-white mt-8">Deprecation</h5>
@@ -216,6 +216,50 @@
         </div>
     </div>
   </div>
+  <div id="modal-add-target" tabindex="-1" class="overflow-y-auto overflow-x-hidden fixed top-0 right-0 left-0 z-50 w-full md:inset-0 h-modal md:h-full" style="display: none;">
+    <div class="overflow-y-auto overflow-x-hidden fixed top-0 right-0 left-0 z-51 w-full md:inset-0 h-modal md:h-full" style="background-color: black; opacity: 0.75;"></div>
+    <div class="relative" style="margin: auto; margin-top: 10%; width: 800px;">
+        <div class="relative p-4 bg-white rounded-lg shadow dark:bg-gray-800 md:p-8">
+            <div class="mb-4 text-sm font-light text-gray-500 dark:text-gray-400">
+              <h3 class="mb-3 text-2xl font-bold text-gray-900 dark:text-white">Add new target</h3>
+            </div>
+            <form class="mb-3 space-y-8">
+              <div>
+                <label for="add-target" class="block mb-2 text-sm font-medium text-gray-900 dark:text-gray-300">Target</label>
+                <select id="add-target" class="bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full p-2.5 dark:bg-gray-700 dark:border-gray-600 dark:placeholder-gray-400 dark:text-white dark:focus:ring-blue-500 dark:focus:border-blue-500"></select>
+              </div>
+            </form>
+            <div class="justify-between items-center pt-0 space-y-4 sm:flex sm:space-y-0">
+              <div class="items-center space-y-4 sm:space-x-4 sm:flex sm:space-y-0">
+                <button id="modal-add-target-close" type="button"  class="py-2 px-4 w-full text-sm font-medium text-gray-500 bg-white rounded-lg border border-gray-200 sm:w-auto hover:bg-gray-100 focus:ring-4 focus:outline-none focus:ring-primary-300 hover:text-gray-900 focus:z-10 dark:bg-gray-700 dark:text-gray-300 dark:border-gray-500 dark:hover:text-white dark:hover:bg-gray-600 dark:focus:ring-gray-600">Cancel</button>
+                <button id="modal-add-target-confirm" type="button" class="focus:outline-none text-white bg-green-700 hover:bg-green-800 focus:ring-4 focus:ring-green-300 font-medium rounded-lg text-sm px-5 py-2.5 me-2 mb-2 dark:bg-green-600 dark:hover:bg-green-700 dark:focus:ring-green-900">Add</button>
+              </div>
+            </div>
+        </div>
+    </div>
+  </div>
+  <div id="modal-remove-target" tabindex="-1" class="overflow-y-auto overflow-x-hidden fixed top-0 right-0 left-0 z-50 w-full md:inset-0 h-modal md:h-full" style="display: none;">
+    <div class="overflow-y-auto overflow-x-hidden fixed top-0 right-0 left-0 z-51 w-full md:inset-0 h-modal md:h-full" style="background-color: black; opacity: 0.75;"></div>
+    <div class="relative" style="margin: auto; margin-top: 10%; width: 800px;">
+        <div class="relative p-4 bg-white rounded-lg shadow dark:bg-gray-800 md:p-8">
+            <div class="mb-4 text-sm font-light text-gray-500 dark:text-gray-400">
+              <h3 class="mb-3 text-2xl font-bold text-gray-900 dark:text-white">Remove this target?</h3>
+            </div>
+            <form class="mb-3 space-y-8">
+              <div>
+                <label for="remove-target" class="block mb-2 text-sm font-medium text-gray-900 dark:text-gray-300">Target</label>
+                <input type="text" id="remove-target" class="block p-3 w-full text-sm text-gray-900 bg-gray-50 rounded-lg border border-gray-300 shadow-sm focus:ring-primary-500 focus:border-primary-500 dark:bg-gray-700 dark:border-gray-600 dark:placeholder-gray-400 dark:text-white dark:focus:ring-primary-500 dark:focus:border-primary-500 dark:shadow-sm-light" disabled>
+              </div>
+            </form>
+            <div class="justify-between items-center pt-0 space-y-4 sm:flex sm:space-y-0">
+              <div class="items-center space-y-4 sm:space-x-4 sm:flex sm:space-y-0">
+                <button id="modal-remove-target-close" type="button"  class="py-2 px-4 w-full text-sm font-medium text-gray-500 bg-white rounded-lg border border-gray-200 sm:w-auto hover:bg-gray-100 focus:ring-4 focus:outline-none focus:ring-primary-300 hover:text-gray-900 focus:z-10 dark:bg-gray-700 dark:text-gray-300 dark:border-gray-500 dark:hover:text-white dark:hover:bg-gray-600 dark:focus:ring-gray-600">Cancel</button>
+                <button id="modal-remove-target-confirm" type="button" class="focus:outline-none text-white bg-red-700 hover:bg-red-800 focus:ring-4 focus:ring-red-300 font-medium rounded-lg text-sm px-5 py-2.5 me-2 mb-2 dark:bg-red-600 dark:hover:bg-red-700 dark:focus:ring-red-900">Remove</button>
+              </div>
+            </div>
+        </div>
+    </div>
+  </div>
 </body>
 <footer class="p-4 bg-white md:p-8 lg:p-10 dark:bg-gray-800">
   <div class="mx-auto max-w-screen-xl text-center">
@@ -237,6 +281,10 @@
   function doPageLoad() {
     onPageLoad().then((user) => {
       const params = getQueryParameters(window.location.search);
+      if (window.location.hash.length > 0) {
+        const id = Number(window.location.hash.substring(1));
+        onClickTab(id);
+      }
       Promise.all([
         Promise.resolve(user),
         apiGetRegistryInformation(),
@@ -273,8 +321,6 @@
       link.appendChild(document.createTextNode(`v${currentVersion.index.vers}`));
       link.setAttribute("href", `/docs/${currentVersion.index.name}/${currentVersion.index.vers}/${crateRustName}/index.html`);
       document.getElementById("meta-docs").appendChild(link);
-    } else {
-      // TODO: add regen button here
     }
     document.getElementById("tab-readme-dl-total").appendChild(document.createTextNode(
       crate.versions.reduce((acc, v) => acc + v.downloadCount, 0).toString()
@@ -315,9 +361,19 @@
       buttonAddOwnerEl.addEventListener("click", () => openAddOwner(currentVersion.index.name));
 
       const tabAdminTargetsEl = document.getElementById("tab-admin-targets");
-      for (const target of crate.targets) {
-        // TODO render targets here
+      if (crate.targets.length === 0) {
+        const targetEl = document.createElement("div");
+        targetEl.className = "p-4 text-sm text-gray-800 rounded-lg bg-gray-50 dark:bg-gray-800 dark:text-gray-300";
+        targetEl.setAttribute("role", "alert");
+        targetEl.appendChild(document.createTextNode(`No target specified for this crate. Documentation generation and dependency analysis will use the host target: ${registryInfo.toolchainHost}`));
+        tabAdminTargetsEl.appendChild(targetEl);
+      } else {
+        for (const target of crate.targets) {
+          tabAdminTargetsEl.appendChild(renderAdminTargetRow(currentVersion.index.name, crate.targets, target));
+        }
       }
+      const buttonAddTargetEl = document.getElementById("button-add-target");
+      buttonAddTargetEl.addEventListener("click", () => openAddTarget(currentVersion.index.name, registryInfo.toolchainTargets, crate.targets));
 
       document.getElementById("tab-admin-deprecation-toggle").onchange = () => {
         apiSetCrateDeprecation(currentVersion.index.name, !crate.isDeprecated).then(() => {
@@ -375,6 +431,21 @@
             </svg>';
     wrapper.appendChild(document.createTextNode(" "));
     wrapper.appendChild(document.createTextNode(owner.name));
+    return wrapper;
+  }
+
+  function renderAdminTargetRow(crateName, currentTargets, target) {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "focus:outline-none text-white bg-red-700 hover:bg-red-800 focus:ring-4 focus:ring-red-300 font-medium rounded-lg text-xs px-3 py-1 me-2 mb-1 dark:bg-red-600 dark:hover:bg-red-700 dark:focus:ring-red-900";
+    button.appendChild(document.createTextNode("-"));
+    button.addEventListener("click", () => openRemoveTarget(crateName, currentTargets, target));
+    const targetEl = document.createElement("span");
+    targetEl.className = "ml-4 font-normal text-gray-700 dark:text-gray-400";
+    targetEl.appendChild(document.createTextNode(target));
+    const wrapper = document.createElement("div");
+    wrapper.appendChild(button);
+    wrapper.appendChild(targetEl);
     return wrapper;
   }
 
@@ -692,6 +763,7 @@
     }
     headers[index].className = "inline-block p-4 text-blue-600 bg-gray-100 rounded-t-lg active dark:bg-gray-800 dark:text-blue-500";
     tabs[index].style.display = null;
+    window.location.hash = `#${index}`;
   }
 
   function applyStyle(node) {
@@ -753,6 +825,57 @@
       closeEl.disabled = true;
       confirmEl.disabled = true;
       apiRemoveCrateOwners(crateName, user.email).then((_) => {
+        window.location.reload();
+      }).finally(() => {
+        closeEl.disabled = false;
+        confirmEl.disabled = false;
+      });
+    });
+  }
+
+  function openAddTarget(crateName, toolchainTargets, currentTargets) {
+    const modalEl = document.getElementById('modal-add-target');
+    modalEl.style.display = "unset";
+    const targetEl = document.getElementById("add-target");
+    removeAllChildren(targetEl);
+    for (const target of toolchainTargets.filter(t => !currentTargets.includes(t))) {
+      const optionEl = document.createElement("option");
+      optionEl.value = target;
+      optionEl.appendChild(document.createTextNode(target));
+      targetEl.appendChild(optionEl);
+    }
+    const closeEl = document.getElementById('modal-add-target-close');
+    closeEl.addEventListener('click', function() {
+      modalEl.style.display = "none";
+    });
+    const confirmEl = document.getElementById('modal-add-target-confirm');
+    confirmEl.addEventListener('click', function() {
+      closeEl.disabled = true;
+      confirmEl.disabled = true;
+      apiSetCrateTargets(crateName, [...currentTargets, targetEl.value]).then((_) => {
+        window.location.reload();
+      }).finally(() => {
+        closeEl.disabled = false;
+        confirmEl.disabled = false;
+      });
+    });
+  }
+
+  function openRemoveTarget(crateName, currentTargets, target) {
+    const modalEl = document.getElementById('modal-remove-target');
+    modalEl.style.display = "unset";
+    const targetEl = document.getElementById("remove-target");
+    targetEl.value = target;
+    const closeEl = document.getElementById('modal-remove-target-close');
+    closeEl.addEventListener('click', function() {
+      modalEl.style.display = "none";
+    });
+    const confirmEl = document.getElementById('modal-remove-target-confirm');
+    confirmEl.addEventListener('click', function() {
+      closeEl.disabled = true;
+      confirmEl.disabled = true;
+      const newTargets = currentTargets.filter(t => t !== target);
+      apiSetCrateTargets(crateName, newTargets).then((_) => {
         window.location.reload();
       }).finally(() => {
         closeEl.disabled = false;

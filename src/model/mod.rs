@@ -36,6 +36,15 @@ pub struct RegistryInformation {
     /// The name to use for the registry in cargo and git config
     #[serde(rename = "registryName")]
     pub registry_name: String,
+    /// The version of the locally installed toolchain
+    #[serde(rename = "toolchainVersion")]
+    pub toolchain_version: String,
+    /// The host target of the locally installed toolchain
+    #[serde(rename = "toolchainHost")]
+    pub toolchain_host: String,
+    /// The known built-in targets in rustc
+    #[serde(rename = "toolchainTargets")]
+    pub toolchain_targets: Vec<String>,
 }
 
 /// A couple describing a crate with its name and the associated version
