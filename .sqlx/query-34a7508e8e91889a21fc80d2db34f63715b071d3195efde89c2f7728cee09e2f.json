@@ -1,0 +1,20 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT id FROM PackageVersionDocs WHERE package = $1 AND version = $2 AND target = $3 LIMIT 1",
+  "describe": {
+    "columns": [
+      {
+        "name": "id",
+        "ordinal": 0,
+        "type_info": "Integer"
+      }
+    ],
+    "parameters": {
+      "Right": 3
+    },
+    "nullable": [
+      false
+    ]
+  },
+  "hash": "34a7508e8e91889a21fc80d2db34f63715b071d3195efde89c2f7728cee09e2f"
+}

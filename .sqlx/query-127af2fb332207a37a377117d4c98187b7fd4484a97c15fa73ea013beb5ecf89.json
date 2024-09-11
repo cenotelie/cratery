@@ -1,0 +1,38 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT version, target, isAttempted AS is_attempted, isPresent AS is_present\n            FROM PackageVersionDocs\n            WHERE package = $1 ORDER BY id",
+  "describe": {
+    "columns": [
+      {
+        "name": "version",
+        "ordinal": 0,
+        "type_info": "Text"
+      },
+      {
+        "name": "target",
+        "ordinal": 1,
+        "type_info": "Text"
+      },
+      {
+        "name": "is_attempted",
+        "ordinal": 2,
+        "type_info": "Bool"
+      },
+      {
+        "name": "is_present",
+        "ordinal": 3,
+        "type_info": "Bool"
+      }
+    ],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      false
+    ]
+  },
+  "hash": "127af2fb332207a37a377117d4c98187b7fd4484a97c15fa73ea013beb5ecf89"
+}

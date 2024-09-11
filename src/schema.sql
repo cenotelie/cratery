@@ -5,7 +5,7 @@ CREATE TABLE IF NOT EXISTS SchemaMetadata (
 
 CREATE INDEX IF NOT EXISTS SchemaMetadataIndex ON SchemaMetadata(name);
 
-INSERT INTO SchemaMetadata VALUES ('version', '1.8.0');
+INSERT INTO SchemaMetadata VALUES ('version', '1.9.0');
 
 CREATE TABLE RegistryUser (
     id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
@@ -63,8 +63,6 @@ CREATE TABLE PackageVersion (
     upload TIMESTAMP NOT NULL,
     uploadedBy INTEGER NOT NULL REFERENCES RegistryUser(id),
     yanked BOOLEAN NOT NULL,
-    hasDocs BOOLEAN NOT NULL,
-    docGenAttempted BOOLEAN NOT NULL,
     downloadCount INTEGER NOT NULL,
     downloads BLOB,
     depsLastCheck TIMESTAMP NOT NULL,
@@ -74,11 +72,22 @@ CREATE TABLE PackageVersion (
 
 CREATE INDEX IndexPackageVersion ON PackageVersion(package);
 
+CREATE TABLE PackageVersionDocs (
+    id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
+    package TEXT NOT NULL REFERENCES Package(name),
+    version TEXT NOT NULL,
+    target TEXT NOT NULL,
+    isAttempted BOOLEAN NOT NULL,
+    isPresent BOOLEAN NOT NULL
+);
+
+CREATE INDEX IndexPackageVersionDocs ON PackageVersionDocs(package);
+
 CREATE TABLE DocGenJob (
     id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
     package TEXT NOT NULL REFERENCES Package(name),
     version TEXT NOT NULL,
-    targets TEXT NOT NULL,
+    target TEXT NOT NULL,
     state INTEGER NOT NULL,
     queuedOn TIMESTAMP NOT NULL,
     startedOn TIMESTAMP NOT NULL,

@@ -321,6 +321,9 @@ pub struct Configuration {
     /// The known external registries that require authentication
     #[serde(rename = "externalRegistries")]
     pub external_registries: Vec<ExternalRegistry>,
+    /// Flag to mock the documentation generation
+    #[serde(rename = "docsGenMock")]
+    pub docs_gen_mock: bool,
     /// Number of seconds between each check
     #[serde(rename = "depsCheckPeriod")]
     pub deps_check_period: u64,
@@ -400,6 +403,7 @@ impl Default for Configuration {
             oauth_client_secret: String::new(),
             oauth_client_scope: String::new(),
             external_registries: Vec::new(),
+            docs_gen_mock: true,
             deps_check_period: 60,
             deps_stale_registry: 60 * 1000,
             deps_stale_analysis: 24 * 60,
@@ -489,6 +493,7 @@ impl Configuration {
             oauth_client_id: get_var("REGISTRY_OAUTH_CLIENT_ID")?,
             oauth_client_secret: get_var("REGISTRY_OAUTH_CLIENT_SECRET")?,
             oauth_client_scope: get_var("REGISTRY_OAUTH_CLIENT_SCOPE")?,
+            docs_gen_mock: get_var("REGISTRY_DOCS_GEN_MOCK").map(|v| v == "true").unwrap_or(false),
             deps_check_period: get_var("REGISTRY_DEPS_CHECK_PERIOD")
                 .map(|s| s.parse().expect("invalid REGISTRY_DEPS_CHECK_PERIOD"))
                 .unwrap_or(60), // 1 minute

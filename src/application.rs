@@ -17,10 +17,10 @@ use crate::model::cargo::{
 };
 use crate::model::config::Configuration;
 use crate::model::deps::DepsAnalysis;
-use crate::model::docs::{DocGenEvent, DocGenJob, DocGenTrigger};
+use crate::model::docs::{DocGenEvent, DocGenJob, DocGenJobSpec, DocGenTrigger};
 use crate::model::packages::CrateInfo;
 use crate::model::stats::{DownloadStats, GlobalStats};
-use crate::model::{AppEvent, CrateVersion, JobCrate, RegistryInformation};
+use crate::model::{AppEvent, CrateVersion, RegistryInformation};
 use crate::services::database::{db_transaction_read, db_transaction_write, Database};
 use crate::services::deps::DepsChecker;
 use crate::services::docs::DocsGenerator;
@@ -89,8 +89,9 @@ impl Application {
             P::get_docs_generator(configuration.clone(), service_db_pool.clone(), service_storage.clone());
 
         // check undocumented packages
+        let default_target = &configuration.self_toolchain_host;
         let job_specs = db_transaction_read(&service_db_pool, |database| async move {
-            database.get_undocumented_crates().await
+            database.get_undocumented_crates(default_target).await
         })
         .await?;
         for spec in &job_specs {
@@ -168,7 +169,7 @@ impl Application {
                     AppEvent::TokenUse(usage) => {
                         app.database.update_token_last_usage(usage).await?;
                     }
-                    AppEvent::CrateDownload(CrateVersion { name, version }) => {
+                    AppEvent::CrateDownload(CrateVersion { package: name, version }) => {
                         app.database.increment_crate_version_dl_count(name, version).await?;
                     }
                 }
@@ -406,16 +407,18 @@ impl Application {
 
         self.service_storage.store_crate(&package.metadata, package.content).await?;
         self.service_index.publish_crate_version(&index_data).await?;
-        self.service_docs_generator
-            .queue(
-                &JobCrate {
-                    name: index_data.name.clone(),
-                    version: index_data.vers.clone(),
-                    targets,
-                },
-                &DocGenTrigger::Upload { by: user },
-            )
-            .await?;
+        for target in targets {
+            self.service_docs_generator
+                .queue(
+                    &DocGenJobSpec {
+                        package: index_data.name.clone(),
+                        version: index_data.vers.clone(),
+                        target,
+                    },
+                    &DocGenTrigger::Upload { by: user.clone() },
+                )
+                .await?;
+        }
         Ok(result)
     }
 
@@ -467,7 +470,7 @@ impl Application {
         let content = self.service_storage.download_crate(package, version).await?;
         self.app_events_sender
             .send(AppEvent::CrateDownload(CrateVersion {
-                name: package.to_string(),
+                package: package.to_string(),
                 version: version.to_string(),
             }))
             .await?;
@@ -505,11 +508,12 @@ impl Application {
     }
 
     /// Gets the packages that need documentation generation
-    pub async fn get_undocumented_crates(&self, auth_data: &AuthData) -> Result<Vec<CrateVersion>, ApiError> {
+    pub async fn get_undocumented_crates(&self, auth_data: &AuthData) -> Result<Vec<DocGenJobSpec>, ApiError> {
         self.db_transaction_read(|app| async move {
             let _authentication = app.authenticate(auth_data).await?;
-            let crates = app.database.get_undocumented_crates().await?;
-            Ok(crates.into_iter().map(CrateVersion::from).collect())
+            app.database
+                .get_undocumented_crates(&self.configuration.self_toolchain_host)
+                .await
         })
         .await
     }
@@ -546,22 +550,30 @@ impl Application {
                 let authentication = app.authenticate(auth_data).await?;
                 let principal_uid = app.check_can_manage_crate(&authentication, package).await?;
                 let user = app.database.get_user_profile(principal_uid).await?;
-                let targets = app.database.get_crate_targets(package).await?;
-                app.database.regen_crate_version_doc(package, version).await?;
+                let targets = app
+                    .database
+                    .regen_crate_version_doc(package, version, &self.configuration.self_toolchain_host)
+                    .await?;
                 Ok::<_, ApiError>((user, targets))
             })
             .await?;
 
-        self.service_docs_generator
-            .queue(
-                &JobCrate {
-                    name: package.to_string(),
-                    version: version.to_string(),
-                    targets,
-                },
-                &DocGenTrigger::Manual { by: user },
-            )
-            .await
+        let mut jobs = Vec::new();
+        for target in targets {
+            jobs.push(
+                self.service_docs_generator
+                    .queue(
+                        &DocGenJobSpec {
+                            package: package.to_string(),
+                            version: version.to_string(),
+                            target,
+                        },
+                        &DocGenTrigger::Manual { by: user.clone() },
+                    )
+                    .await?,
+            );
+        }
+        Ok(jobs)
     }
 
     /// Gets all the packages that are outdated while also being the latest version
@@ -632,17 +644,26 @@ impl Application {
 
     /// Sets the targets for a crate
     pub async fn set_crate_targets(&self, auth_data: &AuthData, package: &str, targets: &[String]) -> Result<(), ApiError> {
-        self.db_transaction_write("set_crate_targets", |app| async move {
-            let authentication = app.authenticate(auth_data).await?;
-            app.check_can_manage_crate(&authentication, package).await?;
-            for target in targets {
-                if !self.configuration.self_builtin_targets.contains(target) {
-                    return Err(specialize(error_invalid_request(), format!("Unknown target: {target}")));
+        let (user, jobs) = self
+            .db_transaction_write("set_crate_targets", |app| async move {
+                let authentication = app.authenticate(auth_data).await?;
+                let principal_uid = app.check_can_manage_crate(&authentication, package).await?;
+                let user = app.database.get_user_profile(principal_uid).await?;
+                for target in targets {
+                    if !self.configuration.self_builtin_targets.contains(target) {
+                        return Err(specialize(error_invalid_request(), format!("Unknown target: {target}")));
+                    }
                 }
-            }
-            app.database.set_crate_targets(package, targets).await
-        })
-        .await
+                let jobs = app.database.set_crate_targets(package, targets).await?;
+                Ok::<_, ApiError>((user, jobs))
+            })
+            .await?;
+        for job in jobs {
+            self.service_docs_generator
+                .queue(&job, &DocGenTrigger::NewTarget { by: user.clone() })
+                .await?;
+        }
+        Ok(())
     }
 
     /// Sets the deprecation status on a crate

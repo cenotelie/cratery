@@ -20,8 +20,9 @@ use tokio::io::AsyncBufReadExt;
 
 use crate::model::cargo::{IndexCrateDependency, IndexCrateMetadata};
 use crate::model::config::{Configuration, ExternalRegistryProtocol};
-use crate::model::deps::{DepAdvisory, DepsAnalysis, DepsGraph, DepsGraphCrateOrigin, BUILTIN_CRATES_REGISTRY_URI};
-use crate::model::JobCrate;
+use crate::model::deps::{
+    DepAdvisory, DepsAnalysis, DepsAnalysisJobSpec, DepsGraph, DepsGraphCrateOrigin, BUILTIN_CRATES_REGISTRY_URI,
+};
 use crate::services::database::{db_transaction_read, db_transaction_write};
 use crate::services::emails::EmailSender;
 use crate::services::index::Index;
@@ -108,17 +109,17 @@ async fn deps_worker_job_on_crate_version(
     service_deps_checker: &(dyn DepsChecker + Send + Sync),
     service_email_sender: &(dyn EmailSender + Send + Sync),
     pool: &RwSqlitePool,
-    job: &JobCrate,
+    job: &DepsAnalysisJobSpec,
 ) -> Result<(), ApiError> {
-    info!("checking deps for {} {}", job.name, job.version);
+    info!("checking deps for {} {}", job.package, job.version);
     let analysis = service_deps_checker
-        .check_crate(&job.name, &job.version, &job.targets)
+        .check_crate(&job.package, &job.version, &job.targets)
         .await?;
     let has_outdated = analysis.direct_dependencies.iter().any(|info| info.is_outdated);
     let has_cves = !analysis.advisories.is_empty();
     let (old_has_outdated, old_has_cves) = db_transaction_write(pool, "set_crate_deps_analysis", |database| async move {
         database
-            .set_crate_deps_analysis(&job.name, &job.version, has_outdated, has_cves)
+            .set_crate_deps_analysis(&job.package, &job.version, has_outdated, has_cves)
             .await
     })
     .await?;
@@ -126,7 +127,7 @@ async fn deps_worker_job_on_crate_version(
         || (has_cves != old_has_cves && configuration.deps_notify_cves)
     {
         // must send some notification
-        let owners = db_transaction_read(pool, |database| async move { database.get_crate_owners(&job.name).await }).await?;
+        let owners = db_transaction_read(pool, |database| async move { database.get_crate_owners(&job.package).await }).await?;
         let owners = owners.users.into_iter().map(|owner| owner.email).collect::<Vec<_>>();
         if has_outdated != old_has_outdated {
             // new outdated dependencies ...
@@ -134,13 +135,13 @@ async fn deps_worker_job_on_crate_version(
             writeln!(
                 body,
                 "New outdated dependencies have been found for {} {}",
-                job.name, job.version
+                job.package, job.version
             )
             .unwrap();
             writeln!(
                 body,
                 "See {}/crates/{}/{}",
-                configuration.web_public_uri, job.name, job.version
+                configuration.web_public_uri, job.package, job.version
             )
             .unwrap();
             writeln!(body).unwrap();
@@ -157,7 +158,7 @@ async fn deps_worker_job_on_crate_version(
             service_email_sender
                 .send_email(
                     &owners,
-                    &format!("Cratery - outdated dependencies for {} {}", job.name, job.version),
+                    &format!("Cratery - outdated dependencies for {} {}", job.package, job.version),
                     body,
                 )
                 .await?;
@@ -168,13 +169,13 @@ async fn deps_worker_job_on_crate_version(
             writeln!(
                 body,
                 "New vulnerable dependencies have been found for {} {}",
-                job.name, job.version
+                job.package, job.version
             )
             .unwrap();
             writeln!(
                 body,
                 "See {}/crates/{}/{}",
-                configuration.web_public_uri, job.name, job.version
+                configuration.web_public_uri, job.package, job.version
             )
             .unwrap();
             writeln!(body).unwrap();
@@ -190,7 +191,7 @@ async fn deps_worker_job_on_crate_version(
             service_email_sender
                 .send_email(
                     &owners,
-                    &format!("Cratery - vulnerable dependencies for {} {}", job.name, job.version),
+                    &format!("Cratery - vulnerable dependencies for {} {}", job.package, job.version),
                     body,
                 )
                 .await?;

@@ -1,6 +1,6 @@
 {
   "db_name": "SQLite",
-  "query": "SELECT package, version, targets\n            FROM PackageVersion\n            INNER JOIN Package ON PackageVersion.package = Package.name\n            WHERE hasDocs = FALSE AND docGenAttempted = FALSE ORDER BY id",
+  "query": "SELECT package, version, targets\n                FROM PackageVersion INNER JOIN Package ON PackageVersion.package = Package.name",
   "describe": {
     "columns": [
       {
@@ -28,5 +28,5 @@
       false
     ]
   },
-  "hash": "0b7a61253d1ae4f9238041d81ff5aa6f218fa4dead3f506c9a4ede14e10248b3"
+  "hash": "e238744f8c6b032977668aa37fa0efae1104057c8a50ca75a4b324961535d3c5"
 }

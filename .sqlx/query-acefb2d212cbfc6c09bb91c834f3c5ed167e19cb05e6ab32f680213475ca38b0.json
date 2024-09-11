@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "UPDATE PackageVersionDocs SET isAttempted = $4, isPresent = $5 WHERE package = $1 AND version = $2 AND target = $3",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 5
+    },
+    "nullable": []
+  },
+  "hash": "acefb2d212cbfc6c09bb91c834f3c5ed167e19cb05e6ab32f680213475ca38b0"
+}

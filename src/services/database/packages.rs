@@ -18,9 +18,11 @@ use crate::model::cargo::{
     CrateUploadData, CrateUploadResult, IndexCrateMetadata, OwnersQueryResult, RegistryUser, SearchResultCrate, SearchResults,
     SearchResultsMeta, YesNoMsgResult, YesNoResult,
 };
-use crate::model::packages::{CrateInfo, CrateInfoVersion};
+use crate::model::deps::{DepsAnalysisJobSpec, DepsAnalysisState};
+use crate::model::docs::DocGenJobSpec;
+use crate::model::packages::{CrateInfo, CrateInfoVersion, CrateInfoVersionDocs};
 use crate::model::stats::{DownloadStats, SERIES_LENGTH};
-use crate::model::{CrateVersion, CrateVersionDepsCheckState, JobCrate};
+use crate::model::CrateVersion;
 use crate::utils::apierror::{error_invalid_request, error_not_found, specialize, ApiError};
 use crate::utils::comma_sep_to_vec;
 
@@ -101,7 +103,6 @@ impl Database {
 
         let rows = sqlx::query!(
             "SELECT version, upload, uploadedBy AS uploaded_by,
-                    hasDocs AS has_docs, docGenAttempted AS doc_gen_attempted,
                     downloadCount AS download_count,
                     depsLastCheck AS deps_last_check, depsHasOutdated AS deps_has_outdated, depsHasCVEs AS deps_has_cves
             FROM PackageVersion WHERE package = $1 ORDER BY id",
@@ -117,12 +118,28 @@ impl Database {
                     index: index_data,
                     upload: row.upload,
                     uploaded_by,
-                    has_docs: row.has_docs,
-                    doc_gen_attempted: row.doc_gen_attempted,
                     download_count: row.download_count,
                     deps_last_check: row.deps_last_check,
                     deps_has_outdated: row.deps_has_outdated,
                     deps_has_cves: row.deps_has_cves,
+                    docs: Vec::new(),
+                });
+            }
+        }
+        let rows = sqlx::query!(
+            "SELECT version, target, isAttempted AS is_attempted, isPresent AS is_present
+            FROM PackageVersionDocs
+            WHERE package = $1 ORDER BY id",
+            package
+        )
+        .fetch_all(&mut *self.transaction.borrow().await)
+        .await?;
+        for row in rows {
+            if let Some(version) = versions.iter_mut().find(|v| v.index.vers == row.version) {
+                version.docs.push(CrateInfoVersionDocs {
+                    target: row.target,
+                    is_attempted: row.is_attempted,
+                    is_present: row.is_present,
                 });
             }
         }
@@ -191,7 +208,7 @@ impl Database {
         // create the version
         let description = package.metadata.description.as_ref().map_or("", String::as_str);
         sqlx::query!(
-            "INSERT INTO PackageVersion (package, version, description, upload, uploadedBy, yanked, hasDocs, docGenAttempted, downloadCount, downloads, depsLastCheck, depsHasOutdated, depsHasCVEs) VALUES ($1, $2, $3, $4, $5, false, false, false, 0, NULL, 0, false, false)",
+            "INSERT INTO PackageVersion (package, version, description, upload, uploadedBy, yanked, downloadCount, downloads, depsLastCheck, depsHasOutdated, depsHasCVEs) VALUES ($1, $2, $3, $4, $5, false, 0, NULL, 0, false, false)",
             package.metadata.name,
             package.metadata.vers,
             description,
@@ -272,69 +289,144 @@ impl Database {
     }
 
     /// Gets the packages that need documentation generation
-    pub async fn get_undocumented_crates(&self) -> Result<Vec<JobCrate>, ApiError> {
-        let rows = sqlx::query!(
-            "SELECT package, version, targets
-            FROM PackageVersion
-            INNER JOIN Package ON PackageVersion.package = Package.name
-            WHERE hasDocs = FALSE AND docGenAttempted = FALSE ORDER BY id"
-        )
-        .fetch_all(&mut *self.transaction.borrow().await)
-        .await?;
-        Ok(rows
-            .into_iter()
-            .map(|row| JobCrate {
-                name: row.package,
-                version: row.version,
-                targets: comma_sep_to_vec(&row.targets),
-            })
-            .collect())
+    pub async fn get_undocumented_crates(&self, default_target: &str) -> Result<Vec<DocGenJobSpec>, ApiError> {
+        struct PackageData {
+            targets: Vec<String>,
+            versions: Vec<VersionData>,
+        }
+        struct VersionData {
+            version: String,
+            docs: u64,
+        }
+        let mut packages: HashMap<String, PackageData> = HashMap::new();
+
+        let mut transaction = self.transaction.borrow().await;
+        // retrieve all package versions and associated targets
+        {
+            let mut stream = sqlx::query!(
+                "SELECT package, version, targets
+                FROM PackageVersion INNER JOIN Package ON PackageVersion.package = Package.name"
+            )
+            .fetch(&mut *transaction);
+            while let Some(Ok(row)) = stream.next().await {
+                let data = packages.entry(row.package).or_insert_with(|| PackageData {
+                    targets: if row.targets.is_empty() {
+                        vec![default_target.to_string()]
+                    } else {
+                        comma_sep_to_vec(&row.targets)
+                    },
+                    versions: Vec::new(),
+                });
+                data.versions.push(VersionData {
+                    version: row.version,
+                    docs: 0,
+                });
+            }
+        }
+        // find all present or attempted docs (not missing)
+        {
+            let mut stream = sqlx::query!(
+                "SELECT package, version, target
+                FROM PackageVersionDocs
+                WHERE isPresent = TRUE OR isAttempted = TRUE"
+            )
+            .fetch(&mut *transaction);
+            while let Some(Ok(row)) = stream.next().await {
+                if let Some(data) = packages.get_mut(&row.package) {
+                    let target_index = data.targets.iter().position(|t| t == &row.target);
+                    let version_data = data.versions.iter_mut().find(|d| d.version == row.version);
+                    if let (Some(target_index), Some(version_data)) = (target_index, version_data) {
+                        version_data.docs |= 1 << target_index;
+                    }
+                }
+            }
+        }
+        // aggregate results
+        let mut jobs = Vec::new();
+        for (package, data) in packages {
+            for version in data.versions {
+                for (index, target) in data.targets.iter().enumerate() {
+                    let is_missing = (version.docs & (1 << index)) == 0;
+                    if is_missing {
+                        jobs.push(DocGenJobSpec {
+                            package: package.clone(),
+                            version: version.version.clone(),
+                            target: target.clone(),
+                        });
+                    }
+                }
+            }
+        }
+        Ok(jobs)
     }
 
     /// Sets a package as having documentation
-    pub async fn set_crate_documentation(&self, package: &str, version: &str, has_docs: bool) -> Result<(), ApiError> {
-        sqlx::query!(
-            "UPDATE PackageVersion SET docGenAttempted = TRUE, hasDocs = $3 WHERE package = $1 AND version = $2",
+    pub async fn set_crate_documentation(
+        &self,
+        package: &str,
+        version: &str,
+        target: &str,
+        is_attempted: bool,
+        is_present: bool,
+    ) -> Result<(), ApiError> {
+        let is_missing = sqlx::query!(
+            "SELECT id FROM PackageVersionDocs WHERE package = $1 AND version = $2 AND target = $3 LIMIT 1",
             package,
             version,
-            has_docs
+            target
         )
-        .execute(&mut *self.transaction.borrow().await)
-        .await?;
+        .fetch_optional(&mut *self.transaction.borrow().await)
+        .await?
+        .is_none();
+        if is_missing {
+            sqlx::query!(
+                "INSERT INTO PackageVersionDocs (package, version, target, isAttempted, isPresent) VALUES ($1, $2, $3, $4, $5)",
+                package,
+                version,
+                target,
+                is_attempted,
+                is_present
+            )
+            .execute(&mut *self.transaction.borrow().await)
+            .await?;
+        } else {
+            sqlx::query!("UPDATE PackageVersionDocs SET isAttempted = $4, isPresent = $5 WHERE package = $1 AND version = $2 AND target = $3",
+            package, version, target, is_attempted, is_present
+        ).execute(&mut *self.transaction.borrow().await).await?;
+        }
         Ok(())
     }
 
     /// Force the re-generation for the documentation of a package
-    pub async fn regen_crate_version_doc(&self, package: &str, version: &str) -> Result<(), ApiError> {
-        let row = sqlx::query!(
-            "SELECT yanked FROM PackageVersion WHERE package = $1 AND version = $2 LIMIT 1",
-            package,
-            version
-        )
-        .fetch_optional(&mut *self.transaction.borrow().await)
-        .await?;
-        match row {
-            None => Err(specialize(
-                error_invalid_request(),
-                format!("Version {version} of crate {package} does not exist"),
-            )),
-            Some(_row) => {
-                sqlx::query!(
-                    "UPDATE PackageVersion SET docGenAttempted = FALSE, hasDocs = FALSE WHERE package = $1 AND version = $2",
-                    package,
-                    version
-                )
-                .execute(&mut *self.transaction.borrow().await)
-                .await?;
+    pub async fn regen_crate_version_doc(
+        &self,
+        package: &str,
+        version: &str,
+        default_target: &str,
+    ) -> Result<Vec<String>, ApiError> {
+        self.check_crate_exists(package, version).await?;
 
-                Ok(())
-            }
+        let targets = sqlx::query!("SELECT targets FROM Package WHERE name = $1 LIMIT 1", package)
+            .fetch_optional(&mut *self.transaction.borrow().await)
+            .await?
+            .ok_or_else(error_not_found)?
+            .targets;
+        let targets = comma_sep_to_vec(&targets);
+        let targets = if targets.is_empty() {
+            vec![default_target.to_string()]
+        } else {
+            targets
+        };
+
+        for target in &targets {
+            self.set_crate_documentation(package, version, target, false, false).await?;
         }
+        Ok(targets)
     }
 
     /// Gets the packages that need to have their dependencies analyzed
     /// Those are the latest version of each crate
-    pub async fn get_unanalyzed_crates(&self, deps_stale_analysis: i64) -> Result<Vec<JobCrate>, ApiError> {
+    pub async fn get_unanalyzed_crates(&self, deps_stale_analysis: i64) -> Result<Vec<DepsAnalysisJobSpec>, ApiError> {
         let now = Local::now().naive_local();
         let from = now - Duration::minutes(deps_stale_analysis);
         let heads = self.get_crates_version_heads().await?;
@@ -366,7 +458,7 @@ impl Database {
     }
 
     /// Gets all the lastest version of crates, filtering out yanked and pre-release versions
-    async fn get_crates_version_heads(&self) -> Result<Vec<CrateVersionDepsCheckState>, ApiError> {
+    async fn get_crates_version_heads(&self) -> Result<Vec<DepsAnalysisState>, ApiError> {
         struct Elem {
             semver: Version,
             version: String,
@@ -418,13 +510,13 @@ impl Database {
         }
         Ok(cache
             .into_iter()
-            .map(|(name, elem)| CrateVersionDepsCheckState {
-                name,
+            .map(|(package, elem)| DepsAnalysisState {
+                package,
                 version: elem.version,
                 is_deprecated: elem.is_deprecated,
                 deps_has_outdated: elem.deps_has_outdated,
                 deps_last_check: elem.deps_last_check,
-                targets: elem.targets,
+                targets: comma_sep_to_vec(&elem.targets),
             })
             .collect())
     }
@@ -573,12 +665,39 @@ impl Database {
     }
 
     /// Sets the targets for a crate
-    pub async fn set_crate_targets(&self, package: &str, targets: &[String]) -> Result<(), ApiError> {
-        let targets = targets.join(",");
-        sqlx::query!("UPDATE Package SET targets = $2 WHERE name = $1", package, targets)
+    pub async fn set_crate_targets(&self, package: &str, targets: &[String]) -> Result<Vec<DocGenJobSpec>, ApiError> {
+        let old_targets = self.get_crate_targets(package).await?;
+        let added_targets = targets
+            .iter()
+            .filter_map(|target| {
+                if old_targets.contains(target) {
+                    None
+                } else {
+                    Some(target.clone())
+                }
+            })
+            .collect::<Vec<_>>();
+
+        let new_targets = targets.join(",");
+        sqlx::query!("UPDATE Package SET targets = $2 WHERE name = $1", package, new_targets)
             .execute(&mut *self.transaction.borrow().await)
             .await?;
-        Ok(())
+
+        // get versions
+        let rows = sqlx::query!("SELECT version FROM PackageVersion WHERE package = $1", package)
+            .fetch_all(&mut *self.transaction.borrow().await)
+            .await?;
+        let mut jobs = Vec::new();
+        for row in rows {
+            for target in &added_targets {
+                jobs.push(DocGenJobSpec {
+                    package: package.to_string(),
+                    version: row.version.clone(),
+                    target: target.clone(),
+                });
+            }
+        }
+        Ok(jobs)
     }
 
     /// Sets the deprecation status on a crate

@@ -19,8 +19,7 @@ use tokio::sync::Mutex;
 use tokio::time::interval;
 
 use crate::model::config::Configuration;
-use crate::model::docs::{DocGenEvent, DocGenJob, DocGenJobState, DocGenJobUpdate, DocGenTrigger};
-use crate::model::JobCrate;
+use crate::model::docs::{DocGenEvent, DocGenJob, DocGenJobSpec, DocGenJobState, DocGenJobUpdate, DocGenTrigger};
 use crate::services::database::{db_transaction_read, db_transaction_write};
 use crate::services::storage::Storage;
 use crate::utils::apierror::{error_backend_failure, specialize, ApiError};
@@ -37,7 +36,7 @@ pub trait DocsGenerator {
     fn get_job_log(&self, job_id: i64) -> FaillibleFuture<'_, String>;
 
     /// Queues a job for documentation generation
-    fn queue<'a>(&'a self, spec: &'a JobCrate, trigger: &'a DocGenTrigger) -> FaillibleFuture<'a, Vec<DocGenJob>>;
+    fn queue<'a>(&'a self, spec: &'a DocGenJobSpec, trigger: &'a DocGenTrigger) -> FaillibleFuture<'a, DocGenJob>;
 
     /// Adds a listener to job updates
     fn add_listener(&self, listener: Sender<DocGenEvent>) -> FaillibleFuture<'_, ()>;
@@ -103,30 +102,14 @@ impl DocsGenerator for DocsGeneratorImpl {
     }
 
     /// Queues a job for documentation generation
-    fn queue<'a>(&'a self, spec: &'a JobCrate, trigger: &'a DocGenTrigger) -> FaillibleFuture<'a, Vec<DocGenJob>> {
+    fn queue<'a>(&'a self, spec: &'a DocGenJobSpec, trigger: &'a DocGenTrigger) -> FaillibleFuture<'a, DocGenJob> {
         Box::pin(async move {
-            let jobs = db_transaction_write(&self.service_db_pool, "create_docgen_job", |database| async move {
-                if spec.targets.is_empty() {
-                    // no target, use the host default target
-                    database
-                        .create_docgen_jobs(
-                            &JobCrate {
-                                name: spec.name.clone(),
-                                version: spec.version.clone(),
-                                targets: vec![self.configuration.self_toolchain_host.clone()],
-                            },
-                            trigger,
-                        )
-                        .await
-                } else {
-                    database.create_docgen_jobs(spec, trigger).await
-                }
+            let job = db_transaction_write(&self.service_db_pool, "create_docgen_job", |database| async move {
+                database.create_docgen_job(spec, trigger).await
             })
             .await?;
-            for job in &jobs {
-                self.send_event(DocGenEvent::Queued(Box::new(job.clone()))).await?;
-            }
-            Ok(jobs)
+            self.send_event(DocGenEvent::Queued(Box::new(job.clone()))).await?;
+            Ok(job)
         })
     }
 
@@ -142,7 +125,7 @@ impl DocsGenerator for DocsGeneratorImpl {
 impl DocsGeneratorImpl {
     /// Gets the location in storage of the log for a documentation job
     fn job_log_location(job: &DocGenJob) -> String {
-        format!("{}/{}/log_{}.txt", job.package, job.version, job.id)
+        format!("logs/job_{:06}", job.id)
     }
 
     /// Send an event to listeners
@@ -219,60 +202,66 @@ impl DocsGeneratorImpl {
     /// Executes a documentation generation job
     async fn docs_worker_on_job(&self, job: &DocGenJob) -> Result<(), ApiError> {
         self.update_job(job.id, DocGenJobState::Working, None).await?;
-        match self.docs_worker_execute_job(job).await {
-            Ok((final_state, output)) => {
-                self.update_job(job.id, final_state, output.as_deref()).await?;
+        if let Err(e) = self.docs_worker_execute_job(job).await {
+            error!("{e}");
+            if let Some(backtrace) = &e.backtrace {
+                error!("{backtrace}");
             }
-            Err(e) => {
-                error!("{e}");
-                if let Some(backtrace) = &e.backtrace {
-                    error!("{backtrace}");
-                }
-                self.update_job(job.id, DocGenJobState::Failure, Some(&e.to_string())).await?;
-            }
+            self.update_job(job.id, DocGenJobState::Failure, Some(&e.to_string())).await?;
         }
         Ok(())
     }
 
     /// Executes a documentation generation job
-    async fn docs_worker_execute_job(&self, job: &DocGenJob) -> Result<(DocGenJobState, Option<String>), ApiError> {
+    async fn docs_worker_execute_job(&self, job: &DocGenJob) -> Result<(), ApiError> {
         info!("generating doc for {} {}", job.package, job.version);
         let content = self.service_storage.download_crate(&job.package, &job.version).await?;
         let temp_folder = Self::extract_content(&job.package, &job.version, &content)?;
         let project_folder = Self::get_project_folder_in(&temp_folder).await?;
 
-        let (final_state, output) = match self.generate_doc(&project_folder, &job.target).await {
-            Ok(log) => {
-                self.service_storage
-                    .store_doc_data(&Self::job_log_location(job), log.as_bytes().to_vec())
-                    .await?;
-                let mut project_folder = project_folder.clone();
-                project_folder.push("target");
-                project_folder.push(&job.target);
-                project_folder.push("doc");
-                let doc_folder = project_folder;
-                self.upload_package(&doc_folder, &format!("{}/{}/{}", &job.package, &job.version, &job.target))
-                    .await?;
-                (DocGenJobState::Success, None)
-            }
-            Err(e) => {
-                // upload the log
-                let log = e.details.unwrap();
-                self.service_storage
-                    .store_doc_data(&Self::job_log_location(job), log.as_bytes().to_vec())
-                    .await?;
-                (DocGenJobState::Failure, Some(log))
+        let (final_state, output) = if self.configuration.docs_gen_mock {
+            (DocGenJobState::Success, String::from("mocked"))
+        } else {
+            match self.generate_doc(&project_folder, &job.target).await {
+                Ok(log) => {
+                    self.service_storage
+                        .store_doc_data(&Self::job_log_location(job), log.as_bytes().to_vec())
+                        .await?;
+                    let mut project_folder = project_folder.clone();
+                    project_folder.push("target");
+                    project_folder.push(&job.target);
+                    project_folder.push("doc");
+                    let doc_folder = project_folder;
+                    self.upload_package(&doc_folder, &format!("{}/{}/{}", &job.package, &job.version, &job.target))
+                        .await?;
+                    (DocGenJobState::Success, log)
+                }
+                Err(e) => {
+                    // upload the log
+                    let log = e.details.unwrap();
+                    self.service_storage
+                        .store_doc_data(&Self::job_log_location(job), log.as_bytes().to_vec())
+                        .await?;
+                    (DocGenJobState::Failure, log)
+                }
             }
         };
-
+        tokio::fs::remove_dir_all(&temp_folder).await?;
         db_transaction_write(&self.service_db_pool, "set_crate_documentation", |database| async move {
             database
-                .set_crate_documentation(&job.package, &job.version, final_state == DocGenJobState::Success)
+                .set_crate_documentation(
+                    &job.package,
+                    &job.version,
+                    &job.target,
+                    true,
+                    final_state == DocGenJobState::Success,
+                )
                 .await
         })
         .await?;
-        tokio::fs::remove_dir_all(&temp_folder).await?;
-        Ok((final_state, output))
+
+        self.update_job(job.id, final_state, Some(&output)).await?;
+        Ok(())
     }
 
     /// Generates and upload the documentation for a crate

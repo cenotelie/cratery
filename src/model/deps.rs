@@ -4,12 +4,14 @@
 
 //! Data types around dependency analysis
 
+use chrono::NaiveDateTime;
 use log::error;
 use semver::{Version, VersionReq};
 use serde_derive::{Deserialize, Serialize};
 
 use super::cargo::{DependencyKind, IndexCrateDependency, IndexCrateMetadata};
 use super::osv::SimpleAdvisory;
+use super::CrateVersion;
 use crate::utils::apierror::ApiError;
 use crate::utils::push_if_not_present;
 
@@ -18,6 +20,56 @@ pub const BUILTIN_CRATES_REGISTRY_URI: &str = "<builtin>";
 
 /// The list of built-in crates
 pub const BUILTIN_CRATES_LIST: &[&str] = &["core", "alloc", "std"];
+
+/// The specification for a dependency analysis job
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct DepsAnalysisJobSpec {
+    /// The name of the crate
+    pub package: String,
+    /// The crate's version
+    pub version: String,
+    /// The targets for the crate
+    pub targets: Vec<String>,
+}
+
+impl From<DepsAnalysisState> for DepsAnalysisJobSpec {
+    fn from(state: DepsAnalysisState) -> Self {
+        Self {
+            package: state.package,
+            version: state.version,
+            targets: state.targets,
+        }
+    }
+}
+
+/// Metadata about a crate version and its analysis state
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct DepsAnalysisState {
+    /// The name of the crate
+    pub package: String,
+    /// The crate's version
+    pub version: String,
+    /// Whether the entire package is deprecated
+    #[serde(rename = "isDeprecated")]
+    pub is_deprecated: bool,
+    /// Whether the version has outdated dependencies
+    #[serde(rename = "depsHasOutdated")]
+    pub deps_has_outdated: bool,
+    /// When this crate version was last checked
+    #[serde(rename = "depsLastCheck")]
+    pub deps_last_check: NaiveDateTime,
+    /// The targets associated with the crate
+    pub targets: Vec<String>,
+}
+
+impl From<DepsAnalysisState> for CrateVersion {
+    fn from(state: DepsAnalysisState) -> Self {
+        Self {
+            package: state.package,
+            version: state.version,
+        }
+    }
+}
 
 /// The complete dependency analysis
 #[derive(Debug, Default, Clone, Serialize, Deserialize)]

@@ -25,7 +25,6 @@ pub struct CrateInfo {
 
 /// The data for a crate version
 #[derive(Debug, Clone, Serialize, Deserialize)]
-#[allow(clippy::struct_excessive_bools)]
 pub struct CrateInfoVersion {
     /// The data from the index
     pub index: IndexCrateMetadata,
@@ -34,12 +33,6 @@ pub struct CrateInfoVersion {
     /// The user that uploaded the version
     #[serde(rename = "uploadedBy")]
     pub uploaded_by: RegistryUser,
-    /// Whether documentation was generated for this version
-    #[serde(rename = "hasDocs")]
-    pub has_docs: bool,
-    /// Whether the documentation generation was attempted
-    #[serde(rename = "docGenAttempted")]
-    pub doc_gen_attempted: bool,
     /// The number of times this version was downloaded
     #[serde(rename = "downloadCount")]
     pub download_count: i64,
@@ -52,4 +45,19 @@ pub struct CrateInfoVersion {
     /// Flag whether CVEs have been filed against dependencies of this crate
     #[serde(rename = "depsHasCVEs")]
     pub deps_has_cves: bool,
+    /// The documentation status
+    pub docs: Vec<CrateInfoVersionDocs>,
+}
+
+/// The documentation status for a crate version
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CrateInfoVersionDocs {
+    /// The corresponding target
+    pub target: String,
+    /// Whether the documentation generation was attempted
+    #[serde(rename = "isAttempted")]
+    pub is_attempted: bool,
+    /// Whether documentation was generated for this target
+    #[serde(rename = "isPresent")]
+    pub is_present: bool,
 }

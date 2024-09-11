@@ -9,6 +9,17 @@ use serde_derive::{Deserialize, Serialize};
 
 use super::cargo::RegistryUser;
 
+/// The specification for a documentation generation job
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DocGenJobSpec {
+    /// The name of the crate
+    pub package: String,
+    /// The crate's version
+    pub version: String,
+    /// The targets for the crate
+    pub target: String,
+}
+
 /// The state of a documentation generation job
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum DocGenJobState {
@@ -57,6 +68,8 @@ impl From<i64> for DocGenJobState {
 pub enum DocGenTrigger {
     /// The upload of the crate version
     Upload { by: RegistryUser },
+    /// The addition of a new target for a crate
+    NewTarget { by: RegistryUser },
     /// The manual request of a user
     Manual { by: RegistryUser },
     /// The documentation was detected as missing on launch
@@ -69,8 +82,9 @@ impl DocGenTrigger {
     pub fn value(&self) -> i64 {
         match self {
             Self::Upload { by: _ } => 0,
-            Self::Manual { by: _ } => 1,
-            Self::MissingOnLaunch => 2,
+            Self::NewTarget { by: _ } => 1,
+            Self::Manual { by: _ } => 2,
+            Self::MissingOnLaunch => 3,
         }
     }
 
@@ -78,7 +92,7 @@ impl DocGenTrigger {
     #[must_use]
     pub fn by(&self) -> Option<&RegistryUser> {
         match self {
-            Self::Upload { by } | Self::Manual { by } => Some(by),
+            Self::Upload { by } | Self::NewTarget { by } | Self::Manual { by } => Some(by),
             Self::MissingOnLaunch => None,
         }
     }
@@ -88,7 +102,8 @@ impl From<(i64, Option<RegistryUser>)> for DocGenTrigger {
     fn from(spec: (i64, Option<RegistryUser>)) -> Self {
         match spec {
             (0, Some(by)) => Self::Upload { by },
-            (1, Some(by)) => Self::Manual { by },
+            (1, Some(by)) => Self::NewTarget { by },
+            (2, Some(by)) => Self::Manual { by },
             _ => Self::MissingOnLaunch,
         }
     }

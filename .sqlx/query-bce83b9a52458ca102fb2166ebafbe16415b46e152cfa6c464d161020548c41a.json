@@ -1,6 +1,6 @@
 {
   "db_name": "SQLite",
-  "query": "SELECT version, upload, uploadedBy AS uploaded_by,\n                    hasDocs AS has_docs, docGenAttempted AS doc_gen_attempted,\n                    downloadCount AS download_count,\n                    depsLastCheck AS deps_last_check, depsHasOutdated AS deps_has_outdated, depsHasCVEs AS deps_has_cves\n            FROM PackageVersion WHERE package = $1 ORDER BY id",
+  "query": "SELECT version, upload, uploadedBy AS uploaded_by,\n                    downloadCount AS download_count,\n                    depsLastCheck AS deps_last_check, depsHasOutdated AS deps_has_outdated, depsHasCVEs AS deps_has_cves\n            FROM PackageVersion WHERE package = $1 ORDER BY id",
   "describe": {
     "columns": [
       {
@@ -19,33 +19,23 @@
         "type_info": "Integer"
       },
       {
-        "name": "has_docs",
-        "ordinal": 3,
-        "type_info": "Bool"
-      },
-      {
-        "name": "doc_gen_attempted",
-        "ordinal": 4,
-        "type_info": "Bool"
-      },
-      {
         "name": "download_count",
-        "ordinal": 5,
+        "ordinal": 3,
         "type_info": "Integer"
       },
       {
         "name": "deps_last_check",
-        "ordinal": 6,
+        "ordinal": 4,
         "type_info": "Datetime"
       },
       {
         "name": "deps_has_outdated",
-        "ordinal": 7,
+        "ordinal": 5,
         "type_info": "Bool"
       },
       {
         "name": "deps_has_cves",
-        "ordinal": 8,
+        "ordinal": 6,
         "type_info": "Bool"
       }
     ],
@@ -59,10 +49,8 @@
       false,
       false,
       false,
-      false,
-      false,
       false
     ]
   },
-  "hash": "faa65702d46c2f612f31293f22139a0b347efe23018c482890af42ba9dd59d9e"
+  "hash": "bce83b9a52458ca102fb2166ebafbe16415b46e152cfa6c464d161020548c41a"
 }

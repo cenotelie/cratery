@@ -28,7 +28,7 @@ use crate::model::cargo::{
     CrateUploadResult, OwnersChangeQuery, OwnersQueryResult, RegistryUser, SearchResults, YesNoMsgResult, YesNoResult,
 };
 use crate::model::deps::DepsAnalysis;
-use crate::model::docs::DocGenJob;
+use crate::model::docs::{DocGenJob, DocGenJobSpec};
 use crate::model::packages::CrateInfo;
 use crate::model::stats::{DownloadStats, GlobalStats};
 use crate::model::{AppVersion, CrateVersion, RegistryInformation};
@@ -490,7 +490,7 @@ pub async fn api_v1_get_crates_stats(auth_data: AuthData, State(state): State<Ar
 pub async fn api_v1_get_crates_undocumented(
     auth_data: AuthData,
     State(state): State<Arc<AxumState>>,
-) -> ApiResult<Vec<CrateVersion>> {
+) -> ApiResult<Vec<DocGenJobSpec>> {
     response(state.application.get_undocumented_crates(&auth_data).await)
 }
 

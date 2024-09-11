@@ -1,6 +1,6 @@
 {
   "db_name": "SQLite",
-  "query": "SELECT id, package, version, targets, state,\n            queuedOn AS queued_on, startedOn AS started_on, finishedOn AS finished_on, lastUpdate AS last_update,\n            triggerUser AS trigger_user, triggerEvent AS trigger_event\n            FROM DocGenJob\n            WHERE state = $1 AND package = $2 AND version = $3\n            ORDER BY id DESC\n            LIMIT 1",
+  "query": "SELECT id, package, version, target, state,\n            queuedOn AS queued_on, startedOn AS started_on, finishedOn AS finished_on, lastUpdate AS last_update,\n            triggerUser AS trigger_user, triggerEvent AS trigger_event\n            FROM DocGenJob\n            WHERE state = $1 AND package = $2 AND version = $3 AND target = $4\n            ORDER BY id DESC\n            LIMIT 1",
   "describe": {
     "columns": [
       {
@@ -19,7 +19,7 @@
         "type_info": "Text"
       },
       {
-        "name": "targets",
+        "name": "target",
         "ordinal": 3,
         "type_info": "Text"
       },
@@ -60,7 +60,7 @@
       }
     ],
     "parameters": {
-      "Right": 3
+      "Right": 4
     },
     "nullable": [
       false,
@@ -76,5 +76,5 @@
       false
     ]
   },
-  "hash": "97323499c50d00e62d9f00f46c0ce0ea600af61dc18c4416ca815a627f00a96a"
+  "hash": "33f4917075aa208e638b04db719431096533afc0e66749dc0a275d4019cba9e2"
 }

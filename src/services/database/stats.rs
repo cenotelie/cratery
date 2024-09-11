@@ -35,7 +35,7 @@ impl Database {
         let crates_newest = rows
             .into_iter()
             .map(|row| CrateVersion {
-                name: row.name,
+                package: row.name,
                 version: row.version,
             })
             .collect::<Vec<_>>();
@@ -52,7 +52,7 @@ impl Database {
         let crates_most_downloaded = rows
             .into_iter()
             .map(|row| CrateVersion {
-                name: row.name,
+                package: row.name,
                 version: String::new(),
             })
             .collect::<Vec<_>>();
@@ -68,7 +68,7 @@ impl Database {
         let crates_last_updated = rows
             .into_iter()
             .map(|row| CrateVersion {
-                name: row.package,
+                package: row.package,
                 version: row.version,
             })
             .collect::<Vec<_>>();
