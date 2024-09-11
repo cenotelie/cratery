@@ -64,10 +64,10 @@
     const color = hasWarning ? "yellow" : "gray";
     const card = document.createElement("a");
     card.className = `block m-2 p-2 bg-white border border-${color}-200 rounded-lg shadow hover:bg-${color}-100 dark:bg-${color}-800 dark:border-${color}-700 dark:hover:bg-${color}-700`;
-    card.href = withVersion ? `/crates/${crate.name}/${crate.version}` : `/crates/${crate.name}`;
+    card.href = withVersion ? `/crates/${crate.package}/${crate.version}` : `/crates/${crate.package}`;
     const title = document.createElement("h5");
     title.className = `mb-1 text-xl font-bold tracking-tight text-${color}-900 dark:text-${color}-100`;
-    title.appendChild(document.createTextNode(crate.name));
+    title.appendChild(document.createTextNode(crate.package));
     card.appendChild(title);
     if (withVersion) {
       const sub = document.createElement("p");
