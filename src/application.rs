@@ -90,9 +90,20 @@ impl Application {
 
         // check undocumented packages
         let default_target = &configuration.self_toolchain_host;
-        let job_specs = db_transaction_read(&service_db_pool, |database| async move {
-            database.get_undocumented_crates(default_target).await
-        })
+        let job_specs = db_transaction_write(
+            &service_db_pool,
+            "Application::launch::get_undocumented_crates",
+            |database| async move {
+                let jobs = database.get_undocumented_crates(default_target).await?;
+                for job in &jobs {
+                    // resolve the docs
+                    database
+                        .set_crate_documentation(&job.package, &job.version, &job.target, false, false)
+                        .await?;
+                }
+                Ok::<_, ApiError>(jobs)
+            },
+        )
         .await?;
         for spec in &job_specs {
             service_docs_generator.queue(spec, &DocGenTrigger::MissingOnLaunch).await?;
@@ -400,6 +411,11 @@ impl Application {
                 // publish
                 let result = app.database.publish_crate_version(user.id, package).await?;
                 let targets = app.database.get_crate_targets(&package.metadata.name).await?;
+                for target in &targets {
+                    app.database
+                        .set_crate_documentation(&package.metadata.name, &package.metadata.vers, target, false, false)
+                        .await?;
+                }
                 Ok::<_, ApiError>((user, result, targets))
             })
             .await
@@ -655,6 +671,11 @@ impl Application {
                     }
                 }
                 let jobs = app.database.set_crate_targets(package, targets).await?;
+                for job in &jobs {
+                    app.database
+                        .set_crate_documentation(&job.package, &job.version, &job.target, false, false)
+                        .await?;
+                }
                 Ok::<_, ApiError>((user, jobs))
             })
             .await?;

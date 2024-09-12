@@ -115,37 +115,17 @@
       linkEl.setAttribute("href", `/crates/${job.package}/${job.version}`);
       linkEl.appendChild(document.createTextNode(`${job.package} ${job.version}`));
 
-      const color = getJobStatusColor(job.state);
-      const statusEl = document.createElement("span");
-      statusEl.className = `bg-${color}-100 text-${color}-800 text-xs font-medium me-2 px-2.5 py-0.5 rounded dark:bg-${color}-900 dark:text-${color}-300`;
-      statusEl.style.display = "inline-block";
-      statusEl.appendChild(document.createTextNode(getJobStatusText(job.state)));
-      if (job.state === "Failure" || job.state === "Success") {
-        statusEl.style.cursor = "pointer";
-        statusEl.onclick = () => {
-          apiGetDocGenJobLog(job.id).then((log) => {
-            document.getElementById('modal-log-value').value = log;
-          }).catch((error) => {
-            document.getElementById('modal-log-value').value = JSON.stringify(error);
-          });
-          const closeEl = document.getElementById('modal-log-close');
-          const modalEl = document.getElementById('modal-log');
-          closeEl.addEventListener('click', () => {
-            modalEl.style.display = "none";
-          });
-          modalEl.style.display = "unset";
-        };
-      }
-
       const row = document.createElement("tr");
       const cell1 = document.createElement("th");
       cell1.setAttribute("scope", "row");
       cell1.className = "px-6 py-4 font-medium";
       cell1.appendChild(linkEl);
       const cell2 = document.createElement("td");
+      cell2.setAttribute("id", `job-cell-status-${job.id}`);
       cell2.className = "px-6 py-4";
-      cell2.appendChild(statusEl);
+      cell2.appendChild(renderJobStatus(job.id, job.state));
       const cell3 = document.createElement("td");
+      cell3.setAttribute("id", `job-cell-updates-${job.id}`);
       cell3.className = "px-6 py-4";
       const cell4 = document.createElement("td");
       cell4.className = "px-6 py-4";
@@ -189,6 +169,31 @@
       return row;
     }
 
+    function renderJobStatus(jobId, jobState) {
+      const color = getJobStatusColor(jobState);
+      const statusEl = document.createElement("span");
+      statusEl.className = `bg-${color}-100 text-${color}-800 text-xs font-medium me-2 px-2.5 py-0.5 rounded dark:bg-${color}-900 dark:text-${color}-300`;
+      statusEl.style.display = "inline-block";
+      statusEl.appendChild(document.createTextNode(getJobStatusText(jobState)));
+      if (jobState === "Failure" || jobState === "Success") {
+        statusEl.style.cursor = "pointer";
+        statusEl.onclick = () => {
+          apiGetDocGenJobLog(jobId).then((log) => {
+            document.getElementById('modal-log-value').value = log;
+          }).catch((error) => {
+            document.getElementById('modal-log-value').value = JSON.stringify(error);
+          });
+          const closeEl = document.getElementById('modal-log-close');
+          const modalEl = document.getElementById('modal-log');
+          closeEl.addEventListener('click', () => {
+            modalEl.style.display = "none";
+          });
+          modalEl.style.display = "unset";
+        };
+      }
+      return statusEl;
+    }
+
     function renderJobUpdate(timestamp, text) {
       const element = document.createElement("span");
       element.className = "text-base text-gray-900 dark:text-white";
@@ -205,12 +210,12 @@
         return element;
       }
       const keys = Object.getOwnPropertyNames(trigger);
-      if (keys.includes("Upload") || keys.includes("Manual")) {
+      if (keys.includes("Upload") || keys.includes("NewTarget") || keys.includes("Manual")) {
         const wrapper = document.createElement("div");
         wrapper.className = "flex items-center me-4";
         const element = document.createElement("p");
         element.className = "text-base text-gray-900 dark:text-white";
-        element.appendChild(document.createTextNode(keys.includes("Upload") ? "on upload by " : "on request from "));
+        element.appendChild(document.createTextNode(keys.includes("Upload") ? "on upload by " : keys.includes("NewTarget") ? "new target added by " : "on request from "));
         wrapper.appendChild(element);
         wrapper.innerHTML += '<p class="ml-4 text-base text-gray-900 dark:text-white">\
                   <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-6 h-6">\
@@ -219,7 +224,7 @@
                 </p>';
         const user = document.createElement("p");
         user.className = "text-base text-gray-900 dark:text-white";
-        user.appendChild(document.createTextNode(trigger[keys.includes("Upload") ? "Upload" : "Manual"].by.name));
+        user.appendChild(document.createTextNode(trigger[keys.includes("Upload") ? "Upload" : keys.includes("NewTarget") ? "NewTarget" : "Manual"].by.name));
         wrapper.appendChild(user);
         return wrapper;
       }
@@ -227,7 +232,26 @@
     }
 
     function onEvent(event) {
-      console.log(event);
+      const keys = Object.getOwnPropertyNames(event);
+      if (keys.includes("Queued")) {
+        const jobsEl = document.getElementById("jobs");
+        jobsEl.insertBefore(renderJob(event.Queued), jobsEl.firstElementChild);
+      } else if (keys.includes("Update")) {
+        // update an existing row
+        const cell2 = document.getElementById(`job-cell-status-${event.Update.jobId}`);
+        removeAllChildren(cell2);
+        cell2.appendChild(renderJobStatus(event.Update.jobId, event.Update.state));
+        const cell3 = document.getElementById(`job-cell-updates-${event.Update.jobId}`);
+        if (event.Update.state === "Working") {
+          cell3.appendChild(renderJobUpdate(event.Update.lastUpdate, "started work"));
+        }
+        if (event.Update.state === "Success") {
+          cell3.appendChild(renderJobUpdate(event.Update.lastUpdate, "finished on success"));
+        }
+        if (event.Update.state === "Failure") {
+          cell3.appendChild(renderJobUpdate(event.Update.lastUpdate, "finished on failure"));
+        }
+      }
     }
 </script>
 </html>

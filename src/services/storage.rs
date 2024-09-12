@@ -135,7 +135,7 @@ impl StorageImpl {
         match self.read_from_file(&Self::data_path(name, version)).await {
             Ok(data) => Ok(data),
             Err(e) => {
-                if e.kind() == ErrorKind::NotFound {
+                if matches!(e.kind(), ErrorKind::NotFound | ErrorKind::Unexpected) {
                     // legacy alternative path when not found
                     self.read_from_file(&format!("crates/{name}/{version}"))
                         .await

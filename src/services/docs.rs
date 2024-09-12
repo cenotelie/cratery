@@ -4,6 +4,7 @@
 
 //! Docs generation and management
 
+use std::fmt::Write;
 use std::path::{Path, PathBuf};
 use std::process::Stdio;
 use std::sync::Arc;
@@ -147,16 +148,26 @@ impl DocsGeneratorImpl {
     }
 
     /// Update a job
-    async fn update_job(&self, job_id: i64, state: DocGenJobState, log: Option<&str>) -> Result<(), ApiError> {
-        db_transaction_write(&self.service_db_pool, "update_docgen_job", |database| async move {
-            database.update_docgen_job(job_id, state).await
+    async fn update_job(&self, job: &DocGenJob, state: DocGenJobState, log: Option<&str>) -> Result<(), ApiError> {
+        db_transaction_write(&self.service_db_pool, "update_job", |database| async move {
+            database.update_docgen_job(job.id, state).await?;
+            database
+                .set_crate_documentation(
+                    &job.package,
+                    &job.version,
+                    &job.target,
+                    state != DocGenJobState::Queued,
+                    state == DocGenJobState::Success,
+                )
+                .await?;
+            Ok::<_, ApiError>(())
         })
         .await?;
 
         // send updates
         let now = Local::now().naive_local();
         self.send_event(DocGenEvent::Update(DocGenJobUpdate {
-            job_id,
+            job_id: job.id,
             state,
             last_update: now,
             log: log.map(str::to_string),
@@ -201,13 +212,17 @@ impl DocsGeneratorImpl {
 
     /// Executes a documentation generation job
     async fn docs_worker_on_job(&self, job: &DocGenJob) -> Result<(), ApiError> {
-        self.update_job(job.id, DocGenJobState::Working, None).await?;
         if let Err(e) = self.docs_worker_execute_job(job).await {
-            error!("{e}");
+            self.update_job(job, DocGenJobState::Failure, Some(&e.to_string())).await?;
+            // upload the error as log
+            let mut log = e.to_string();
             if let Some(backtrace) = &e.backtrace {
-                error!("{backtrace}");
+                log.push('\n');
+                write!(log, "{backtrace}").unwrap();
             }
-            self.update_job(job.id, DocGenJobState::Failure, Some(&e.to_string())).await?;
+            self.service_storage
+                .store_doc_data(&Self::job_log_location(job), log.as_bytes().to_vec())
+                .await?;
         }
         Ok(())
     }
@@ -215,6 +230,8 @@ impl DocsGeneratorImpl {
     /// Executes a documentation generation job
     async fn docs_worker_execute_job(&self, job: &DocGenJob) -> Result<(), ApiError> {
         info!("generating doc for {} {}", job.package, job.version);
+        self.update_job(job, DocGenJobState::Working, None).await?;
+
         let content = self.service_storage.download_crate(&job.package, &job.version).await?;
         let temp_folder = Self::extract_content(&job.package, &job.version, &content)?;
         let project_folder = Self::get_project_folder_in(&temp_folder).await?;
@@ -222,7 +239,7 @@ impl DocsGeneratorImpl {
         let (final_state, output) = if self.configuration.docs_gen_mock {
             (DocGenJobState::Success, String::from("mocked"))
         } else {
-            match self.generate_doc(&project_folder, &job.target).await {
+            match self.do_generate_doc(&project_folder, &job.target).await {
                 Ok(log) => {
                     self.service_storage
                         .store_doc_data(&Self::job_log_location(job), log.as_bytes().to_vec())
@@ -247,20 +264,7 @@ impl DocsGeneratorImpl {
             }
         };
         tokio::fs::remove_dir_all(&temp_folder).await?;
-        db_transaction_write(&self.service_db_pool, "set_crate_documentation", |database| async move {
-            database
-                .set_crate_documentation(
-                    &job.package,
-                    &job.version,
-                    &job.target,
-                    true,
-                    final_state == DocGenJobState::Success,
-                )
-                .await
-        })
-        .await?;
-
-        self.update_job(job.id, final_state, Some(&output)).await?;
+        self.update_job(job, final_state, Some(&output)).await?;
         Ok(())
     }
 
@@ -282,7 +286,7 @@ impl DocsGeneratorImpl {
     }
 
     /// Generate the documentation for the package in a specific folder
-    async fn generate_doc(&self, project_folder: &Path, target: &str) -> Result<String, ApiError> {
+    async fn do_generate_doc(&self, project_folder: &Path, target: &str) -> Result<String, ApiError> {
         let mut command = Command::new("cargo");
         command
             .current_dir(project_folder)

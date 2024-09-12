@@ -7,6 +7,7 @@
 use std::borrow::Cow;
 use std::collections::HashMap;
 use std::path::PathBuf;
+use std::str::FromStr;
 use std::sync::Arc;
 
 use axum::body::{Body, Bytes};
@@ -160,7 +161,10 @@ pub async fn get_redirection_crate(
         StatusCode::FOUND,
         [
             (header::LOCATION, HeaderValue::from_str(&target).unwrap()),
-            (header::CACHE_CONTROL, HeaderValue::from_static("max-age=3600")),
+            (
+                header::CACHE_CONTROL,
+                HeaderValue::from_static("public, max-age=3600, immutable"),
+            ),
         ],
     )
 }
@@ -174,7 +178,10 @@ pub async fn get_redirection_crate_version(
         StatusCode::FOUND,
         [
             (header::LOCATION, HeaderValue::from_str(&target).unwrap()),
-            (header::CACHE_CONTROL, HeaderValue::from_static("max-age=3600")),
+            (
+                header::CACHE_CONTROL,
+                HeaderValue::from_static("public, max-age=3600, immutable"),
+            ),
         ],
     )
 }
@@ -195,7 +202,10 @@ pub async fn get_webapp_resource(
             StatusCode::FOUND,
             [
                 (header::LOCATION, HeaderValue::from_str(&target).unwrap()),
-                (header::CACHE_CONTROL, HeaderValue::from_static("max-age=3600")),
+                (
+                    header::CACHE_CONTROL,
+                    HeaderValue::from_static("public, max-age=3600, immutable"),
+                ),
             ],
             Cow::Borrowed(&[]),
         ));
@@ -215,7 +225,10 @@ pub async fn get_webapp_resource(
             StatusCode::OK,
             [
                 (header::CONTENT_TYPE, HeaderValue::from_str(resource.content_type()).unwrap()),
-                (header::CACHE_CONTROL, HeaderValue::from_static("max-age=3600")),
+                (
+                    header::CACHE_CONTROL,
+                    HeaderValue::from_static("public, max-age=3600, immutable"),
+                ),
             ],
             resource.into_data(),
         )),
@@ -247,15 +260,52 @@ pub async fn get_docs_resource(
         return Ok((code, headers, Body::empty()));
     }
 
-    let path = &request.uri().path()[1..]; // strip leading /
-    assert!(path.starts_with("docs/"));
-    let extension = get_content_type(path);
-    match state.application.get_service_storage().download_doc_file(&path[5..]).await {
+    let elements = request.uri().path().split('/').filter(|e| !e.is_empty()).collect::<Vec<_>>();
+    // expect a path of the following forms:
+    // /  0            1            2           3
+    // / docs / <package_name> / <version> / <file path>
+    // / docs / <package_name> / <version> / <target> / <file path>
+    if elements.len() < 4 || elements[0] != "docs" || semver::Version::from_str(elements[2]).is_err() {
+        return Err((
+            StatusCode::NOT_FOUND,
+            [(
+                header::CACHE_CONTROL,
+                HeaderValue::from_static("public, max-age=3600, immutable"),
+            )],
+            Body::empty(),
+        ));
+    }
+    // build the key
+    let (target, rest_index) = if elements.len() >= 5
+        && state
+            .application
+            .configuration
+            .self_builtin_targets
+            .iter()
+            .any(|t| elements[3] == t)
+    {
+        (elements[3], 4)
+    } else {
+        (state.application.configuration.self_toolchain_host.as_str(), 3)
+    };
+    let key = format!(
+        "{}/{}/{}/{}",
+        elements[1],
+        elements[2],
+        target,
+        elements[rest_index..].join("/")
+    );
+
+    let extension = get_content_type(&key);
+    match state.application.get_service_storage().download_doc_file(&key).await {
         Ok(content) => Ok((
             StatusCode::OK,
             [
-                (header::CONTENT_TYPE, HeaderValue::from_str(extension).unwrap()),
-                (header::CACHE_CONTROL, HeaderValue::from_static("max-age=3600")),
+                (header::CONTENT_TYPE, HeaderValue::from_static(extension)),
+                (
+                    header::CACHE_CONTROL,
+                    HeaderValue::from_static("public, max-age=3600, immutable"),
+                ),
             ],
             Body::from(content),
         )),
