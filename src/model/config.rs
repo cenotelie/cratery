@@ -173,7 +173,7 @@ impl IndexConfig {
         Ok(IndexConfig {
             home_dir: home_dir.to_string(),
             location: format!("{data_dir}/index"),
-            allow_protocol_git: get_var("REGISTRY_INDEX_PROTOCOL_GIT").map(|v| v == "true").unwrap_or(true),
+            allow_protocol_git: get_var("REGISTRY_INDEX_PROTOCOL_GIT").map(|v| v == "true").unwrap_or(false),
             allow_protocol_sparse: get_var("REGISTRY_INDEX_PROTOCOL_SPARSE").map(|v| v == "true").unwrap_or(true),
             remote_origin: get_var("REGISTRY_GIT_REMOTE").ok(),
             remote_ssh_key_file_name: get_var("REGISTRY_GIT_REMOTE_SSH_KEY_FILENAME").ok(),
@@ -550,69 +550,127 @@ impl Configuration {
     ///
     /// Return an error when writing fail
     pub async fn write_auth_config(&self) -> Result<(), ApiError> {
-        {
-            let file = File::create(self.get_home_path_for(&[".gitconfig"])).await?;
-            let mut writer = BufWriter::new(file);
-            writer.write_all("[credential]\n    helper = store\n".as_bytes()).await?;
-            writer.flush().await?;
+        if self.index.allow_protocol_git {
+            self.write_auth_config_git_config().await?;
+            self.write_auth_config_git_credentials().await?;
         }
-        {
-            let file = File::create(self.get_home_path_for(&[".git-credentials"])).await?;
-            let mut writer = BufWriter::new(file);
-            let index = self.web_public_uri.find('/').unwrap() + 2;
+        self.write_auth_config_cargo_config().await?;
+        self.write_auth_config_cargo_credentials().await?;
+        Ok(())
+    }
+
+    /// Write the configuration for authenticating to registries
+    async fn write_auth_config_git_config(&self) -> Result<(), ApiError> {
+        let file = File::create(self.get_home_path_for(&[".gitconfig"])).await?;
+        let mut writer = BufWriter::new(file);
+        writer.write_all("[credential]\n    helper = store\n".as_bytes()).await?;
+        writer.flush().await?;
+        Ok(())
+    }
+
+    /// Write the configuration for authenticating to registries
+    async fn write_auth_config_git_credentials(&self) -> Result<(), ApiError> {
+        let file = File::create(self.get_home_path_for(&[".git-credentials"])).await?;
+        let mut writer = BufWriter::new(file);
+        let index = self.web_public_uri.find('/').unwrap() + 2;
+        writer
+            .write_all(
+                format!(
+                    "{}{}:{}@{}\n",
+                    &self.web_public_uri[..index],
+                    self.self_service_login,
+                    self.self_service_token,
+                    &self.web_public_uri[index..]
+                )
+                .as_bytes(),
+            )
+            .await?;
+        for registry in &self.external_registries {
+            let index = registry.index.find('/').unwrap() + 2;
             writer
                 .write_all(
                     format!(
-                        "{}{}:{}@{}\n",
-                        &self.web_public_uri[..index],
-                        self.self_service_login,
-                        self.self_service_token,
-                        &self.web_public_uri[index..]
+                        "{}{}:{}@{}",
+                        &registry.index[..index],
+                        registry.login,
+                        registry.token,
+                        &registry.index[index..]
                     )
                     .as_bytes(),
                 )
                 .await?;
-            for registry in &self.external_registries {
-                let index = registry.index.find('/').unwrap() + 2;
+        }
+        writer.flush().await?;
+        Ok(())
+    }
+
+    /// Write the configuration for authenticating to registries
+    async fn write_auth_config_cargo_config(&self) -> Result<(), ApiError> {
+        let file = File::create(self.get_home_path_for(&[".cargo", "config.toml"])).await?;
+        let mut writer = BufWriter::new(file);
+        writer.write_all("[registry]\n".as_bytes()).await?;
+        writer
+            .write_all("global-credential-providers = [\"cargo:token\"]\n".as_bytes())
+            .await?;
+        writer.write_all("\n".as_bytes()).await?;
+        writer.write_all("[registries]\n".as_bytes()).await?;
+        if self.index.allow_protocol_git {
+            writer
+                .write_all(format!("{} = {{ index = \"{}\" }}\n", self.self_local_name, self.web_public_uri).as_bytes())
+                .await?;
+            if self.index.allow_protocol_sparse {
+                // both git and sparse
                 writer
                     .write_all(
                         format!(
-                            "{}{}:{}@{}",
-                            &registry.index[..index],
-                            registry.login,
-                            registry.token,
-                            &registry.index[index..]
+                            "{}sparse = {{ index = \"sparse+{}/\" }}\n",
+                            self.self_local_name, self.web_public_uri
                         )
                         .as_bytes(),
                     )
                     .await?;
             }
-            writer.flush().await?;
-        }
-        {
-            let file = File::create(self.get_home_path_for(&[".cargo", "config.toml"])).await?;
-            let mut writer = BufWriter::new(file);
-            writer.write_all("[registry]\n".as_bytes()).await?;
+        } else if self.index.allow_protocol_sparse {
+            // sparse only
             writer
-                .write_all("global-credential-providers = [\"cargo:token\"]\n".as_bytes())
+                .write_all(
+                    format!(
+                        "{} = {{ index = \"sparse+{}/\" }}\n",
+                        self.self_local_name, self.web_public_uri
+                    )
+                    .as_bytes(),
+                )
                 .await?;
-            writer.write_all("\n".as_bytes()).await?;
-            writer.write_all("[registries]\n".as_bytes()).await?;
-            writer
-                .write_all(format!("{} = {{ index = \"{}\" }}\n", self.self_local_name, self.web_public_uri).as_bytes())
-                .await?;
-            for registry in &self.external_registries {
-                writer
-                    .write_all(format!("{} = {{ index = \"{}\" }}\n", registry.name, registry.index).as_bytes())
-                    .await?;
-            }
-            writer.flush().await?;
         }
-        {
-            let file = File::create(self.get_home_path_for(&[".cargo", "credentials.toml"])).await?;
-            let mut writer = BufWriter::new(file);
+        for registry in &self.external_registries {
             writer
-                .write_all(format!("[registries.{}]\n", self.self_local_name).as_bytes())
+                .write_all(format!("{} = {{ index = \"{}\" }}\n", registry.name, registry.index).as_bytes())
+                .await?;
+        }
+        writer.flush().await?;
+        Ok(())
+    }
+
+    /// Write the configuration for authenticating to registries
+    async fn write_auth_config_cargo_credentials(&self) -> Result<(), ApiError> {
+        let file = File::create(self.get_home_path_for(&[".cargo", "credentials.toml"])).await?;
+        let mut writer = BufWriter::new(file);
+        writer
+            .write_all(format!("[registries.{}]\n", self.self_local_name).as_bytes())
+            .await?;
+        writer
+            .write_all(
+                format!(
+                    "token = \"Basic {}\"\n",
+                    STANDARD.encode(format!("{}:{}", self.self_service_login, self.self_service_token))
+                )
+                .as_bytes(),
+            )
+            .await?;
+        if self.index.allow_protocol_git && self.index.allow_protocol_sparse {
+            // add credential for specialized sparse registry
+            writer
+                .write_all(format!("[registries.{}sparse]\n", self.self_local_name).as_bytes())
                 .await?;
             writer
                 .write_all(
@@ -623,22 +681,22 @@ impl Configuration {
                     .as_bytes(),
                 )
                 .await?;
-            for registry in &self.external_registries {
-                writer
-                    .write_all(format!("[registries.{}]\n", registry.name).as_bytes())
-                    .await?;
-                writer
-                    .write_all(
-                        format!(
-                            "token = \"Basic {}\"\n",
-                            STANDARD.encode(format!("{}:{}", registry.login, registry.token))
-                        )
-                        .as_bytes(),
-                    )
-                    .await?;
-            }
-            writer.flush().await?;
         }
+        for registry in &self.external_registries {
+            writer
+                .write_all(format!("[registries.{}]\n", registry.name).as_bytes())
+                .await?;
+            writer
+                .write_all(
+                    format!(
+                        "token = \"Basic {}\"\n",
+                        STANDARD.encode(format!("{}:{}", registry.login, registry.token))
+                    )
+                    .as_bytes(),
+                )
+                .await?;
+        }
+        writer.flush().await?;
         Ok(())
     }
 }

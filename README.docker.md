@@ -38,7 +38,7 @@ services:
       REGISTRY_WEB_PUBLIC_URI: http://localhost
       # REGISTRY_WEB_BODY_LIMIT: 10485760
       REGISTRY_DATA_DIR: /data
-      # REGISTRY_INDEX_PROTOCOL_GIT: "true"
+      # REGISTRY_INDEX_PROTOCOL_GIT: "false"
       # REGISTRY_INDEX_PROTOCOL_SPARSE: "true"
       # REGISTRY_GIT_REMOTE:
       # REGISTRY_GIT_REMOTE_SSH_KEY_FILENAME:
@@ -172,6 +172,13 @@ This is controlled by the following configuration :
 * `REGISTRY_S3_BUCKET`: The S3 bucket to use for storage. It will be created if it does not exist.
 
 ### Index
+
+The index can be served using both the legacy `git` and the new `sparse` protocols, see [Registry Protocols](https://doc.rust-lang.org/cargo/reference/registries.html#registry-protocols).
+The legacy `git` protocol is disabled by default, and the new `sparse` protocol enabled:
+* `REGISTRY_INDEX_PROTOCOL_GIT`, defaults to `false` to de-activate the legacy `git` "smart" protocol. Use `true` to activate.
+* `REGISTRY_INDEX_PROTOCOL_SPARSE`, defaults to `true` to activate the `sparse` protocol. Any other value deactivates it.
+
+Fetching the index always requires authentication, regardless of the used protocol.
 
 The index for the registry is managed as a git repository.
 When `cratery` commits to this repository as an author:

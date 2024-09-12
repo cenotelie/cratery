@@ -303,6 +303,13 @@ impl DocsGeneratorImpl {
                 "doc.extern-map.registries.{}=\"{}/docs\"",
                 self.configuration.self_local_name, self.configuration.web_public_uri
             ));
+        if self.configuration.index.allow_protocol_git && self.configuration.index.allow_protocol_sparse {
+            // both git and sparse => add specialized sparse
+            command.arg(format!(
+                "doc.extern-map.registries.{}sparse=\"{}/docs\"",
+                self.configuration.self_local_name, self.configuration.web_public_uri
+            ));
+        }
         for external in &self.configuration.external_registries {
             command.arg("--config").arg(format!(
                 "doc.extern-map.registries.{}=\"{}\"",

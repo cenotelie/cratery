@@ -131,9 +131,9 @@ This is controlled by the following configuration :
 
 ### Index
 
-The index can be served using both the `git` and `sparse` protocols.
-Both are activated by default, but can be activated / deactivated as required:
-* `REGISTRY_INDEX_PROTOCOL_GIT`, defaults to `true` to activate the `git` "smart" protocol. Any other value deactivates it.
+The index can be served using both the legacy `git` and the new `sparse` protocols, see [Registry Protocols](https://doc.rust-lang.org/cargo/reference/registries.html#registry-protocols).
+The legacy `git` protocol is disabled by default, and the new `sparse` protocol enabled:
+* `REGISTRY_INDEX_PROTOCOL_GIT`, defaults to `false` to de-activate the legacy `git` "smart" protocol. Use `true` to activate.
 * `REGISTRY_INDEX_PROTOCOL_SPARSE`, defaults to `true` to activate the `sparse` protocol. Any other value deactivates it.
 
 Fetching the index always requires authentication, regardless of the used protocol.
