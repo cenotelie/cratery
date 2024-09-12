@@ -410,7 +410,10 @@ impl Application {
                 let user = app.database.get_user_profile(authentication.uid()?).await?;
                 // publish
                 let result = app.database.publish_crate_version(user.id, package).await?;
-                let targets = app.database.get_crate_targets(&package.metadata.name).await?;
+                let mut targets = app.database.get_crate_targets(&package.metadata.name).await?;
+                if targets.is_empty() {
+                    targets.push(self.configuration.self_toolchain_host.clone());
+                }
                 for target in &targets {
                     app.database
                         .set_crate_documentation(&package.metadata.name, &package.metadata.vers, target, false, false)
