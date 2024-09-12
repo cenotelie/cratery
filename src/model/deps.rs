@@ -335,7 +335,7 @@ pub struct DepsGraphCrate {
     pub name: String,
     /// All the known versions
     pub versions: Vec<DepsGraphCrateVersion>,
-    /// The version number of latest
+    /// The version number of the latest stable version
     #[serde(rename = "lastVersion")]
     pub last_version: Version,
     /// The resolved versions of this crate, actually appearing in the dependency graph
@@ -347,20 +347,35 @@ pub struct DepsGraphCrate {
 impl DepsGraphCrate {
     /// Creates the data for this crate
     pub fn new(package: &IndexCrateDependency, versions: Vec<IndexCrateMetadata>) -> Result<Self, semver::Error> {
-        let semvers = versions
+        let last_version = versions
             .iter()
-            .map(|v| v.vers.parse::<Version>())
-            .collect::<Result<Vec<_>, _>>()?;
-        let last_version = semvers.iter().max().unwrap().clone();
-        let versions = semvers
-            .into_iter()
-            .zip(versions)
-            .map(|(semver, metadata)| DepsGraphCrateVersion {
-                is_outdated: semver != last_version,
-                semver,
-                metadata: metadata.rewrite_builtin_deps(&package.registry),
+            // filter out yanked and pre- versions
+            .filter_map(|metadata| {
+                if metadata.yanked {
+                    None
+                } else if let Ok(vers) = metadata.vers.parse::<Version>() {
+                    if vers.pre.is_empty() {
+                        Some(vers)
+                    } else {
+                        None
+                    }
+                } else {
+                    None
+                }
             })
-            .collect();
+            .max()
+            .unwrap();
+        let versions = versions
+            .into_iter()
+            .map(|metadata| {
+                let semver = metadata.vers.parse::<Version>()?;
+                Ok(DepsGraphCrateVersion {
+                    is_outdated: semver < last_version,
+                    semver,
+                    metadata: metadata.rewrite_builtin_deps(&package.registry),
+                })
+            })
+            .collect::<Result<Vec<_>, _>>()?;
         Ok(Self {
             registry: package.registry.clone(),
             name: package.get_name().to_string(),
