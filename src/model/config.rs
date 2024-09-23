@@ -110,6 +110,7 @@ impl StorageConfig {
                     region: get_var("REGISTRY_S3_REGION")?,
                     access_key: get_var("REGISTRY_S3_ACCESS_KEY")?,
                     secret_key: get_var("REGISTRY_S3_SECRET_KEY")?,
+                    root: get_var("REGISTRY_S3_ROOT").unwrap_or_default(),
                 },
                 bucket: get_var("REGISTRY_S3_BUCKET")?,
             },
@@ -132,6 +133,8 @@ pub struct S3Params {
     /// The account secret key
     #[serde(rename = "secretKey")]
     pub secret_key: String,
+    /// The prefix to use for the keys
+    pub root: String,
 }
 
 /// The configuration in the index

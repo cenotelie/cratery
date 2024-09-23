@@ -67,6 +67,7 @@ impl From<&Configuration> for StorageImpl {
             StorageConfig::S3 { params, bucket } => {
                 let builder = opendal::services::S3::default()
                     .bucket(bucket)
+                    .root(&params.root)
                     .region(&params.region)
                     .endpoint(&params.endpoint)
                     .access_key_id(&params.access_key)

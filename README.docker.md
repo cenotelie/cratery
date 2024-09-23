@@ -167,9 +167,10 @@ This is controlled by the following configuration :
 * `REGISTRY_STORAGE_TIMEOUT`: Timeout (in milli-seconds) to use when interacting with the storage, defaults to 3000
 * `REGISTRY_S3_URI`: Endpoint base URI for the S3 service.
 * `REGISTRY_S3_REGION`: Sub-domain for the region.
-* `REGISTRY_S3_ACCESS_KEY`: The access key to use
-* `REGISTRY_S3_SECRET_KEY`: The secret key to use
+* `REGISTRY_S3_ACCESS_KEY`: The access key to use, set to empty string to search for existing credentials.
+* `REGISTRY_S3_SECRET_KEY`: The secret key to use, set to empty string to search for existing credentials.
 * `REGISTRY_S3_BUCKET`: The S3 bucket to use for storage. It will be created if it does not exist.
+* `REGISTRY_S3_ROOT`: The prefix to use for storing the data in the bucket (e.g. `/cratery/`), if not set or set to empty string, data will be stored in the root of the bucket.
 
 ### Index
 
