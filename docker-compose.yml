@@ -33,6 +33,7 @@ services:
       # REGISTRY_S3_ACCESS_KEY:
       # REGISTRY_S3_SECRET_KEY:
       # REGISTRY_S3_BUCKET:
+      # REGISTRY_S3_ROOT:
       REGISTRY_OAUTH_LOGIN_URI: https://accounts.google.com/o/oauth2/v2/auth
       REGISTRY_OAUTH_TOKEN_URI: https://oauth2.googleapis.com/token
       REGISTRY_OAUTH_CALLBACK_URI: http://localhost/webapp/oauthcallback.html
