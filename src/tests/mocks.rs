@@ -52,7 +52,7 @@ impl ServiceProvider for MockService {
         Arc::new(MockService)
     }
 
-    async fn get_index(_config: &Configuration) -> Result<Arc<dyn Index + Send + Sync>, ApiError> {
+    async fn get_index(_config: &Configuration, _expect_empty: bool) -> Result<Arc<dyn Index + Send + Sync>, ApiError> {
         Ok(Arc::new(MockService))
     }
 

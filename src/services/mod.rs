@@ -28,7 +28,7 @@ pub trait ServiceProvider {
     fn get_storage(config: &Configuration) -> Arc<dyn storage::Storage + Send + Sync>;
 
     /// Gets the index service
-    async fn get_index(config: &Configuration) -> Result<Arc<dyn index::Index + Send + Sync>, ApiError>;
+    async fn get_index(config: &Configuration, expect_empty: bool) -> Result<Arc<dyn index::Index + Send + Sync>, ApiError>;
 
     /// Gets the rustsec service
     fn get_rustsec(config: &Configuration) -> Arc<dyn rustsec::RustSecChecker + Send + Sync>;
@@ -68,8 +68,8 @@ impl ServiceProvider for StandardServiceProvider {
     }
 
     /// Gets the index service
-    async fn get_index(config: &Configuration) -> Result<Arc<dyn index::Index + Send + Sync>, ApiError> {
-        index::get_service(config).await
+    async fn get_index(config: &Configuration, expect_empty: bool) -> Result<Arc<dyn index::Index + Send + Sync>, ApiError> {
+        index::get_service(config, expect_empty).await
     }
 
     /// Gets the rustsec service

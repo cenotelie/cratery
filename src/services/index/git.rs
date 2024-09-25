@@ -6,7 +6,7 @@
 
 use std::path::{Path, PathBuf};
 
-use log::info;
+use log::{error, info};
 use tokio::fs::{create_dir_all, File, OpenOptions};
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 use tokio::sync::Mutex;
@@ -24,8 +24,8 @@ pub struct GitIndex {
 
 impl GitIndex {
     /// When the application is launched
-    pub async fn new(config: IndexConfig) -> Result<Self, ApiError> {
-        let inner = GitIndexImpl::new(config).await?;
+    pub async fn new(config: IndexConfig, expect_empty: bool) -> Result<Self, ApiError> {
+        let inner = GitIndexImpl::new(config, expect_empty).await?;
         Ok(Self {
             inner: Mutex::new(inner),
         })
@@ -62,7 +62,7 @@ struct GitIndexImpl {
 
 impl GitIndexImpl {
     /// When the application is launched
-    async fn new(config: IndexConfig) -> Result<Self, ApiError> {
+    async fn new(config: IndexConfig, expect_empty: bool) -> Result<Self, ApiError> {
         let index = Self { config };
 
         // check for the SSH key
@@ -88,7 +88,7 @@ impl GitIndexImpl {
         if content.next_entry().await?.is_none() {
             // the folder is empty
             info!("index: initializing on empty index");
-            index.initialize_index(location).await?;
+            index.initialize_on_empty(location, expect_empty).await?;
         } else if index.config.remote_origin.is_some() {
             // attempt to pull changes
             info!("index: pulling changes from origin");
@@ -97,29 +97,47 @@ impl GitIndexImpl {
         Ok(index)
     }
 
-    /// Initializes the index at the specified location
-    async fn initialize_index(&self, location: PathBuf) -> Result<(), ApiError> {
+    /// Initializes the index at the specified location when found empty
+    async fn initialize_on_empty(&self, location: PathBuf, expect_empty: bool) -> Result<(), ApiError> {
         if let Some(remote_origin) = &self.config.remote_origin {
             // attempts to clone
             info!("index: cloning from {remote_origin}");
-            if execute_git(&location, &["clone", remote_origin, "."]).await.is_ok() {
-                return Ok(());
+            match execute_git(&location, &["clone", remote_origin, "."]).await {
+                Ok(()) => {
+                    self.configure_user(&location).await?;
+                    // cloned and (re-)configured the git user
+                    return Ok(());
+                }
+                Err(error) => {
+                    // failed to clone
+                    if expect_empty {
+                        // this could be normal if we expected an empty index
+                        // fallback to creating an empty index
+                        info!(
+                            "index: clone failed on empty database, this could be normal: {}",
+                            error.details.as_ref().unwrap()
+                        );
+                    } else {
+                        // we expected to successfully clone because the database is not empty
+                        // so we have some packages in the database, but not in the index ... not good
+                        error!("index: clone unexpectedly failed: {}", error.details.as_ref().unwrap());
+                        return Err(error);
+                    }
+                }
             }
-            info!("index: clone failed!");
         }
 
         // initializes an empty index
-        self.initialize_empty_index(location).await?;
+        self.initialize_new_index(location).await?;
         Ok(())
     }
 
     /// Initializes an empty index at the specified location
-    async fn initialize_empty_index(&self, location: PathBuf) -> Result<(), ApiError> {
+    async fn initialize_new_index(&self, location: PathBuf) -> Result<(), ApiError> {
         // initialise an empty repo
         info!("index: initializing empty index");
         execute_git(&location, &["init"]).await?;
-        execute_git(&location, &["config", "user.name", &self.config.user_name]).await?;
-        execute_git(&location, &["config", "user.email", &self.config.user_email]).await?;
+        self.configure_user(&location).await?;
         if let Some(remote_origin) = &self.config.remote_origin {
             execute_git(&location, &["remote", "add", "origin", remote_origin]).await?;
         }
@@ -141,6 +159,13 @@ impl GitIndexImpl {
             info!("index: pushing to {remote_origin}");
             execute_git(&location, &["push", "origin", "master"]).await?;
         }
+        Ok(())
+    }
+
+    /// Configures the git user
+    async fn configure_user(&self, location: &Path) -> Result<(), ApiError> {
+        execute_git(location, &["config", "user.name", &self.config.user_name]).await?;
+        execute_git(location, &["config", "user.email", &self.config.user_email]).await?;
         Ok(())
     }
 

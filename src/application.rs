@@ -80,8 +80,10 @@ impl Application {
         })
         .await?;
 
+        let db_is_empty =
+            db_transaction_read(&service_db_pool, |database| async move { database.get_is_empty().await }).await?;
         let service_storage = P::get_storage(&configuration.deref().clone());
-        let service_index = P::get_index(&configuration).await?;
+        let service_index = P::get_index(&configuration, db_is_empty).await?;
         let service_rustsec = P::get_rustsec(&configuration);
         let service_deps_checker = P::get_deps_checker(configuration.clone(), service_index.clone(), service_rustsec.clone());
         let service_email_sender = P::get_email_sender(configuration.clone());

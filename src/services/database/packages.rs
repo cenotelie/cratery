@@ -73,6 +73,14 @@ impl Database {
         })
     }
 
+    /// Gets whether the database does not contain any package at all
+    pub async fn get_is_empty(&self) -> Result<bool, ApiError> {
+        Ok(sqlx::query!("SELECT id FROM PackageVersion LIMIT 1")
+            .fetch_optional(&mut *self.transaction.borrow().await)
+            .await?
+            .is_none())
+    }
+
     /// Gets the last version number for a package
     pub async fn get_crate_last_version(&self, package: &str) -> Result<String, ApiError> {
         let row = sqlx::query!(
