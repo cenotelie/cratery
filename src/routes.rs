@@ -6,20 +6,28 @@
 
 use std::borrow::Cow;
 use std::collections::HashMap;
+use std::future::Future;
 use std::path::PathBuf;
+use std::pin::Pin;
 use std::str::FromStr;
 use std::sync::Arc;
+use std::time::Duration;
 
 use axum::body::{Body, Bytes};
-use axum::extract::{Path, Query, State};
+use axum::extract::ws::{Message, WebSocket};
+use axum::extract::{FromRequest, Path, Query, State, WebSocketUpgrade};
 use axum::http::header::{HeaderName, SET_COOKIE};
 use axum::http::{header, HeaderValue, Request, StatusCode};
 use axum::response::{IntoResponse, Response};
 use axum::{BoxError, Json};
 use cookie::Key;
-use futures::{Stream, StreamExt};
+use futures::future::select_all;
+use futures::{SinkExt, Stream, StreamExt};
+use log::error;
 use serde::Deserialize;
 use tokio::fs::File;
+use tokio::sync::mpsc::channel;
+use tokio::sync::Mutex;
 use tokio_stream::wrappers::ReceiverStream;
 use tokio_util::io::ReaderStream;
 
@@ -30,11 +38,14 @@ use crate::model::cargo::{
 };
 use crate::model::deps::DepsAnalysis;
 use crate::model::docs::{DocGenJob, DocGenJobSpec};
-use crate::model::packages::CrateInfo;
+use crate::model::packages::{CrateInfo, CrateInfoTarget};
 use crate::model::stats::{DownloadStats, GlobalStats};
+use crate::model::worker::{JobSpecification, JobUpdate, WorkerDescriptor, WorkerPublicData, WorkerRegistrationData};
 use crate::model::{AppVersion, CrateVersion, RegistryInformation};
 use crate::services::index::Index;
-use crate::utils::apierror::{error_invalid_request, error_not_found, specialize, ApiError};
+use crate::utils::apierror::{
+    error_backend_failure, error_invalid_request, error_not_found, error_unauthorized, specialize, ApiError,
+};
 use crate::utils::axum::auth::{AuthData, AxumStateForCookies};
 use crate::utils::axum::embedded::{EmbeddedResources, WebappResource};
 use crate::utils::axum::extractors::Base64;
@@ -280,7 +291,7 @@ pub async fn get_docs_resource(
         && state
             .application
             .configuration
-            .self_builtin_targets
+            .self_known_targets
             .iter()
             .any(|t| elements[3] == t)
     {
@@ -461,6 +472,167 @@ pub async fn api_v1_get_doc_gen_job_updates(
     };
     let stream = ServerSentEventStream::new(ReceiverStream::new(receiver).map(Event::from_data));
     Ok(stream.into_response())
+}
+
+/// Gets the connected worker nodes
+pub async fn api_v1_get_workers(auth_data: AuthData, State(state): State<Arc<AxumState>>) -> ApiResult<Vec<WorkerPublicData>> {
+    response(state.application.get_workers(&auth_data).await)
+}
+
+/// Adds a listener to workers updates
+pub async fn api_v1_get_workers_updates(
+    auth_data: AuthData,
+    State(state): State<Arc<AxumState>>,
+) -> Result<Response, (StatusCode, Json<ApiError>)> {
+    let receiver = match state.application.get_workers_updates(&auth_data).await {
+        Ok(r) => r,
+        Err(e) => return Err(response_error(e)),
+    };
+    let stream = ServerSentEventStream::new(ReceiverStream::new(receiver).map(Event::from_data));
+    Ok(stream.into_response())
+}
+
+/// Endpoint for worker to connect to this host
+pub async fn api_v1_worker_connect(
+    auth_data: AuthData,
+    State(state): State<Arc<AxumState>>,
+    request: Request<Body>,
+) -> Result<Response, (StatusCode, Json<ApiError>)> {
+    let token = auth_data.token.as_ref().ok_or_else(|| response_error(error_unauthorized()))?;
+    if Some(token.secret.as_str()) != state.application.configuration.self_role.get_worker_token() {
+        return Err(response_error(error_unauthorized()));
+    }
+    let ws_upgrade = WebSocketUpgrade::from_request(request, &state)
+        .await
+        .map_err(|e| response_error(e.into()))?;
+    let worker_id = token.id.clone();
+    let response = ws_upgrade.on_upgrade(move |socket| worker_connect_handle(socket, state.clone(), worker_id));
+    Ok(response)
+}
+
+/// Handles a connection from a worker
+async fn worker_connect_handle(web_socket: WebSocket, state: Arc<AxumState>, worker_id: String) {
+    if let Err(error) = worker_connect_handle_inner(web_socket, state, worker_id).await {
+        error!("{error}");
+        if let Some(backtrace) = error.backtrace.as_ref() {
+            error!("{backtrace}");
+        }
+    }
+}
+
+/// The timeout for a worker to send an heartbeat
+const HEARTBEAT_TIMEOUT: u64 = 150;
+
+/// Handles a connection from a worker
+///
+/// ```text
+///        ws_sender <----------------- [ job_bridge ] <------- [ job_receiver ]
+/// WS <-- ws_sender <----------------- [ health_checker ]
+///                                            ^
+/// WS ----> [ ws_dispatcher ] -- pong --------+
+///                             + update -----> [ updated_sender ]
+/// ```
+async fn worker_connect_handle_inner(web_socket: WebSocket, state: Arc<AxumState>, worker_id: String) -> Result<(), ApiError> {
+    let (mut ws_sender, mut ws_receiver) = web_socket.split();
+    let Some(Ok(Message::Text(data))) = ws_receiver.next().await else {
+        // unexpected message
+        ws_sender.send(Message::Close(None)).await?;
+        return Err(specialize(
+            error_invalid_request(),
+            String::from("expected the worker descriptor"),
+        ));
+    };
+    let descriptor = serde_json::from_str::<WorkerDescriptor>(&data)?;
+    if worker_id != descriptor.identifier {
+        ws_sender.send(Message::Close(None)).await?;
+        return Err(specialize(error_unauthorized(), String::from("unexpected worker identifier")));
+    }
+
+    let worker_id = descriptor.identifier.clone();
+    let ws_sender = Arc::new(Mutex::new(ws_sender));
+
+    // send the registry info
+    ws_sender
+        .lock()
+        .await
+        .send(Message::Text(serde_json::to_string(
+            &state.application.configuration.get_self_as_external(),
+        )?))
+        .await?;
+
+    // communication channels
+    let (to_health_checker, mut health_checker_receiver) = channel::<Vec<u8>>(8);
+    let (job_sender, mut job_receiver) = channel::<JobSpecification>(8);
+    let (updated_sender, update_receiver) = channel::<JobUpdate>(8);
+
+    // tasks
+    let ws_dispatcher: Pin<Box<dyn Future<Output = Result<(), ApiError>> + Send>> = {
+        Box::pin(async move {
+            while let Some(message) = ws_receiver.next().await {
+                match message? {
+                    Message::Text(data) => {
+                        let update = serde_json::from_str(&data)?;
+                        updated_sender.send(update).await?;
+                    }
+                    Message::Binary(data) => {
+                        let update = serde_json::from_slice(&data)?;
+                        updated_sender.send(update).await?;
+                    }
+                    Message::Ping(_) => { /* do nothing */ }
+                    Message::Pong(data) => {
+                        // dispatch to health_checker
+                        to_health_checker.send(data).await?;
+                    }
+                    Message::Close(_) => {
+                        break;
+                    }
+                }
+            }
+            Ok::<_, ApiError>(())
+        })
+    };
+    let health_check = Box::pin(async move {
+        let mut code: u8 = 0;
+        loop {
+            let Some(data) =
+                tokio::time::timeout(Duration::from_millis(HEARTBEAT_TIMEOUT), health_checker_receiver.recv()).await?
+            else {
+                break;
+            };
+            if data[0] != code {
+                return Err(specialize(
+                    error_backend_failure(),
+                    format!("invalid heartbeat, expected {code}, got {}", data[0]),
+                ));
+            }
+            code = code.wrapping_add(1);
+        }
+        Ok::<_, ApiError>(())
+    });
+    let job_bridge = {
+        let ws_sender = ws_sender.clone();
+        Box::pin(async move {
+            while let Some(job) = job_receiver.recv().await {
+                ws_sender
+                    .lock()
+                    .await
+                    .send(Message::Text(serde_json::to_string(&job)?))
+                    .await?;
+            }
+            Ok::<_, ApiError>(())
+        })
+    };
+
+    state.application.worker_nodes.register_worker(WorkerRegistrationData {
+        descriptor,
+        job_sender,
+        update_receiver,
+    });
+
+    let (result, _index, _rest) = select_all(vec![ws_dispatcher, health_check, job_bridge]).await;
+
+    state.application.worker_nodes.remove_worker(&worker_id);
+    result
 }
 
 /// Gets the known users
@@ -712,7 +884,7 @@ pub async fn api_v1_get_crate_targets(
     auth_data: AuthData,
     State(state): State<Arc<AxumState>>,
     Path(PathInfoCrate { package }): Path<PathInfoCrate>,
-) -> ApiResult<Vec<String>> {
+) -> ApiResult<Vec<CrateInfoTarget>> {
     response(state.application.get_crate_targets(&auth_data, &package).await)
 }
 
@@ -721,9 +893,33 @@ pub async fn api_v1_set_crate_targets(
     auth_data: AuthData,
     State(state): State<Arc<AxumState>>,
     Path(PathInfoCrate { package }): Path<PathInfoCrate>,
-    input: Json<Vec<String>>,
+    input: Json<Vec<CrateInfoTarget>>,
 ) -> ApiResult<()> {
     response(state.application.set_crate_targets(&auth_data, &package, &input).await)
+}
+
+/// Gets the required capabilities for a crate
+pub async fn api_v1_get_crate_required_capabilities(
+    auth_data: AuthData,
+    State(state): State<Arc<AxumState>>,
+    Path(PathInfoCrate { package }): Path<PathInfoCrate>,
+) -> ApiResult<Vec<String>> {
+    response(state.application.get_crate_required_capabilities(&auth_data, &package).await)
+}
+
+/// Sets the required capabilities for a crate
+pub async fn api_v1_set_crate_required_capabilities(
+    auth_data: AuthData,
+    State(state): State<Arc<AxumState>>,
+    Path(PathInfoCrate { package }): Path<PathInfoCrate>,
+    input: Json<Vec<String>>,
+) -> ApiResult<()> {
+    response(
+        state
+            .application
+            .set_crate_required_capabilities(&auth_data, &package, &input)
+            .await,
+    )
 }
 
 /// Sets the deprecation status on a crate

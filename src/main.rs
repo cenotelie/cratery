@@ -21,6 +21,7 @@ use log::info;
 
 use crate::application::Application;
 use crate::routes::AxumState;
+use crate::services::ServiceProvider;
 use crate::utils::sigterm::waiting_sigterm;
 
 pub mod application;
@@ -30,6 +31,7 @@ pub mod routes;
 pub mod services;
 pub mod utils;
 pub mod webapp;
+pub mod worker;
 
 #[cfg(test)]
 mod tests;
@@ -108,7 +110,10 @@ async fn main_serve_app(application: Arc<Application>, cookie_key: Key) -> Resul
                         )
                         .route("/jobs/docgen", get(routes::api_v1_get_doc_gen_jobs))
                         .route("/jobs/docgen/updates", get(routes::api_v1_get_doc_gen_job_updates))
-                        .route("/jobs/docgen/:job_id/log", get(routes::api_v1_get_doc_gen_job_log)),
+                        .route("/jobs/docgen/:job_id/log", get(routes::api_v1_get_doc_gen_job_log))
+                        .route("/workers", get(routes::api_v1_get_workers))
+                        .route("/workers/updates", get(routes::api_v1_get_workers_updates))
+                        .route("/workers/connect", get(routes::api_v1_worker_connect)),
                 )
                 .nest(
                     "/crates",
@@ -132,6 +137,11 @@ async fn main_serve_app(application: Arc<Application>, cookie_key: Key) -> Resul
                         .route("/:package/owners", delete(routes::api_v1_cargo_remove_crate_owners))
                         .route("/:package/targets", get(routes::api_v1_get_crate_targets))
                         .route("/:package/targets", patch(routes::api_v1_set_crate_targets))
+                        .route("/:package/capabilities", get(routes::api_v1_get_crate_required_capabilities))
+                        .route(
+                            "/:package/capabilities",
+                            patch(routes::api_v1_set_crate_required_capabilities),
+                        )
                         .route("/:package/deprecated", patch(routes::api_v1_set_crate_deprecation)),
                 ),
         )
@@ -180,16 +190,19 @@ fn setup_log() {
 async fn main() {
     setup_log();
     info!("{} commit={} tag={}", CRATE_NAME, GIT_HASH, GIT_TAG);
-
-    let application = Application::launch::<services::StandardServiceProvider>().await.unwrap();
-
-    let cookie_key = Key::from(
-        std::env::var("REGISTRY_WEB_COOKIE_SECRET")
-            .expect("REGISTRY_WEB_COOKIE_SECRET must be set")
-            .as_bytes(),
-    );
-
-    let server = pin!(main_serve_app(application, cookie_key,));
-
-    let _ = waiting_sigterm(server).await;
+    let configuration = services::StandardServiceProvider::get_configuration().await.unwrap();
+    if configuration.self_role.is_master() {
+        let application = Application::launch::<services::StandardServiceProvider>(configuration)
+            .await
+            .unwrap();
+        let cookie_key = Key::from(
+            std::env::var("REGISTRY_WEB_COOKIE_SECRET")
+                .expect("REGISTRY_WEB_COOKIE_SECRET must be set")
+                .as_bytes(),
+        );
+        let server = pin!(main_serve_app(application, cookie_key,));
+        let _ = waiting_sigterm(server).await;
+    } else {
+        let _ = waiting_sigterm(pin!(worker::main_worker(configuration))).await;
+    }
 }

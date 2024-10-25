@@ -17,8 +17,10 @@ use tokio::fs::File;
 use tokio::io::{AsyncWriteExt, BufWriter};
 use tokio::process::Command;
 
+use super::{CHANNEL_NIGHTLY, CHANNEL_STABLE};
 use crate::model::errors::MissingEnvVar;
-use crate::utils::apierror::ApiError;
+use crate::utils::apierror::{error_backend_failure, specialize, ApiError};
+use crate::utils::comma_sep_to_vec;
 use crate::utils::token::generate_token;
 
 /// Gets the value for an environment variable
@@ -37,6 +39,18 @@ pub enum ExternalRegistryProtocol {
     Git,
     /// The sparse protocol
     Sparse,
+}
+
+impl ExternalRegistryProtocol {
+    /// Gets the protocol
+    #[must_use]
+    pub fn new(sparse: bool) -> Self {
+        if sparse {
+            Self::Sparse
+        } else {
+            Self::Git
+        }
+    }
 }
 
 /// The configuration for an external registry
@@ -253,8 +267,82 @@ impl EmailConfig {
     }
 }
 
+/// The configuration specific to master nodes
+#[derive(Debug, Default, Serialize, Deserialize, Clone)]
+pub struct NodeRoleMaster {
+    /// The token that worker need to use to connect to the master
+    #[serde(rename = "workerToken")]
+    pub worker_token: Option<String>,
+}
+
+/// The configuration specific to worker nodes
+#[derive(Debug, Default, Serialize, Deserialize, Clone)]
+pub struct NodeRoleWorker {
+    /// The user-friendly name of the worker
+    pub name: String,
+    /// The token that worker need to use to connect to the master
+    #[serde(rename = "workerToken")]
+    pub worker_token: String,
+    /// The uri to connect to the host
+    #[serde(rename = "masterUri")]
+    pub master_uri: String,
+    /// The declared capabilities for the worker
+    pub capabilities: Vec<String>,
+}
+
+/// The configuration about the role of a node
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub enum NodeRole {
+    /// For a standalone node, i.e. a master without workers
+    Standalone,
+    /// The master-specific configuration
+    Master(NodeRoleMaster),
+    /// The worker-specific configuration
+    Worker(NodeRoleWorker),
+}
+
+impl NodeRole {
+    /// Loads the configuration for a registry from the environment
+    fn from_env() -> Result<Self, MissingEnvVar> {
+        let role_name = get_var("REGISTRY_NODE_ROLE").ok();
+        match role_name.as_deref() {
+            Some("master") => Ok(Self::Master(NodeRoleMaster {
+                worker_token: get_var("REGISTRY_NODE_WORKER_TOKEN").ok(),
+            })),
+            Some("worker") => Ok(Self::Worker(NodeRoleWorker {
+                name: get_var("REGISTRY_NODE_WORKER_NAME")?,
+                worker_token: get_var("REGISTRY_NODE_WORKER_TOKEN")?,
+                master_uri: get_var("REGISTRY_NODE_MASTER_URI")?,
+                capabilities: get_var("REGISTRY_NODE_WORKER_CAPABILITIES")
+                    .ok()
+                    .as_deref()
+                    .map(comma_sep_to_vec)
+                    .unwrap_or_default(),
+            })),
+            _ => Ok(Self::Standalone),
+        }
+    }
+
+    /// Gets the token that worker need to use to connect to the master, if any
+    #[must_use]
+    pub fn get_worker_token(&self) -> Option<&str> {
+        match self {
+            Self::Standalone => None,
+            Self::Master(master_config) => master_config.worker_token.as_deref(),
+            Self::Worker(worker_config) => Some(&worker_config.worker_token),
+        }
+    }
+
+    /// Gets whether this configuration is for a master node
+    #[must_use]
+    pub fn is_master(&self) -> bool {
+        matches!(self, Self::Master(_))
+    }
+}
+
 /// A configuration for the registry
 #[derive(Debug, Serialize, Deserialize, Clone)]
+#[allow(clippy::struct_excessive_bools)]
 pub struct Configuration {
     /// The log level to use
     #[serde(rename = "logLevel")]
@@ -327,6 +415,9 @@ pub struct Configuration {
     /// Flag to mock the documentation generation
     #[serde(rename = "docsGenMock")]
     pub docs_gen_mock: bool,
+    /// Whether to auto-install missing targets on documentation generation
+    #[serde(rename = "docsAutoinstallTargets")]
+    pub docs_autoinstall_targets: bool,
     /// Number of seconds between each check
     #[serde(rename = "depsCheckPeriod")]
     pub deps_check_period: u64,
@@ -355,14 +446,26 @@ pub struct Configuration {
     #[serde(rename = "selfServiceToken")]
     pub self_service_token: String,
     /// The version of the locally installed toolchain
-    #[serde(rename = "selfToolchainVersion")]
-    pub self_toolchain_version: String,
+    #[serde(rename = "selfToolchainVersionStable")]
+    pub self_toolchain_version_stable: semver::Version,
+    /// The version of the locally installed toolchain
+    #[serde(rename = "selfToolchainVersionNightly")]
+    pub self_toolchain_version_nightly: semver::Version,
     /// The host target of the locally installed toolchain
     #[serde(rename = "selfToolchainHost")]
     pub self_toolchain_host: String,
-    /// The known built-in targets in rustc
-    #[serde(rename = "selfBuiltinTargets")]
-    pub self_builtin_targets: Vec<String>,
+    /// The known targets in rustc
+    #[serde(rename = "selfKnownTargets")]
+    pub self_known_targets: Vec<String>,
+    /// The actually installed and available targets
+    #[serde(rename = "selfInstalledTargets")]
+    pub self_installed_targets: Vec<String>,
+    /// The targets that can be installed (may not be present right now)
+    #[serde(rename = "selfInstallableTargets")]
+    pub self_installable_targets: Vec<String>,
+    /// The role for this node
+    #[serde(rename = "selfRole")]
+    pub self_role: NodeRole,
 }
 
 impl Default for Configuration {
@@ -407,6 +510,7 @@ impl Default for Configuration {
             oauth_client_scope: String::new(),
             external_registries: Vec::new(),
             docs_gen_mock: true,
+            docs_autoinstall_targets: false,
             deps_check_period: 60,
             deps_stale_registry: 60 * 1000,
             deps_stale_analysis: 24 * 60,
@@ -416,9 +520,13 @@ impl Default for Configuration {
             self_local_name: String::from("localhost"),
             self_service_login: String::new(),
             self_service_token: String::new(),
-            self_toolchain_version: String::new(),
+            self_toolchain_version_stable: semver::Version::new(0, 0, 0),
+            self_toolchain_version_nightly: semver::Version::new(0, 0, 0),
             self_toolchain_host: String::new(),
-            self_builtin_targets: Vec::new(),
+            self_known_targets: Vec::new(),
+            self_installed_targets: Vec::new(),
+            self_installable_targets: Vec::new(),
+            self_role: NodeRole::Master(NodeRoleMaster::default()),
         }
     }
 }
@@ -462,6 +570,7 @@ impl Configuration {
             external_registries.push(registry);
             external_registry_index += 1;
         }
+        let self_role = NodeRole::from_env()?;
         Ok(Self {
             log_level: get_var("REGISTRY_LOG_LEVEL").unwrap_or_else(|_| String::from("INFO")),
             log_datetime_format: get_var("REGISTRY_LOG_DATE_TIME_FORMAT")
@@ -497,6 +606,9 @@ impl Configuration {
             oauth_client_secret: get_var("REGISTRY_OAUTH_CLIENT_SECRET")?,
             oauth_client_scope: get_var("REGISTRY_OAUTH_CLIENT_SCOPE")?,
             docs_gen_mock: get_var("REGISTRY_DOCS_GEN_MOCK").map(|v| v == "true").unwrap_or(false),
+            docs_autoinstall_targets: get_var("REGISTRY_DOCS_AUTOINSTALL_TARGETS")
+                .map(|v| v == "true")
+                .unwrap_or(false),
             deps_check_period: get_var("REGISTRY_DEPS_CHECK_PERIOD")
                 .map(|s| s.parse().expect("invalid REGISTRY_DEPS_CHECK_PERIOD"))
                 .unwrap_or(60), // 1 minute
@@ -512,9 +624,13 @@ impl Configuration {
             self_local_name,
             self_service_login: generate_token(16),
             self_service_token: generate_token(64),
-            self_toolchain_version: get_rustc_version().await,
+            self_toolchain_version_stable: get_rustc_version(CHANNEL_STABLE).await,
+            self_toolchain_version_nightly: get_rustc_version(CHANNEL_NIGHTLY).await,
             self_toolchain_host: get_rustc_host().await,
-            self_builtin_targets: get_builtin_targets().await,
+            self_known_targets: get_known_targets().await,
+            self_installed_targets: get_installed_targets(CHANNEL_NIGHTLY).await,
+            self_installable_targets: get_installable_targets(CHANNEL_NIGHTLY).await,
+            self_role,
             external_registries,
         })
     }
@@ -702,24 +818,41 @@ impl Configuration {
         writer.flush().await?;
         Ok(())
     }
+
+    /// Gets the configuration to connect to this registry from the outside
+    #[must_use]
+    pub fn get_self_as_external(&self) -> ExternalRegistry {
+        ExternalRegistry {
+            name: self.self_local_name.clone(),
+            index: if self.index.allow_protocol_sparse {
+                format!("{}/", self.web_public_uri)
+            } else {
+                self.web_public_uri.clone()
+            },
+            protocol: ExternalRegistryProtocol::new(self.index.allow_protocol_sparse),
+            docs_root: format!("{}/docs", self.web_public_uri),
+            login: self.self_service_login.clone(),
+            token: self.self_service_token.clone(),
+        }
+    }
 }
 
 /// Gets the rustc version
-async fn get_rustc_version() -> String {
+async fn get_rustc_version(channel: &'static str) -> semver::Version {
     let child = Command::new("rustc")
-        .args(["+stable", "--version"])
+        .args([channel, "--version"])
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .spawn()
         .unwrap();
     let output = child.wait_with_output().await.unwrap();
     let output = String::from_utf8(output.stdout).unwrap();
-    output.split_ascii_whitespace().nth(1).unwrap().to_string()
+    output.split_ascii_whitespace().nth(1).unwrap().parse().unwrap()
 }
 
 async fn get_rustc_host() -> String {
     let child = Command::new("rustc")
-        .args(["+stable", "-vV"])
+        .args([CHANNEL_STABLE, "-vV"])
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .spawn()
@@ -732,9 +865,9 @@ async fn get_rustc_host() -> String {
         .unwrap()
 }
 
-async fn get_builtin_targets() -> Vec<String> {
+async fn get_known_targets() -> Vec<String> {
     let child = Command::new("rustc")
-        .args(["+stable", "--print", "target-list"])
+        .args([CHANNEL_STABLE, "--print", "target-list"])
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .spawn()
@@ -742,4 +875,47 @@ async fn get_builtin_targets() -> Vec<String> {
     let output = child.wait_with_output().await.unwrap();
     let output = String::from_utf8(output.stdout).unwrap();
     output.lines().map(str::to_string).collect()
+}
+
+pub async fn get_installed_targets(channel: &'static str) -> Vec<String> {
+    let child = Command::new("rustup")
+        .args([channel, "target", "list", "--installed"])
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .spawn()
+        .unwrap();
+    let output = child.wait_with_output().await.unwrap();
+    let output = String::from_utf8(output.stdout).unwrap();
+    output.lines().map(str::to_string).collect()
+}
+
+async fn get_installable_targets(channel: &'static str) -> Vec<String> {
+    let child = Command::new("rustup")
+        .args([channel, "target", "list"])
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .spawn()
+        .unwrap();
+    let output = child.wait_with_output().await.unwrap();
+    let output = String::from_utf8(output.stdout).unwrap();
+    output.lines().map(str::to_string).collect()
+}
+
+/// Attempts to install a target
+pub async fn install_target(channel: &'static str, target: &str) -> Result<(), ApiError> {
+    let child = Command::new("rustup")
+        .args([channel, "target", "add", target])
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .spawn()
+        .unwrap();
+    let output = child.wait_with_output().await.unwrap();
+    if output.status.success() {
+        Ok(())
+    } else {
+        Err(specialize(
+            error_backend_failure(),
+            format!("Failed to install target {target} for channel {channel}"),
+        ))
+    }
 }

@@ -12,7 +12,7 @@ edition = "2021"
 [dependencies]
 # logging
 log = "0.4"
-fern = "0.6"
+fern = "0.7"
 
 # serde
 serde = "1.0"
@@ -47,5 +47,6 @@ tokio-util = {version = "0.7", features = ["io"]}
 # framework for the application
 lettre = { version = "0.11", default-features = false, features = ["builder", "smtp-transport", "rustls-tls", "tokio1", "tokio1-rustls-tls"] }
 sqlx = { version = "0.8", default-features = false, features = ["runtime-tokio-rustls", "sqlite", "macros", "chrono"] }
-axum = { version = "0.7", features = ["http2"] }
+axum = { version = "0.7", features = ["http2", "ws"] }
 reqwest = { version = "0.12", default-features = false, features = ["stream", "rustls-tls", "rustls-tls-native-roots"] }
+tokio-tungstenite = "0.24"

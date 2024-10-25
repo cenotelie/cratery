@@ -18,8 +18,9 @@ use crate::model::cargo::{
 use crate::model::config::Configuration;
 use crate::model::deps::DepsAnalysis;
 use crate::model::docs::{DocGenEvent, DocGenJob, DocGenJobSpec, DocGenTrigger};
-use crate::model::packages::CrateInfo;
+use crate::model::packages::{CrateInfo, CrateInfoTarget};
 use crate::model::stats::{DownloadStats, GlobalStats};
+use crate::model::worker::{WorkerEvent, WorkerPublicData, WorkersManager};
 use crate::model::{AppEvent, CrateVersion, RegistryInformation};
 use crate::services::database::{db_transaction_read, db_transaction_write, Database};
 use crate::services::deps::DepsChecker;
@@ -29,7 +30,7 @@ use crate::services::index::Index;
 use crate::services::rustsec::RustSecChecker;
 use crate::services::storage::Storage;
 use crate::services::ServiceProvider;
-use crate::utils::apierror::{error_invalid_request, error_unauthorized, specialize, ApiError};
+use crate::utils::apierror::{error_forbidden, error_invalid_request, error_unauthorized, specialize, ApiError};
 use crate::utils::axum::auth::{AuthData, Token};
 use crate::utils::db::RwSqlitePool;
 
@@ -55,6 +56,8 @@ pub struct Application {
     service_docs_generator: Arc<dyn DocsGenerator + Send + Sync>,
     /// Sender to use to notify about events that will be asynchronously handled
     app_events_sender: Sender<AppEvent>,
+    /// The connected worker nodes
+    pub worker_nodes: WorkersManager,
 }
 
 /// The empty database
@@ -62,9 +65,9 @@ const DB_EMPTY: &[u8] = include_bytes!("empty.db");
 
 impl Application {
     /// Creates a new application
-    pub async fn launch<P: ServiceProvider>() -> Result<Arc<Self>, ApiError> {
+    pub async fn launch<P: ServiceProvider>(configuration: Configuration) -> Result<Arc<Self>, ApiError> {
         // load configuration
-        let configuration = Arc::new(P::get_configuration().await?);
+        let configuration = Arc::new(configuration);
 
         // connection pool to the database
         let db_filename = configuration.get_database_filename();
@@ -80,6 +83,8 @@ impl Application {
         })
         .await?;
 
+        let worker_nodes = WorkersManager::default();
+
         let db_is_empty =
             db_transaction_read(&service_db_pool, |database| async move { database.get_is_empty().await }).await?;
         let service_storage = P::get_storage(&configuration.deref().clone());
@@ -87,8 +92,12 @@ impl Application {
         let service_rustsec = P::get_rustsec(&configuration);
         let service_deps_checker = P::get_deps_checker(configuration.clone(), service_index.clone(), service_rustsec.clone());
         let service_email_sender = P::get_email_sender(configuration.clone());
-        let service_docs_generator =
-            P::get_docs_generator(configuration.clone(), service_db_pool.clone(), service_storage.clone());
+        let service_docs_generator = P::get_docs_generator(
+            configuration.clone(),
+            service_db_pool.clone(),
+            service_storage.clone(),
+            worker_nodes.clone(),
+        );
 
         // check undocumented packages
         let default_target = &configuration.self_toolchain_host;
@@ -131,6 +140,7 @@ impl Application {
             service_email_sender,
             service_docs_generator,
             app_events_sender,
+            worker_nodes,
         });
 
         let _handle = {
@@ -250,9 +260,30 @@ impl Application {
         Ok(RegistryInformation {
             registry_name: self.configuration.self_local_name.clone(),
             toolchain_host: self.configuration.self_toolchain_host.clone(),
-            toolchain_version: self.configuration.self_toolchain_version.clone(),
-            toolchain_targets: self.configuration.self_builtin_targets.clone(),
+            toolchain_version_stable: self.configuration.self_toolchain_version_stable.clone(),
+            toolchain_version_nightly: self.configuration.self_toolchain_version_nightly.clone(),
+            toolchain_targets: self.configuration.self_known_targets.clone(),
         })
+    }
+
+    /// Gets the connected worker nodes
+    pub async fn get_workers(&self, auth_data: &AuthData) -> Result<Vec<WorkerPublicData>, ApiError> {
+        let authentication = self.authenticate(auth_data).await?;
+        if !authentication.can_admin {
+            return Err(error_forbidden());
+        }
+        Ok(self.worker_nodes.get_workers())
+    }
+
+    /// Adds a listener to workers updates
+    pub async fn get_workers_updates(&self, auth_data: &AuthData) -> Result<Receiver<WorkerEvent>, ApiError> {
+        let authentication = self.authenticate(auth_data).await?;
+        if !authentication.can_admin {
+            return Err(error_forbidden());
+        }
+        let (sender, receiver) = channel(16);
+        self.worker_nodes.add_listener(sender).await;
+        Ok(receiver)
     }
 
     /// Gets the data about the current user
@@ -404,7 +435,7 @@ impl Application {
         let package = CrateUploadData::new(content)?;
         let index_data = package.build_index_data();
 
-        let (user, result, targets) = {
+        let (user, result, targets, capabilities) = {
             let package = &package;
             self.db_transaction_write("publish_crate_version", |app| async move {
                 let authentication = app.authenticate(auth_data).await?;
@@ -414,27 +445,33 @@ impl Application {
                 let result = app.database.publish_crate_version(user.id, package).await?;
                 let mut targets = app.database.get_crate_targets(&package.metadata.name).await?;
                 if targets.is_empty() {
-                    targets.push(self.configuration.self_toolchain_host.clone());
+                    targets.push(CrateInfoTarget {
+                        target: self.configuration.self_toolchain_host.clone(),
+                        docs_use_native: true,
+                    });
                 }
-                for target in &targets {
+                for info in &targets {
                     app.database
-                        .set_crate_documentation(&package.metadata.name, &package.metadata.vers, target, false, false)
+                        .set_crate_documentation(&package.metadata.name, &package.metadata.vers, &info.target, false, false)
                         .await?;
                 }
-                Ok::<_, ApiError>((user, result, targets))
+                let capabilities = app.database.get_crate_required_capabilities(&package.metadata.name).await?;
+                Ok::<_, ApiError>((user, result, targets, capabilities))
             })
             .await
         }?;
 
         self.service_storage.store_crate(&package.metadata, package.content).await?;
         self.service_index.publish_crate_version(&index_data).await?;
-        for target in targets {
+        for info in targets {
             self.service_docs_generator
                 .queue(
                     &DocGenJobSpec {
                         package: index_data.name.clone(),
                         version: index_data.vers.clone(),
-                        target,
+                        target: info.target,
+                        use_native: info.docs_use_native,
+                        capabilities: capabilities.clone(),
                     },
                     &DocGenTrigger::Upload { by: user.clone() },
                 )
@@ -566,7 +603,7 @@ impl Application {
         package: &str,
         version: &str,
     ) -> Result<Vec<DocGenJob>, ApiError> {
-        let (user, targets) = self
+        let (user, targets, capabilities) = self
             .db_transaction_write("regen_crate_version_doc", |app| async move {
                 let authentication = app.authenticate(auth_data).await?;
                 let principal_uid = app.check_can_manage_crate(&authentication, package).await?;
@@ -575,19 +612,22 @@ impl Application {
                     .database
                     .regen_crate_version_doc(package, version, &self.configuration.self_toolchain_host)
                     .await?;
-                Ok::<_, ApiError>((user, targets))
+                let capabilities = app.database.get_crate_required_capabilities(package).await?;
+                Ok::<_, ApiError>((user, targets, capabilities))
             })
             .await?;
 
         let mut jobs = Vec::new();
-        for target in targets {
+        for info in targets {
             jobs.push(
                 self.service_docs_generator
                     .queue(
                         &DocGenJobSpec {
                             package: package.to_string(),
                             version: version.to_string(),
-                            target,
+                            target: info.target,
+                            use_native: info.docs_use_native,
+                            capabilities: capabilities.clone(),
                         },
                         &DocGenTrigger::Manual { by: user.clone() },
                     )
@@ -655,7 +695,7 @@ impl Application {
     }
 
     /// Gets the targets for a crate
-    pub async fn get_crate_targets(&self, auth_data: &AuthData, package: &str) -> Result<Vec<String>, ApiError> {
+    pub async fn get_crate_targets(&self, auth_data: &AuthData, package: &str) -> Result<Vec<CrateInfoTarget>, ApiError> {
         self.db_transaction_read(|app| async move {
             let _authentication = app.authenticate(auth_data).await?;
             app.database.get_crate_targets(package).await
@@ -664,15 +704,23 @@ impl Application {
     }
 
     /// Sets the targets for a crate
-    pub async fn set_crate_targets(&self, auth_data: &AuthData, package: &str, targets: &[String]) -> Result<(), ApiError> {
+    pub async fn set_crate_targets(
+        &self,
+        auth_data: &AuthData,
+        package: &str,
+        targets: &[CrateInfoTarget],
+    ) -> Result<(), ApiError> {
         let (user, jobs) = self
             .db_transaction_write("set_crate_targets", |app| async move {
                 let authentication = app.authenticate(auth_data).await?;
                 let principal_uid = app.check_can_manage_crate(&authentication, package).await?;
                 let user = app.database.get_user_profile(principal_uid).await?;
-                for target in targets {
-                    if !self.configuration.self_builtin_targets.contains(target) {
-                        return Err(specialize(error_invalid_request(), format!("Unknown target: {target}")));
+                for info in targets {
+                    if !self.configuration.self_known_targets.contains(&info.target) {
+                        return Err(specialize(
+                            error_invalid_request(),
+                            format!("Unknown target: {}", info.target),
+                        ));
                     }
                 }
                 let jobs = app.database.set_crate_targets(package, targets).await?;
@@ -689,6 +737,32 @@ impl Application {
                 .queue(&job, &DocGenTrigger::NewTarget { by: user.clone() })
                 .await?;
         }
+        Ok(())
+    }
+
+    /// Gets the required capabilities for a crate
+    pub async fn get_crate_required_capabilities(&self, auth_data: &AuthData, package: &str) -> Result<Vec<String>, ApiError> {
+        self.db_transaction_read(|app| async move {
+            let _authentication = app.authenticate(auth_data).await?;
+            app.database.get_crate_required_capabilities(package).await
+        })
+        .await
+    }
+
+    /// Sets the required capabilities for a crate
+    pub async fn set_crate_required_capabilities(
+        &self,
+        auth_data: &AuthData,
+        package: &str,
+        capabilities: &[String],
+    ) -> Result<(), ApiError> {
+        self.db_transaction_write("set_crate_required_capabilities", |app| async move {
+            let authentication = app.authenticate(auth_data).await?;
+            let _ = app.check_can_manage_crate(&authentication, package).await?;
+            app.database.set_crate_required_capabilities(package, capabilities).await?;
+            Ok::<_, ApiError>(())
+        })
+        .await?;
         Ok(())
     }
 
@@ -740,6 +814,7 @@ impl Application {
                 app.database.get_crate_targets(package).await
             })
             .await?;
+        let targets = targets.into_iter().map(|info| info.target).collect::<Vec<_>>();
         self.service_deps_checker.check_crate(package, version, &targets).await
     }
 }

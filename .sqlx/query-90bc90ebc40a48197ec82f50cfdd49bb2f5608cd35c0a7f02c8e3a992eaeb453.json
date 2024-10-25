@@ -1,6 +1,6 @@
 {
   "db_name": "SQLite",
-  "query": "SELECT id, package, version, target, state,\n            queuedOn AS queued_on, startedOn AS started_on, finishedOn AS finished_on, lastUpdate AS last_update,\n            triggerUser AS trigger_user, triggerEvent AS trigger_event\n            FROM DocGenJob\n            WHERE state = $1\n            ORDER BY id\n            LIMIT 1",
+  "query": "SELECT id, package, version, target, useNative AS usenative, capabilities, state,\n            queuedOn AS queued_on, startedOn AS started_on, finishedOn AS finished_on, lastUpdate AS last_update,\n            triggerUser AS trigger_user, triggerEvent AS trigger_event\n            FROM DocGenJob\n            ORDER BY id DESC",
   "describe": {
     "columns": [
       {
@@ -24,45 +24,57 @@
         "type_info": "Text"
       },
       {
-        "name": "state",
+        "name": "usenative",
         "ordinal": 4,
+        "type_info": "Bool"
+      },
+      {
+        "name": "capabilities",
+        "ordinal": 5,
+        "type_info": "Text"
+      },
+      {
+        "name": "state",
+        "ordinal": 6,
         "type_info": "Integer"
       },
       {
         "name": "queued_on",
-        "ordinal": 5,
-        "type_info": "Datetime"
-      },
-      {
-        "name": "started_on",
-        "ordinal": 6,
-        "type_info": "Datetime"
-      },
-      {
-        "name": "finished_on",
         "ordinal": 7,
         "type_info": "Datetime"
       },
       {
-        "name": "last_update",
+        "name": "started_on",
         "ordinal": 8,
         "type_info": "Datetime"
       },
       {
-        "name": "trigger_user",
+        "name": "finished_on",
         "ordinal": 9,
+        "type_info": "Datetime"
+      },
+      {
+        "name": "last_update",
+        "ordinal": 10,
+        "type_info": "Datetime"
+      },
+      {
+        "name": "trigger_user",
+        "ordinal": 11,
         "type_info": "Integer"
       },
       {
         "name": "trigger_event",
-        "ordinal": 10,
+        "ordinal": 12,
         "type_info": "Integer"
       }
     ],
     "parameters": {
-      "Right": 1
+      "Right": 0
     },
     "nullable": [
+      false,
+      false,
       false,
       false,
       false,
@@ -76,5 +88,5 @@
       false
     ]
   },
-  "hash": "7d4a876be75a4dbe251c1482199fba8ac54c91d47a0f32e1e4194a802fbe53f4"
+  "hash": "90bc90ebc40a48197ec82f50cfdd49bb2f5608cd35c0a7f02c8e3a992eaeb453"
 }

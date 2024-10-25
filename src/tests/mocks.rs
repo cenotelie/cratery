@@ -17,6 +17,7 @@ use crate::model::config::Configuration;
 use crate::model::deps::DepsAnalysis;
 use crate::model::docs::{DocGenEvent, DocGenJob, DocGenJobSpec, DocGenJobState, DocGenTrigger};
 use crate::model::osv::SimpleAdvisory;
+use crate::model::worker::WorkersManager;
 use crate::services::deps::DepsChecker;
 use crate::services::docs::DocsGenerator;
 use crate::services::emails::EmailSender;
@@ -76,6 +77,7 @@ impl ServiceProvider for MockService {
         _configuration: Arc<Configuration>,
         _service_db_pool: RwSqlitePool,
         _service_storage: Arc<dyn Storage + Send + Sync>,
+        _worker_nodes: WorkersManager,
     ) -> Arc<dyn DocsGenerator + Send + Sync> {
         Arc::new(MockService)
     }
@@ -134,6 +136,8 @@ impl DocsGenerator for MockService {
                 package: spec.package.clone(),
                 version: spec.version.clone(),
                 target: spec.target.clone(),
+                use_native: false,
+                capabilities: Vec::new(),
                 state: DocGenJobState::Queued,
                 queued_on: NaiveDateTime::default(),
                 started_on: NaiveDateTime::default(),

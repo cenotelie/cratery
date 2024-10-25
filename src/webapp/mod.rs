@@ -31,6 +31,7 @@ pub fn get_resources() -> EmbeddedResources {
     add!(resources, "admin-users.html");
     add!(resources, "admin-tokens.html");
     add!(resources, "admin-jobs-docgen.html");
+    add!(resources, "admin-workers.html");
     add!(resources, "crate.html");
     add!(resources, "oauthcallback.html");
     // CSS

@@ -342,7 +342,10 @@ impl DepsCheckerImpl {
     async fn get_dependency_versions(&self, registry: Option<&str>, name: &str) -> Result<Vec<IndexCrateMetadata>, ApiError> {
         if let Some(registry) = registry {
             if registry == BUILTIN_CRATES_REGISTRY_URI {
-                Ok(Self::generate_for_built_in(name, &self.configuration.self_toolchain_version))
+                Ok(Self::generate_for_built_in(
+                    name,
+                    &self.configuration.self_toolchain_version_stable,
+                ))
             } else if registry == CRATES_IO_REGISTRY_URI {
                 self.get_dependency_info_git(name, CRATES_IO_NAME, CRATES_IO_REGISTRY_URI)
                     .await
@@ -374,7 +377,7 @@ impl DepsCheckerImpl {
     }
 
     /// Generates the versions vector for a built-in crate
-    fn generate_for_built_in(name: &str, toolchain_version: &str) -> Vec<IndexCrateMetadata> {
+    fn generate_for_built_in(name: &str, toolchain_version: &semver::Version) -> Vec<IndexCrateMetadata> {
         vec![IndexCrateMetadata {
             name: name.to_string(),
             vers: toolchain_version.to_string(),

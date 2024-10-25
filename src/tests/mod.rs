@@ -12,6 +12,7 @@ use tokio::runtime::Builder;
 
 use crate::application::Application;
 use crate::model::auth::ROLE_ADMIN;
+use crate::services::ServiceProvider;
 use crate::utils::apierror::ApiError;
 use crate::utils::axum::auth::{AuthData, Token};
 use crate::utils::token::{generate_token, hash_token};
@@ -30,7 +31,7 @@ where
 {
     let runtime = Builder::new_current_thread().enable_all().build()?;
     runtime.block_on(async move {
-        let application = Application::launch::<mocks::MockService>().await?;
+        let application = Application::launch::<mocks::MockService>(mocks::MockService::get_configuration().await?).await?;
         println!("data_dir={}", &application.configuration.data_dir);
         // create the first user ad admin and its token
         setup_create_admin(&application, ADMIN_NAME).await?;

@@ -89,6 +89,11 @@ async function apiGetDocGenJobLog(jobId) {
   return await onResponseJson(response);
 }
 
+async function apiGetWorkers() {
+  const response = await fetch(`/api/v1/admin/workers`);
+  return await onResponseJson(response);
+}
+
 async function apiGetUsers() {
   const response = await fetch("/api/v1/admin/users");
   return await onResponseJson(response);
@@ -201,6 +206,20 @@ async function apiSetCrateTargets(crate, targets) {
   const response = await fetch(`/api/v1/crates/${crate}/targets`, {
     method: "PATCH",
     body: JSON.stringify(targets),
+    headers: [["content-type", "application/json"]],
+  });
+  return await onResponseJson(response);
+}
+
+async function apiGetCrateCapabilities(crate) {
+  const response = await fetch(`/api/v1/crates/${crate}/capabilities`);
+  return await onResponseJson(response);
+}
+
+async function apiSetCrateCapabilities(crate, capabilities) {
+  const response = await fetch(`/api/v1/crates/${crate}/capabilities`, {
+    method: "PATCH",
+    body: JSON.stringify(capabilities),
     headers: [["content-type", "application/json"]],
   });
   return await onResponseJson(response);

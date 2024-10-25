@@ -5,10 +5,11 @@
 //! Utility to run at most n concurrent jobs
 
 use std::future::Future;
-use std::pin::pin;
+use std::pin::{pin, Pin};
+use std::task::{Context, Poll};
 
-use futures::future::{select, select_all, Either};
-use futures::{Stream, StreamExt};
+use futures::future::{select, select_all, Either, FusedFuture};
+use futures::{FutureExt, Stream, StreamExt};
 
 /// Takes an iterator of futures and executes them concurrently, with at most n concurrent futures.
 /// This is similar to the `futures::future::join_all` function, except that instead of executing them all,
@@ -113,4 +114,71 @@ where
     }
 
     results
+}
+
+/// A future that may be there but never resolve if there is none
+pub struct MaybeOrNever<F> {
+    /// The inner future
+    inner: Option<F>,
+    /// Whether the inner futurer is terminated
+    is_terminated: bool,
+}
+
+impl<F> Default for MaybeOrNever<F> {
+    fn default() -> Self {
+        Self {
+            inner: None,
+            is_terminated: false,
+        }
+    }
+}
+
+impl<F> MaybeOrNever<F> {
+    /// Creates a new future
+    pub fn new(inner: F) -> Self {
+        MaybeOrNever {
+            inner: Some(inner),
+            is_terminated: false,
+        }
+    }
+
+    /// Gets whether there is no future inside
+    pub fn is_never(&self) -> bool {
+        self.inner.is_none()
+    }
+}
+
+impl<F: Future + Unpin> FusedFuture for MaybeOrNever<F> {
+    fn is_terminated(&self) -> bool {
+        self.is_terminated
+    }
+}
+
+/// Transforms a future into a maybe missing one
+pub trait MaybeFutureExt: Sized {
+    /// Transforms this future into a maybe missing one
+    fn maybe(self) -> MaybeOrNever<Self>;
+}
+
+impl<T> MaybeFutureExt for T {
+    fn maybe(self) -> MaybeOrNever<Self> {
+        MaybeOrNever::new(self)
+    }
+}
+
+impl<F, O> Future for MaybeOrNever<F>
+where
+    F: Future<Output = O> + Unpin,
+{
+    type Output = O;
+
+    fn poll(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
+        if self.inner.is_none() {
+            Poll::Pending
+        } else {
+            let r = self.as_mut().inner.as_mut().unwrap().poll_unpin(cx);
+            self.is_terminated = r.is_ready();
+            r
+        }
+    }
 }

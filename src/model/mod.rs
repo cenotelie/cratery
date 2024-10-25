@@ -14,6 +14,7 @@ pub mod namegen;
 pub mod osv;
 pub mod packages;
 pub mod stats;
+pub mod worker;
 
 use auth::TokenUsage;
 use serde_derive::{Deserialize, Serialize};
@@ -34,8 +35,11 @@ pub struct RegistryInformation {
     #[serde(rename = "registryName")]
     pub registry_name: String,
     /// The version of the locally installed toolchain
-    #[serde(rename = "toolchainVersion")]
-    pub toolchain_version: String,
+    #[serde(rename = "toolchainVersionStable")]
+    pub toolchain_version_stable: semver::Version,
+    /// The version of the locally installed toolchain
+    #[serde(rename = "toolchainVersionNightly")]
+    pub toolchain_version_nightly: semver::Version,
     /// The host target of the locally installed toolchain
     #[serde(rename = "toolchainHost")]
     pub toolchain_host: String,
@@ -61,3 +65,9 @@ pub enum AppEvent {
     /// The download of a crate
     CrateDownload(CrateVersion),
 }
+
+/// The modifier for the stable channel
+pub const CHANNEL_STABLE: &str = "+stable";
+
+/// The modifier for the nightly channel
+pub const CHANNEL_NIGHTLY: &str = "+nightly";

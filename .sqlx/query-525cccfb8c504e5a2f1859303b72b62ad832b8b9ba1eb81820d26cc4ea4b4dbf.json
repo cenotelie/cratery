@@ -1,0 +1,20 @@
+{
+  "db_name": "SQLite",
+  "query": "INSERT INTO DocGenJob (\n            package, version, target, useNative, capabilities, state,\n            queuedOn, startedOn, finishedOn, lastUpdate,\n            triggerUser, triggerEvent, output\n        ) VALUES (\n            $1, $2, $3, $4, $5, $6,\n            $7, $7, $7, $7,\n            $8, $9, ''\n        ) RETURNING id",
+  "describe": {
+    "columns": [
+      {
+        "name": "id",
+        "ordinal": 0,
+        "type_info": "Integer"
+      }
+    ],
+    "parameters": {
+      "Right": 9
+    },
+    "nullable": [
+      false
+    ]
+  },
+  "hash": "525cccfb8c504e5a2f1859303b72b62ad832b8b9ba1eb81820d26cc4ea4b4dbf"
+}

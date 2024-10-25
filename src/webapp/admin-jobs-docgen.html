@@ -40,32 +40,48 @@
        Back to admin
       </a>
     </div>
-    <div class="py-4 lg:py-4 px-4 mx-auto max-w-screen-xxl">
-      <h2 class="mb-4 text-4xl tracking-tight font-extrabold text-center text-gray-900 dark:text-white">Documentation generation jobs</h2>
-      <div class="relative overflow-x-auto space-y-8">
+    <div class="py-4 lg:py-4 px-4 mx-auto flex flew-row">
+      <div class="flex-none w-1/4">
+        <h2 class="mb-4 text-4xl tracking-tight font-extrabold text-center text-gray-900 dark:text-white">Workers</h2>
         <table class="w-full text-sm text-left rtl:text-right text-gray-500 dark:text-gray-400">
-            <thead class="text-xs text-gray-700 uppercase bg-gray-50 dark:bg-gray-700 dark:text-gray-400">
-              <tr>
-                <th scope="col" class="px-6 py-3">
-                    Crate / Version
-                </th>
-                <th scope="col" class="px-6 py-3">
-                    Status
-                </th>
-                <th scope="col" class="px-6 py-3">
-                    Updates
-                </th>
-                <th scope="col" class="px-6 py-3">
-                    Trigger
-                </th>
-                <th scope="col" class="px-6 py-3">
-                    Actions
-                </th>
-              </tr>
-            </thead>
-            <tbody id="jobs">
-            </tbody>
-        </table>
+          <thead class="text-xs text-gray-700 uppercase bg-gray-50 dark:bg-gray-700 dark:text-gray-400">
+            <tr>
+              <th scope="col" class="px-6 py-3">
+                  Node
+              </th>
+            </tr>
+          </thead>
+          <tbody id="workers">
+          </tbody>
+      </table>
+      </div>
+      <div class="flex-1 ml-1 w-3/4">
+        <h2 class="mb-4 text-4xl tracking-tight font-extrabold text-center text-gray-900 dark:text-white">Documentation generation jobs</h2>
+        <div class="relative overflow-x-auto space-y-8">
+          <table class="w-full text-sm text-left rtl:text-right text-gray-500 dark:text-gray-400">
+              <thead class="text-xs text-gray-700 uppercase bg-gray-50 dark:bg-gray-700 dark:text-gray-400">
+                <tr>
+                  <th scope="col" class="px-6 py-3">
+                      Crate / Version
+                  </th>
+                  <th scope="col" class="px-6 py-3">
+                      Status
+                  </th>
+                  <th scope="col" class="px-6 py-3">
+                      Updates
+                  </th>
+                  <th scope="col" class="px-6 py-3">
+                      Trigger
+                  </th>
+                  <th scope="col" class="px-6 py-3">
+                      Actions
+                  </th>
+                </tr>
+              </thead>
+              <tbody id="jobs">
+              </tbody>
+          </table>
+        </div>
       </div>
     </div>
   </section>
@@ -100,17 +116,86 @@
 <script src="/webapp/stream.js"></script>
 <script>
     function doPageLoad() {
+      const STATE = {workers: [], jobs: []};
+
       onPageLoad().then((_user) => {
         apiGetDocGenJobs().then(jobs => {
+          STATE.jobs = jobs;
           const jobsEl = document.getElementById("jobs");
           for (const job of jobs) {
             jobsEl.appendChild(renderJob(job));
           }
-          // listen for updates
-          const source = new StreamEventSource("/api/v1/admin/jobs/docgen/updates", null);
-          source.map(message => JSON.parse(message.data)).then(onEvent).catch(() => {});
-        })
+          // listen for job updates
+          const sourceForJobs = new StreamEventSource("/api/v1/admin/jobs/docgen/updates", null);
+          sourceForJobs.map(message => JSON.parse(message.data)).then((event) => onJobEvent(event, STATE)).catch(() => {});
+          // get workers
+          apiGetWorkers().then((workers) => {
+            STATE.workers = workers;
+            const table = document.getElementById("workers");
+            for (const worker of workers) {
+              table.appendChild(renderWorker(worker));
+            }
+          });
+          // listen for job updates
+          const sourceForWorkers = new StreamEventSource("/api/v1/admin/workers/updates", null);
+          sourceForWorkers.map(message => JSON.parse(message.data)).then((event) => onWorkerEvent(event, STATE)).catch(() => {});
+        });
       });
+    }
+
+    function renderWorker(worker) {
+      const detailsState = {hidden : true};
+      const detailsEl = document.createElement("div");
+      detailsEl.appendChild(document.createTextNode(`id: ${worker.descriptor.identifier}`));
+      detailsEl.appendChild(document.createElement("br"));
+      detailsEl.appendChild(document.createTextNode(`host: ${worker.descriptor.toolchainHost}`));
+      detailsEl.appendChild(document.createElement("br"));
+      detailsEl.appendChild(document.createTextNode(`versions: ${worker.descriptor.toolchainVersionStable}, ${worker.descriptor.toolchainVersionNightly	}`));
+      detailsEl.style.display = "none";
+
+      const buttonMinus = '<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="size-6"><path stroke-linecap="round" stroke-linejoin="round" d="M15 12H9m12 0a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z" /></svg>';
+      const buttonPlus = '<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="size-6"><path stroke-linecap="round" stroke-linejoin="round" d="M12 9v6m3-3H9m12 0a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z" /></svg>';
+      const button = document.createElement("span");
+      button.style.cursor = "pointer";
+      button.style.display = "inline-block";
+      button.innerHTML = buttonPlus;
+      button.onclick = () => {
+        detailsState.hidden = !detailsState.hidden;
+        if (detailsState.hidden) {
+          detailsEl.style.display = "none";
+          button.innerHTML = buttonPlus;
+        } else {
+          detailsEl.style.display = "unset";
+          button.innerHTML = buttonMinus;
+        }
+      };
+
+      const title = document.createElement("span");
+      title.style.display = "inline-block";
+      title.style.marginLeft = "5px";
+      title.appendChild(document.createTextNode(worker.descriptor.name));
+
+      const color = worker.state === "Available" ? "green" : "blue";
+      const statusEl = document.createElement("span");
+      statusEl.className = `bg-${color}-100 text-${color}-800 text-xs font-medium me-2 px-2.5 py-0.5 rounded dark:bg-${color}-900 dark:text-${color}-300`;
+      statusEl.style.display = "inline-block";
+      statusEl.style.marginLeft = "5px";
+      statusEl.appendChild(document.createTextNode(worker.state === "Available" ? "Available" : "Working ..."));
+
+      const row = document.createElement("tr");
+      row.id = `worker-${worker.descriptor.identifier}`;
+      const cell1 = document.createElement("td");
+      cell1.setAttribute("scope", "row");
+      cell1.className = "px-6 py-4";
+      cell1.title = `worker id: ${worker.descriptor.identifier}`;
+      cell1.appendChild(button);
+      cell1.appendChild(title);
+      cell1.appendChild(statusEl);
+      cell1.appendChild(document.createElement("br"));
+      cell1.appendChild(detailsEl);
+
+      row.appendChild(cell1);
+      return row;
     }
 
     function renderJob(job) {
@@ -120,10 +205,12 @@
       linkEl.appendChild(document.createTextNode(`${job.package} ${job.version}`));
 
       const row = document.createElement("tr");
-      const cell1 = document.createElement("th");
+      const cell1 = document.createElement("td");
       cell1.setAttribute("scope", "row");
-      cell1.className = "px-6 py-4 font-medium";
+      cell1.className = "px-6 py-4";
       cell1.appendChild(linkEl);
+      cell1.appendChild(document.createElement("br"));
+      cell1.appendChild(document.createTextNode(`(${job.target})`));
       const cell2 = document.createElement("td");
       cell2.setAttribute("id", `job-cell-status-${job.id}`);
       cell2.className = "px-6 py-4";
@@ -235,7 +322,11 @@
       return null;
     }
 
-    function onEvent(event) {
+    function onWorkerEvent(event, state) {
+      const keys = Object.getOwnPropertyNames(event);
+    }
+
+    function onJobEvent(event, state) {
       const keys = Object.getOwnPropertyNames(event);
       if (keys.includes("Queued")) {
         const jobsEl = document.getElementById("jobs");

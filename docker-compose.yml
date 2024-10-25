@@ -55,3 +55,5 @@ services:
       # REGISTRY_EMAIL_SENDER:
       # REGISTRY_EMAIL_CC:
       # REGISTRY_SELF_LOCAL_NAME: localhost
+      # REGISTRY_NODE_ROLE: standalone
+      # REGISTRY_NODE_WORKER_TOKEN: super secret token

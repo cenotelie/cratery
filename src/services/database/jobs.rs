@@ -10,12 +10,13 @@ use chrono::Local;
 use super::Database;
 use crate::model::docs::{DocGenJob, DocGenJobSpec, DocGenJobState, DocGenTrigger};
 use crate::utils::apierror::{error_not_found, ApiError};
+use crate::utils::comma_sep_to_vec;
 
 impl Database {
     /// Gets the documentation generation jobs
     pub async fn get_docgen_jobs(&self) -> Result<Vec<DocGenJob>, ApiError> {
         let rows = sqlx::query!(
-            "SELECT id, package, version, target, state,
+            "SELECT id, package, version, target, useNative AS usenative, capabilities, state,
             queuedOn AS queued_on, startedOn AS started_on, finishedOn AS finished_on, lastUpdate AS last_update,
             triggerUser AS trigger_user, triggerEvent AS trigger_event
             FROM DocGenJob
@@ -30,6 +31,8 @@ impl Database {
                 package: row.package,
                 version: row.version,
                 target: row.target,
+                use_native: row.usenative,
+                capabilities: comma_sep_to_vec(&row.capabilities),
                 state: DocGenJobState::from(row.state),
                 queued_on: row.queued_on,
                 started_on: row.started_on,
@@ -51,7 +54,7 @@ impl Database {
     /// Gets a single documentation job
     pub async fn get_docgen_job(&self, job_id: i64) -> Result<DocGenJob, ApiError> {
         let row = sqlx::query!(
-            "SELECT id, package, version, target, state,
+            "SELECT id, package, version, target, useNative AS usenative, capabilities, state,
             queuedOn AS queued_on, startedOn AS started_on, finishedOn AS finished_on, lastUpdate AS last_update,
             triggerUser AS trigger_user, triggerEvent AS trigger_event
             FROM DocGenJob
@@ -67,6 +70,8 @@ impl Database {
             package: row.package,
             version: row.version,
             target: row.target,
+            use_native: row.usenative,
+            capabilities: comma_sep_to_vec(&row.capabilities),
             state: DocGenJobState::from(row.state),
             queued_on: row.queued_on,
             started_on: row.started_on,
@@ -88,7 +93,7 @@ impl Database {
         // look for already existing queued job
         let state_value = DocGenJobState::Queued.value();
         let row = sqlx::query!(
-            "SELECT id, package, version, target, state,
+            "SELECT id, package, version, target, useNative AS usenative, capabilities, state,
             queuedOn AS queued_on, startedOn AS started_on, finishedOn AS finished_on, lastUpdate AS last_update,
             triggerUser AS trigger_user, triggerEvent AS trigger_event
             FROM DocGenJob
@@ -109,6 +114,8 @@ impl Database {
                 package: row.package,
                 version: row.version,
                 target: row.target,
+                use_native: row.usenative,
+                capabilities: comma_sep_to_vec(&row.capabilities),
                 state: DocGenJobState::from(row.state),
                 queued_on: row.queued_on,
                 started_on: row.started_on,
@@ -125,23 +132,26 @@ impl Database {
             });
         }
 
+        let capabilities = spec.capabilities.join(",");
         let trigger_event = trigger.value();
         let trigger_user = trigger.by().map(|u| u.id);
         let now = Local::now().naive_local();
         let state_value = DocGenJobState::Queued.value();
         let job_id = sqlx::query!(
             "INSERT INTO DocGenJob (
-            package, version, target, state,
+            package, version, target, useNative, capabilities, state,
             queuedOn, startedOn, finishedOn, lastUpdate,
             triggerUser, triggerEvent, output
         ) VALUES (
-            $1, $2, $3, $4,
-            $5, $5, $5, $5,
-            $6, $7, ''
+            $1, $2, $3, $4, $5, $6,
+            $7, $7, $7, $7,
+            $8, $9, ''
         ) RETURNING id",
             spec.package,
             spec.version,
             spec.target,
+            spec.use_native,
+            capabilities,
             state_value,
             now,
             trigger_user,
@@ -155,6 +165,8 @@ impl Database {
             package: spec.package.clone(),
             version: spec.version.clone(),
             target: spec.target.clone(),
+            use_native: spec.use_native,
+            capabilities: spec.capabilities.clone(),
             state: DocGenJobState::Queued,
             queued_on: now,
             started_on: now,
@@ -168,7 +180,7 @@ impl Database {
     pub async fn get_next_docgen_job(&self) -> Result<Option<DocGenJob>, ApiError> {
         let state_value = DocGenJobState::Queued.value();
         let row = sqlx::query!(
-            "SELECT id, package, version, target, state,
+            "SELECT id, package, version, target, useNative AS usenative, capabilities, state,
             queuedOn AS queued_on, startedOn AS started_on, finishedOn AS finished_on, lastUpdate AS last_update,
             triggerUser AS trigger_user, triggerEvent AS trigger_event
             FROM DocGenJob
@@ -185,6 +197,8 @@ impl Database {
             package: row.package,
             version: row.version,
             target: row.target,
+            use_native: row.usenative,
+            capabilities: comma_sep_to_vec(&row.capabilities),
             state: DocGenJobState::from(row.state),
             queued_on: row.queued_on,
             started_on: row.started_on,

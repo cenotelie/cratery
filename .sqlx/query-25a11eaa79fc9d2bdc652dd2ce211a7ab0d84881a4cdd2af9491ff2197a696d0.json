@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "UPDATE Package SET targets = $2, nativeTargets = $3 WHERE name = $1",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 3
+    },
+    "nullable": []
+  },
+  "hash": "25a11eaa79fc9d2bdc652dd2ce211a7ab0d84881a4cdd2af9491ff2197a696d0"
+}

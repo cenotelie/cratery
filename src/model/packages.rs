@@ -20,7 +20,19 @@ pub struct CrateInfo {
     /// Gets the versions in the index
     pub versions: Vec<CrateInfoVersion>,
     /// The build targets to use (for docs generation and deps analysis)
-    pub targets: Vec<String>,
+    pub targets: Vec<CrateInfoTarget>,
+    /// The required capabilities for docs generation
+    pub capabilities: Vec<String>,
+}
+
+/// A build targets to use (for docs generation and deps analysis)
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CrateInfoTarget {
+    /// The target triple
+    pub target: String,
+    /// Whether to require a native toolchain for this target
+    #[serde(rename = "docsUseNative")]
+    pub docs_use_native: bool,
 }
 
 /// The data for a crate version

@@ -1,6 +1,6 @@
 {
   "db_name": "SQLite",
-  "query": "SELECT id, package, version, target, state,\n            queuedOn AS queued_on, startedOn AS started_on, finishedOn AS finished_on, lastUpdate AS last_update,\n            triggerUser AS trigger_user, triggerEvent AS trigger_event\n            FROM DocGenJob\n            WHERE state = $1 AND package = $2 AND version = $3 AND target = $4\n            ORDER BY id DESC\n            LIMIT 1",
+  "query": "SELECT id, package, version, target, useNative AS usenative, capabilities, state,\n            queuedOn AS queued_on, startedOn AS started_on, finishedOn AS finished_on, lastUpdate AS last_update,\n            triggerUser AS trigger_user, triggerEvent AS trigger_event\n            FROM DocGenJob\n            WHERE state = $1 AND package = $2 AND version = $3 AND target = $4\n            ORDER BY id DESC\n            LIMIT 1",
   "describe": {
     "columns": [
       {
@@ -24,38 +24,48 @@
         "type_info": "Text"
       },
       {
-        "name": "state",
+        "name": "usenative",
         "ordinal": 4,
+        "type_info": "Bool"
+      },
+      {
+        "name": "capabilities",
+        "ordinal": 5,
+        "type_info": "Text"
+      },
+      {
+        "name": "state",
+        "ordinal": 6,
         "type_info": "Integer"
       },
       {
         "name": "queued_on",
-        "ordinal": 5,
-        "type_info": "Datetime"
-      },
-      {
-        "name": "started_on",
-        "ordinal": 6,
-        "type_info": "Datetime"
-      },
-      {
-        "name": "finished_on",
         "ordinal": 7,
         "type_info": "Datetime"
       },
       {
-        "name": "last_update",
+        "name": "started_on",
         "ordinal": 8,
         "type_info": "Datetime"
       },
       {
-        "name": "trigger_user",
+        "name": "finished_on",
         "ordinal": 9,
+        "type_info": "Datetime"
+      },
+      {
+        "name": "last_update",
+        "ordinal": 10,
+        "type_info": "Datetime"
+      },
+      {
+        "name": "trigger_user",
+        "ordinal": 11,
         "type_info": "Integer"
       },
       {
         "name": "trigger_event",
-        "ordinal": 10,
+        "ordinal": 12,
         "type_info": "Integer"
       }
     ],
@@ -72,9 +82,11 @@
       false,
       false,
       false,
+      false,
+      false,
       true,
       false
     ]
   },
-  "hash": "33f4917075aa208e638b04db719431096533afc0e66749dc0a275d4019cba9e2"
+  "hash": "a2f900c3beef9c71756144cd41849af20a0a7b6751916375bbf8ec09a4a69ad9"
 }

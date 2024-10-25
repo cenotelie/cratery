@@ -20,7 +20,7 @@ use crate::model::cargo::{
 };
 use crate::model::deps::{DepsAnalysisJobSpec, DepsAnalysisState};
 use crate::model::docs::DocGenJobSpec;
-use crate::model::packages::{CrateInfo, CrateInfoVersion, CrateInfoVersionDocs};
+use crate::model::packages::{CrateInfo, CrateInfoTarget, CrateInfoVersion, CrateInfoVersionDocs};
 use crate::model::stats::{DownloadStats, SERIES_LENGTH};
 use crate::model::CrateVersion;
 use crate::utils::apierror::{error_invalid_request, error_not_found, specialize, ApiError};
@@ -100,7 +100,7 @@ impl Database {
         versions_in_index: Vec<IndexCrateMetadata>,
     ) -> Result<CrateInfo, ApiError> {
         let row = sqlx::query!(
-            "SELECT isDeprecated AS is_deprecated, targets FROM Package WHERE name = $1 LIMIT 1",
+            "SELECT isDeprecated AS is_deprecated, targets, nativeTargets AS nativetargets, capabilities FROM Package WHERE name = $1 LIMIT 1",
             package
         )
         .fetch_optional(&mut *self.transaction.borrow().await)
@@ -108,6 +108,8 @@ impl Database {
         .ok_or_else(error_not_found)?;
         let is_deprecated = row.is_deprecated;
         let targets = comma_sep_to_vec(&row.targets);
+        let native_targets = comma_sep_to_vec(&row.nativetargets);
+        let capabilities = comma_sep_to_vec(&row.capabilities);
 
         let rows = sqlx::query!(
             "SELECT version, upload, uploadedBy AS uploaded_by,
@@ -155,7 +157,14 @@ impl Database {
             metadata: None,
             is_deprecated,
             versions,
-            targets,
+            targets: targets
+                .into_iter()
+                .map(|target| CrateInfoTarget {
+                    docs_use_native: native_targets.contains(&target),
+                    target,
+                })
+                .collect(),
+            capabilities,
         })
     }
 
@@ -197,7 +206,7 @@ impl Database {
         } else {
             // create the package
             sqlx::query!(
-                "INSERT INTO Package (name, lowercase, targets, isDeprecated) VALUES ($1, $2, '', FALSE)",
+                "INSERT INTO Package (name, lowercase, targets, nativeTargets, capabilities, isDeprecated) VALUES ($1, $2, '', '', '', FALSE)",
                 package.metadata.name,
                 lowercase
             )
@@ -299,7 +308,8 @@ impl Database {
     /// Gets the packages that need documentation generation
     pub async fn get_undocumented_crates(&self, default_target: &str) -> Result<Vec<DocGenJobSpec>, ApiError> {
         struct PackageData {
-            targets: Vec<String>,
+            targets: Vec<CrateInfoTarget>,
+            capabilities: Vec<String>,
             versions: Vec<VersionData>,
         }
         struct VersionData {
@@ -312,18 +322,31 @@ impl Database {
         // retrieve all package versions and associated targets
         {
             let mut stream = sqlx::query!(
-                "SELECT package, version, targets
+                "SELECT package, version, targets, nativeTargets AS nativetargets, capabilities
                 FROM PackageVersion INNER JOIN Package ON PackageVersion.package = Package.name"
             )
             .fetch(&mut *transaction);
             while let Some(Ok(row)) = stream.next().await {
-                let data = packages.entry(row.package).or_insert_with(|| PackageData {
-                    targets: if row.targets.is_empty() {
-                        vec![default_target.to_string()]
-                    } else {
-                        comma_sep_to_vec(&row.targets)
-                    },
-                    versions: Vec::new(),
+                let data = packages.entry(row.package).or_insert_with(|| {
+                    let native_targets = comma_sep_to_vec(&row.nativetargets);
+                    PackageData {
+                        targets: if row.targets.is_empty() {
+                            vec![CrateInfoTarget {
+                                target: default_target.to_string(),
+                                docs_use_native: true,
+                            }]
+                        } else {
+                            comma_sep_to_vec(&row.targets)
+                                .into_iter()
+                                .map(|target| CrateInfoTarget {
+                                    docs_use_native: native_targets.contains(&target),
+                                    target,
+                                })
+                                .collect()
+                        },
+                        capabilities: comma_sep_to_vec(&row.capabilities),
+                        versions: Vec::new(),
+                    }
                 });
                 data.versions.push(VersionData {
                     version: row.version,
@@ -341,7 +364,7 @@ impl Database {
             .fetch(&mut *transaction);
             while let Some(Ok(row)) = stream.next().await {
                 if let Some(data) = packages.get_mut(&row.package) {
-                    let target_index = data.targets.iter().position(|t| t == &row.target);
+                    let target_index = data.targets.iter().position(|info| info.target == row.target);
                     let version_data = data.versions.iter_mut().find(|d| d.version == row.version);
                     if let (Some(target_index), Some(version_data)) = (target_index, version_data) {
                         version_data.docs |= 1 << target_index;
@@ -353,13 +376,15 @@ impl Database {
         let mut jobs = Vec::new();
         for (package, data) in packages {
             for version in data.versions {
-                for (index, target) in data.targets.iter().enumerate() {
+                for (index, info) in data.targets.iter().enumerate() {
                     let is_missing = (version.docs & (1 << index)) == 0;
                     if is_missing {
                         jobs.push(DocGenJobSpec {
                             package: package.clone(),
                             version: version.version.clone(),
-                            target: target.clone(),
+                            target: info.target.clone(),
+                            use_native: info.docs_use_native,
+                            capabilities: data.capabilities.clone(),
                         });
                     }
                 }
@@ -411,23 +436,37 @@ impl Database {
         package: &str,
         version: &str,
         default_target: &str,
-    ) -> Result<Vec<String>, ApiError> {
+    ) -> Result<Vec<CrateInfoTarget>, ApiError> {
         self.check_crate_exists(package, version).await?;
 
-        let targets = sqlx::query!("SELECT targets FROM Package WHERE name = $1 LIMIT 1", package)
-            .fetch_optional(&mut *self.transaction.borrow().await)
-            .await?
-            .ok_or_else(error_not_found)?
-            .targets;
-        let targets = comma_sep_to_vec(&targets);
+        let row = sqlx::query!(
+            "SELECT targets, nativeTargets AS nativetargets FROM Package WHERE name = $1 LIMIT 1",
+            package
+        )
+        .fetch_optional(&mut *self.transaction.borrow().await)
+        .await?
+        .ok_or_else(error_not_found)?;
+        let targets = comma_sep_to_vec(&row.targets);
+        let native_targets = comma_sep_to_vec(&row.nativetargets);
+        let targets = targets
+            .into_iter()
+            .map(|target| CrateInfoTarget {
+                docs_use_native: native_targets.contains(&target),
+                target,
+            })
+            .collect::<Vec<_>>();
         let targets = if targets.is_empty() {
-            vec![default_target.to_string()]
+            vec![CrateInfoTarget {
+                target: default_target.to_string(),
+                docs_use_native: true,
+            }]
         } else {
             targets
         };
 
-        for target in &targets {
-            self.set_crate_documentation(package, version, target, false, false).await?;
+        for info in &targets {
+            self.set_crate_documentation(package, version, &info.target, false, false)
+                .await?;
         }
         Ok(targets)
     }
@@ -664,48 +703,103 @@ impl Database {
     }
 
     /// Gets the targets for a crate
-    pub async fn get_crate_targets(&self, package: &str) -> Result<Vec<String>, ApiError> {
-        let row = sqlx::query!("SELECT targets FROM Package WHERE name = $1 LIMIT 1", package)
-            .fetch_optional(&mut *self.transaction.borrow().await)
-            .await?
-            .ok_or_else(error_not_found)?;
-        Ok(comma_sep_to_vec(&row.targets))
+    pub async fn get_crate_targets(&self, package: &str) -> Result<Vec<CrateInfoTarget>, ApiError> {
+        let row = sqlx::query!(
+            "SELECT targets, nativeTargets AS nativetargets FROM Package WHERE name = $1 LIMIT 1",
+            package
+        )
+        .fetch_optional(&mut *self.transaction.borrow().await)
+        .await?
+        .ok_or_else(error_not_found)?;
+        let targets = comma_sep_to_vec(&row.targets);
+        let native_targets = comma_sep_to_vec(&row.nativetargets);
+        Ok(targets
+            .into_iter()
+            .map(|target| CrateInfoTarget {
+                docs_use_native: native_targets.contains(&target),
+                target,
+            })
+            .collect())
     }
 
     /// Sets the targets for a crate
-    pub async fn set_crate_targets(&self, package: &str, targets: &[String]) -> Result<Vec<DocGenJobSpec>, ApiError> {
+    pub async fn set_crate_targets(&self, package: &str, targets: &[CrateInfoTarget]) -> Result<Vec<DocGenJobSpec>, ApiError> {
         let old_targets = self.get_crate_targets(package).await?;
         let added_targets = targets
             .iter()
-            .filter_map(|target| {
-                if old_targets.contains(target) {
+            .filter_map(|info| {
+                if old_targets.iter().any(|t| t.target == info.target) {
                     None
                 } else {
-                    Some(target.clone())
+                    Some(info.clone())
                 }
             })
             .collect::<Vec<_>>();
 
-        let new_targets = targets.join(",");
-        sqlx::query!("UPDATE Package SET targets = $2 WHERE name = $1", package, new_targets)
-            .execute(&mut *self.transaction.borrow().await)
-            .await?;
+        let new_targets = targets.iter().map(|info| info.target.as_str()).collect::<Vec<_>>();
+        let new_targets = new_targets.join(",");
+        let native_targets = targets
+            .iter()
+            .filter_map(|info| {
+                if info.docs_use_native {
+                    Some(info.target.as_str())
+                } else {
+                    None
+                }
+            })
+            .collect::<Vec<_>>();
+        let native_targets = native_targets.join(",");
+        sqlx::query!(
+            "UPDATE Package SET targets = $2, nativeTargets = $3 WHERE name = $1",
+            package,
+            new_targets,
+            native_targets
+        )
+        .execute(&mut *self.transaction.borrow().await)
+        .await?;
 
         // get versions
+        let capabilities = comma_sep_to_vec(
+            &sqlx::query!("SELECT capabilities FROM Package WHERE name = $1 LIMIT 1", package)
+                .fetch_one(&mut *self.transaction.borrow().await)
+                .await?
+                .capabilities,
+        );
         let rows = sqlx::query!("SELECT version FROM PackageVersion WHERE package = $1", package)
             .fetch_all(&mut *self.transaction.borrow().await)
             .await?;
         let mut jobs = Vec::new();
         for row in rows {
-            for target in &added_targets {
+            for info in &added_targets {
                 jobs.push(DocGenJobSpec {
                     package: package.to_string(),
                     version: row.version.clone(),
-                    target: target.clone(),
+                    target: info.target.clone(),
+                    use_native: info.docs_use_native,
+                    capabilities: capabilities.clone(),
                 });
             }
         }
         Ok(jobs)
+    }
+
+    /// Gets the required capabilities for a crate
+    pub async fn get_crate_required_capabilities(&self, package: &str) -> Result<Vec<String>, ApiError> {
+        let row = sqlx::query!("SELECT capabilities FROM Package WHERE name = $1 LIMIT 1", package)
+            .fetch_optional(&mut *self.transaction.borrow().await)
+            .await?
+            .ok_or_else(error_not_found)?;
+        Ok(comma_sep_to_vec(&row.capabilities))
+    }
+
+    /// Sets the required capabilities for a crate
+    pub async fn set_crate_required_capabilities(&self, package: &str, capabilities: &[String]) -> Result<(), ApiError> {
+        let _ = self.get_crate_required_capabilities(package).await?;
+        let capabilities = capabilities.join(",");
+        sqlx::query!("UPDATE Package SET capabilities = $2 WHERE name = $1", package, capabilities)
+            .execute(&mut *self.transaction.borrow().await)
+            .await?;
+        Ok(())
     }
 
     /// Sets the deprecation status on a crate

@@ -8,6 +8,7 @@ use chrono::NaiveDateTime;
 use serde_derive::{Deserialize, Serialize};
 
 use super::cargo::RegistryUser;
+use super::worker::WorkerSelector;
 
 /// The specification for a documentation generation job
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -18,6 +19,10 @@ pub struct DocGenJobSpec {
     pub version: String,
     /// The targets for the crate
     pub target: String,
+    /// Whether to use a native toolchain for the target
+    pub use_native: bool,
+    /// The required capabilities
+    pub capabilities: Vec<String>,
 }
 
 /// The state of a documentation generation job
@@ -120,6 +125,10 @@ pub struct DocGenJob {
     pub version: String,
     /// The targets for the crate
     pub target: String,
+    /// Whether to use a native toolchain for the target
+    pub use_native: bool,
+    /// The required capabilities
+    pub capabilities: Vec<String>,
     /// The state of the job
     pub state: DocGenJobState,
     /// Timestamp when the job was queued
@@ -136,6 +145,20 @@ pub struct DocGenJob {
     pub last_update: NaiveDateTime,
     /// The event that triggered the job
     pub trigger: DocGenTrigger,
+}
+
+impl DocGenJob {
+    /// Gets the worker selector for this job
+    #[must_use]
+    pub fn get_worker_selector(&self) -> WorkerSelector {
+        let mut selector = if self.use_native {
+            WorkerSelector::new_native_target(self.target.clone())
+        } else {
+            WorkerSelector::new_available_target(self.target.clone())
+        };
+        selector.capabilities.clone_from(&self.capabilities);
+        selector
+    }
 }
 
 /// An update to a documentation generation job

@@ -1,0 +1,44 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT package, version, targets, nativeTargets AS nativetargets, capabilities\n                FROM PackageVersion INNER JOIN Package ON PackageVersion.package = Package.name",
+  "describe": {
+    "columns": [
+      {
+        "name": "package",
+        "ordinal": 0,
+        "type_info": "Text"
+      },
+      {
+        "name": "version",
+        "ordinal": 1,
+        "type_info": "Text"
+      },
+      {
+        "name": "targets",
+        "ordinal": 2,
+        "type_info": "Text"
+      },
+      {
+        "name": "nativetargets",
+        "ordinal": 3,
+        "type_info": "Text"
+      },
+      {
+        "name": "capabilities",
+        "ordinal": 4,
+        "type_info": "Text"
+      }
+    ],
+    "parameters": {
+      "Right": 0
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      false,
+      false
+    ]
+  },
+  "hash": "ffc7595568edfe8c3f956640a0180d5f67b932082657c7d1ebf6981f92ade736"
+}

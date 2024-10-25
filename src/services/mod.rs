@@ -7,6 +7,7 @@
 use std::sync::Arc;
 
 use crate::model::config::Configuration;
+use crate::model::worker::WorkersManager;
 use crate::utils::apierror::ApiError;
 use crate::utils::db::RwSqlitePool;
 
@@ -48,6 +49,7 @@ pub trait ServiceProvider {
         configuration: Arc<Configuration>,
         service_db_pool: RwSqlitePool,
         service_storage: Arc<dyn storage::Storage + Send + Sync>,
+        worker_nodes: WorkersManager,
     ) -> Arc<dyn docs::DocsGenerator + Send + Sync>;
 }
 
@@ -96,7 +98,8 @@ impl ServiceProvider for StandardServiceProvider {
         configuration: Arc<Configuration>,
         service_db_pool: RwSqlitePool,
         service_storage: Arc<dyn storage::Storage + Send + Sync>,
+        worker_nodes: WorkersManager,
     ) -> Arc<dyn docs::DocsGenerator + Send + Sync> {
-        docs::get_service(configuration, service_db_pool, service_storage)
+        docs::get_service(configuration, service_db_pool, service_storage, worker_nodes)
     }
 }

@@ -1,10 +1,10 @@
 {
   "db_name": "SQLite",
-  "query": "SELECT targets FROM Package WHERE name = $1 LIMIT 1",
+  "query": "SELECT capabilities FROM Package WHERE name = $1 LIMIT 1",
   "describe": {
     "columns": [
       {
-        "name": "targets",
+        "name": "capabilities",
         "ordinal": 0,
         "type_info": "Text"
       }
@@ -16,5 +16,5 @@
       false
     ]
   },
-  "hash": "3df0a8bc40999444dd48a6eee73036ccf4d1d574aa67c7db7180671fd9a0b96a"
+  "hash": "57d52150eff656e039d699a4ee82c21b45b4253255e4f2343ccae3d2fea5b4e2"
 }
