@@ -166,6 +166,9 @@
         <div id="tab-admin-targets" class="m-4">
           <h5 class="text-xl font-bold tracking-tight text-gray-900 dark:text-white mt-8">Targets <button id="button-add-target" type="button" class="text-white bg-blue-700 hover:bg-blue-800 focus:ring-4 focus:ring-blue-300 font-medium rounded-lg text-xs px-3 py-2 me-1 mb-2 dark:bg-blue-600 dark:hover:bg-blue-700 focus:outline-none dark:focus:ring-blue-800">add</button></h5>
         </div>
+        <div id="tab-admin-capabilities" class="m-4">
+          <h5 class="text-xl font-bold tracking-tight text-gray-900 dark:text-white mt-8">Required capabilities <button id="button-add-capability" type="button" class="text-white bg-blue-700 hover:bg-blue-800 focus:ring-4 focus:ring-blue-300 font-medium rounded-lg text-xs px-3 py-2 me-1 mb-2 dark:bg-blue-600 dark:hover:bg-blue-700 focus:outline-none dark:focus:ring-blue-800">add</button></h5>
+        </div>
         <div id="tab-admin-deprecation" class="m-4">
           <h5 class="text-xl font-bold tracking-tight text-gray-900 dark:text-white mt-8">Deprecation</h5>
           <p class="mb-3 text-gray-500 dark:text-gray-400">Deprecated crates will not be checked by the dependency analyzer and will be marked with a warning in the web interface.</p>
@@ -234,6 +237,13 @@
                 <label for="add-target" class="block mb-2 text-sm font-medium text-gray-900 dark:text-gray-300">Target</label>
                 <select id="add-target" class="bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full p-2.5 dark:bg-gray-700 dark:border-gray-600 dark:placeholder-gray-400 dark:text-white dark:focus:ring-blue-500 dark:focus:border-blue-500"></select>
               </div>
+              <div>
+                <label class="relative inline-flex items-center cursor-pointer">
+                  <input id="add-target-use-native" type="checkbox" class="sr-only peer">
+                  <div class="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-red-300 dark:peer-focus:ring-red-800 rounded-full peer dark:bg-gray-700 peer-checked:after:translate-x-full rtl:peer-checked:after:-translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:start-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all dark:border-gray-600 peer-checked:bg-red-600"></div>
+                  <span class="ms-3 text-sm font-medium text-gray-900 dark:text-gray-300">Require native toolchain for documentation generation</span>
+                </label>
+              </div>
             </form>
             <div class="justify-between items-center pt-0 space-y-4 sm:flex sm:space-y-0">
               <div class="items-center space-y-4 sm:space-x-4 sm:flex sm:space-y-0">
@@ -261,6 +271,50 @@
               <div class="items-center space-y-4 sm:space-x-4 sm:flex sm:space-y-0">
                 <button id="modal-remove-target-close" type="button"  class="py-2 px-4 w-full text-sm font-medium text-gray-500 bg-white rounded-lg border border-gray-200 sm:w-auto hover:bg-gray-100 focus:ring-4 focus:outline-none focus:ring-primary-300 hover:text-gray-900 focus:z-10 dark:bg-gray-700 dark:text-gray-300 dark:border-gray-500 dark:hover:text-white dark:hover:bg-gray-600 dark:focus:ring-gray-600">Cancel</button>
                 <button id="modal-remove-target-confirm" type="button" class="focus:outline-none text-white bg-red-700 hover:bg-red-800 focus:ring-4 focus:ring-red-300 font-medium rounded-lg text-sm px-5 py-2.5 me-2 mb-2 dark:bg-red-600 dark:hover:bg-red-700 dark:focus:ring-red-900">Remove</button>
+              </div>
+            </div>
+        </div>
+    </div>
+  </div>
+  <div id="modal-add-capability" tabindex="-1" class="overflow-y-auto overflow-x-hidden fixed top-0 right-0 left-0 z-50 w-full md:inset-0 h-modal md:h-full" style="display: none;">
+    <div class="overflow-y-auto overflow-x-hidden fixed top-0 right-0 left-0 z-51 w-full md:inset-0 h-modal md:h-full" style="background-color: black; opacity: 0.75;"></div>
+    <div class="relative" style="margin: auto; margin-top: 10%; width: 800px;">
+        <div class="relative p-4 bg-white rounded-lg shadow dark:bg-gray-800 md:p-8">
+            <div class="mb-4 text-sm font-light text-gray-500 dark:text-gray-400">
+              <h3 class="mb-3 text-2xl font-bold text-gray-900 dark:text-white">Add new required capability</h3>
+            </div>
+            <form class="mb-3 space-y-8">
+              <div>
+                <label for="add-capability" class="block mb-2 text-sm font-medium text-gray-900 dark:text-gray-300">Capability</label>
+                <input id="add-capability" class="bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full p-2.5 dark:bg-gray-700 dark:border-gray-600 dark:placeholder-gray-400 dark:text-white dark:focus:ring-blue-500 dark:focus:border-blue-500"></input>
+              </div>
+            </form>
+            <div class="justify-between items-center pt-0 space-y-4 sm:flex sm:space-y-0">
+              <div class="items-center space-y-4 sm:space-x-4 sm:flex sm:space-y-0">
+                <button id="modal-add-capability-close" type="button"  class="py-2 px-4 w-full text-sm font-medium text-gray-500 bg-white rounded-lg border border-gray-200 sm:w-auto hover:bg-gray-100 focus:ring-4 focus:outline-none focus:ring-primary-300 hover:text-gray-900 focus:z-10 dark:bg-gray-700 dark:text-gray-300 dark:border-gray-500 dark:hover:text-white dark:hover:bg-gray-600 dark:focus:ring-gray-600">Cancel</button>
+                <button id="modal-add-capability-confirm" type="button" class="focus:outline-none text-white bg-green-700 hover:bg-green-800 focus:ring-4 focus:ring-green-300 font-medium rounded-lg text-sm px-5 py-2.5 me-2 mb-2 dark:bg-green-600 dark:hover:bg-green-700 dark:focus:ring-green-900">Add</button>
+              </div>
+            </div>
+        </div>
+    </div>
+  </div>
+  <div id="modal-remove-capability" tabindex="-1" class="overflow-y-auto overflow-x-hidden fixed top-0 right-0 left-0 z-50 w-full md:inset-0 h-modal md:h-full" style="display: none;">
+    <div class="overflow-y-auto overflow-x-hidden fixed top-0 right-0 left-0 z-51 w-full md:inset-0 h-modal md:h-full" style="background-color: black; opacity: 0.75;"></div>
+    <div class="relative" style="margin: auto; margin-top: 10%; width: 800px;">
+        <div class="relative p-4 bg-white rounded-lg shadow dark:bg-gray-800 md:p-8">
+            <div class="mb-4 text-sm font-light text-gray-500 dark:text-gray-400">
+              <h3 class="mb-3 text-2xl font-bold text-gray-900 dark:text-white">Remove this capability?</h3>
+            </div>
+            <form class="mb-3 space-y-8">
+              <div>
+                <label for="remove-capability" class="block mb-2 text-sm font-medium text-gray-900 dark:text-gray-300">Capability</label>
+                <input type="text" id="remove-capability" class="block p-3 w-full text-sm text-gray-900 bg-gray-50 rounded-lg border border-gray-300 shadow-sm focus:ring-primary-500 focus:border-primary-500 dark:bg-gray-700 dark:border-gray-600 dark:placeholder-gray-400 dark:text-white dark:focus:ring-primary-500 dark:focus:border-primary-500 dark:shadow-sm-light" disabled>
+              </div>
+            </form>
+            <div class="justify-between items-center pt-0 space-y-4 sm:flex sm:space-y-0">
+              <div class="items-center space-y-4 sm:space-x-4 sm:flex sm:space-y-0">
+                <button id="modal-remove-capability-close" type="button"  class="py-2 px-4 w-full text-sm font-medium text-gray-500 bg-white rounded-lg border border-gray-200 sm:w-auto hover:bg-gray-100 focus:ring-4 focus:outline-none focus:ring-primary-300 hover:text-gray-900 focus:z-10 dark:bg-gray-700 dark:text-gray-300 dark:border-gray-500 dark:hover:text-white dark:hover:bg-gray-600 dark:focus:ring-gray-600">Cancel</button>
+                <button id="modal-remove-capability-confirm" type="button" class="focus:outline-none text-white bg-red-700 hover:bg-red-800 focus:ring-4 focus:ring-red-300 font-medium rounded-lg text-sm px-5 py-2.5 me-2 mb-2 dark:bg-red-600 dark:hover:bg-red-700 dark:focus:ring-red-900">Remove</button>
               </div>
             </div>
         </div>
@@ -384,12 +438,27 @@
         targetEl.appendChild(document.createTextNode(`No target specified for this crate. Documentation generation and dependency analysis will use the host target: ${registryInfo.toolchainHost}`));
         tabAdminTargetsEl.appendChild(targetEl);
       } else {
-        for (const target of crate.targets) {
-          tabAdminTargetsEl.appendChild(renderAdminTargetRow(currentVersion.index.name, crate.targets, target));
+        for (const targetInfo of crate.targets) {
+          tabAdminTargetsEl.appendChild(renderAdminTargetRow(currentVersion.index.name, crate.targets, targetInfo));
         }
       }
       const buttonAddTargetEl = document.getElementById("button-add-target");
       buttonAddTargetEl.addEventListener("click", () => openAddTarget(currentVersion.index.name, registryInfo.toolchainTargets, crate.targets));
+
+      const tabAdminCapsEl = document.getElementById("tab-admin-capabilities");
+      if (crate.capabilities.length === 0) {
+        const targetEl = document.createElement("div");
+        targetEl.className = "p-4 text-sm text-gray-800 rounded-lg bg-gray-50 dark:bg-gray-800 dark:text-gray-300";
+        targetEl.setAttribute("role", "alert");
+        targetEl.appendChild(document.createTextNode(`This crate does not require any capability. Required capabilities will be used to select appropriate worker nodes that provide them when generating documentation for this crate.`));
+        tabAdminCapsEl.appendChild(targetEl);
+      } else {
+        for (const capability of crate.capabilities) {
+          tabAdminCapsEl.appendChild(renderCapabilityRow(currentVersion.index.name, crate.capabilities, capability));
+        }
+      }
+      const buttonAddCapabilityEl = document.getElementById("button-add-capability");
+      buttonAddCapabilityEl.addEventListener("click", () => openAddCapability(currentVersion.index.name, crate.capabilities));
 
       document.getElementById("tab-admin-deprecation-toggle").onchange = () => {
         apiSetCrateDeprecation(currentVersion.index.name, !crate.isDeprecated).then(() => {
@@ -450,18 +519,39 @@
     return wrapper;
   }
 
-  function renderAdminTargetRow(crateName, currentTargets, target) {
+  function renderAdminTargetRow(crateName, currentTargets, targetInfo) {
     const button = document.createElement("button");
     button.type = "button";
     button.className = "focus:outline-none text-white bg-red-700 hover:bg-red-800 focus:ring-4 focus:ring-red-300 font-medium rounded-lg text-xs px-3 py-1 me-2 mb-1 dark:bg-red-600 dark:hover:bg-red-700 dark:focus:ring-red-900";
     button.appendChild(document.createTextNode("-"));
-    button.addEventListener("click", () => openRemoveTarget(crateName, currentTargets, target));
+    button.addEventListener("click", () => openRemoveTarget(crateName, currentTargets, targetInfo));
     const targetEl = document.createElement("span");
     targetEl.className = "ml-4 font-normal text-gray-700 dark:text-gray-400";
-    targetEl.appendChild(document.createTextNode(target));
+    targetEl.appendChild(document.createTextNode(targetInfo.target));
+    const useNativeEl = document.createElement("span");
+    useNativeEl.className = "ml-4 font-normal text-red-700 dark:text-red-400";
+    if (targetInfo.docsUseNative) {
+      useNativeEl.appendChild(document.createTextNode(" requires native toolchain"));
+    }
     const wrapper = document.createElement("div");
     wrapper.appendChild(button);
     wrapper.appendChild(targetEl);
+    wrapper.appendChild(useNativeEl);
+    return wrapper;
+  }
+
+  function renderCapabilityRow(crateName, currentCapabilities, capability) {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "focus:outline-none text-white bg-red-700 hover:bg-red-800 focus:ring-4 focus:ring-red-300 font-medium rounded-lg text-xs px-3 py-1 me-2 mb-1 dark:bg-red-600 dark:hover:bg-red-700 dark:focus:ring-red-900";
+    button.appendChild(document.createTextNode("-"));
+    button.addEventListener("click", () => openRemoveCapability(crateName, currentCapabilities, capability));
+    const capabilityEl = document.createElement("span");
+    capabilityEl.className = "ml-4 font-normal text-gray-700 dark:text-gray-400";
+    capabilityEl.appendChild(document.createTextNode(capability));
+    const wrapper = document.createElement("div");
+    wrapper.appendChild(button);
+    wrapper.appendChild(capabilityEl);
     return wrapper;
   }
 
@@ -869,6 +959,8 @@
       optionEl.appendChild(document.createTextNode(target));
       targetEl.appendChild(optionEl);
     }
+    const useNativeEl = document.getElementById("add-target-use-native");
+    useNativeEl.checked = false;
     const closeEl = document.getElementById('modal-add-target-close');
     closeEl.addEventListener('click', function() {
       modalEl.style.display = "none";
@@ -877,7 +969,7 @@
     confirmEl.addEventListener('click', function() {
       closeEl.disabled = true;
       confirmEl.disabled = true;
-      apiSetCrateTargets(crateName, [...currentTargets, targetEl.value]).then((_) => {
+      apiSetCrateTargets(crateName, [...currentTargets, {target: targetEl.value, docsUseNative: useNativeEl.checked}]).then((_) => {
         window.location.reload();
       }).finally(() => {
         closeEl.disabled = false;
@@ -886,11 +978,11 @@
     });
   }
 
-  function openRemoveTarget(crateName, currentTargets, target) {
+  function openRemoveTarget(crateName, currentTargets, targetInfo) {
     const modalEl = document.getElementById('modal-remove-target');
     modalEl.style.display = "unset";
     const targetEl = document.getElementById("remove-target");
-    targetEl.value = target;
+    targetEl.value = targetInfo.target;
     const closeEl = document.getElementById('modal-remove-target-close');
     closeEl.addEventListener('click', function() {
       modalEl.style.display = "none";
@@ -899,7 +991,7 @@
     confirmEl.addEventListener('click', function() {
       closeEl.disabled = true;
       confirmEl.disabled = true;
-      const newTargets = currentTargets.filter(t => t !== target);
+      const newTargets = currentTargets.filter(t => t !== targetInfo);
       apiSetCrateTargets(crateName, newTargets).then((_) => {
         window.location.reload();
       }).finally(() => {
@@ -908,5 +1000,50 @@
       });
     });
   }
+
+  function openAddCapability(crateName, currentCapabilities) {
+    const modalEl = document.getElementById('modal-add-capability');
+    modalEl.style.display = "unset";
+    const capabilityEl = document.getElementById("add-capability");
+    capabilityEl.value = "";
+    const closeEl = document.getElementById('modal-add-capability-close');
+    closeEl.addEventListener('click', function() {
+      modalEl.style.display = "none";
+    });
+    const confirmEl = document.getElementById('modal-add-capability-confirm');
+    confirmEl.addEventListener('click', function() {
+      closeEl.disabled = true;
+      confirmEl.disabled = true;
+      apiSetCrateCapabilities(crateName, [...currentCapabilities, capabilityEl.value]).then((_) => {
+        window.location.reload();
+      }).finally(() => {
+        closeEl.disabled = false;
+        confirmEl.disabled = false;
+      });
+    });
+  }
+
+function openRemoveCapability(crateName, currentCapabilities, capability) {
+  const modalEl = document.getElementById('modal-remove-capability');
+  modalEl.style.display = "unset";
+  const capabilityEl = document.getElementById("remove-capability");
+  capabilityEl.value = capability;
+  const closeEl = document.getElementById('modal-remove-capability-close');
+  closeEl.addEventListener('click', function() {
+    modalEl.style.display = "none";
+  });
+  const confirmEl = document.getElementById('modal-remove-capability-confirm');
+  confirmEl.addEventListener('click', function() {
+    closeEl.disabled = true;
+    confirmEl.disabled = true;
+    const newCapabilities = currentCapabilities.filter(t => t !== capability);
+    apiSetCrateCapabilities(crateName, newCapabilities).then((_) => {
+      window.location.reload();
+    }).finally(() => {
+      closeEl.disabled = false;
+      confirmEl.disabled = false;
+    });
+  });
+}
 </script>
 </html>
