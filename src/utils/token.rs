@@ -4,8 +4,10 @@
 
 //! Utility APIs for token generation and management
 
+use base64::engine::general_purpose::STANDARD;
+use base64::Engine;
 use data_encoding::HEXLOWER;
-use rand::distributions::Alphanumeric;
+use rand::distributions::Standard;
 use rand::{thread_rng, Rng};
 use ring::digest::{Context, SHA256};
 
@@ -14,8 +16,10 @@ use super::apierror::{error_unauthorized, ApiError};
 /// Generates a token
 #[must_use]
 pub fn generate_token(length: usize) -> String {
+    let bytes_count = length * 3 / 4;
     let rng = thread_rng();
-    String::from_utf8(rng.sample_iter(&Alphanumeric).take(length).collect()).unwrap()
+    let bytes = rng.sample_iter::<u8, _>(Standard).take(bytes_count).collect::<Vec<_>>();
+    STANDARD.encode(&bytes)
 }
 
 /// Computes the SHA256 digest of bytes
