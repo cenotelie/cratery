@@ -58,6 +58,13 @@ Cratery automatically generates and serves the documentation for published crate
 
 ![Screenshot of a piece of documentation](https://raw.githubusercontent.com/cenotelie/cratery/master/docs/capture-docs.png)
 
+Cratery now supports worker nodes for the execution of documentation generation jobs, as well as the configuration of crates so that the documentation can be generated:
+* for specific targets (instead of the host by default),
+* possibly requiring a native host for specific targets (for example a native Windows node for the `x86_64-pc-windows-msvc` target),
+* using nodes with identified capabilities, for example specific system libraries.
+
+![Screenshot of the settings page for a crate for documentation generation](https://raw.githubusercontent.com/cenotelie/cratery/master/docs/capture-admin-docs.png)
+
 ### Dependency analysis
 
 Cratery automatically scans the dependency graph of the latest versions (for each major version) of hosted crates.
@@ -181,6 +188,20 @@ When performing dependency analysis, Cratery will access `crates.io` and other e
 * `REGISTRY_EMAIL_SMTP_PASSWORD`: The password to connect to the SMTP host
 * `REGISTRY_EMAIL_SENDER`: The address to use a sender for mails
 * `REGISTRY_EMAIL_CC`: The address to always CC for mails
+
+### Worker nodes
+
+Documentation jobs do not have to be executed on the server, although this is the default setup.
+They can be delegated to worker nodes and the main server will act as the master.
+A worker node is just another instance of `cratery`, configured with a specific role.
+The role of a node is configured as follow:
+
+* `REGISTRY_NODE_ROLE`: By default, a node is in standalone mode, neither a master nor a worker. Documentation jobs are run on the node. For `cratery` instances that want to have worker nodes, the role must be set to `"master"`. Worker nodes in turn must have a role set to `"worker"`.
+* `REGISTRY_NODE_WORKER_TOKEN`: for both master and worker nodes, this variable must be set to the same value. This is the secret token that workers will use to connect to their master node.
+* `REGISTRY_NODE_WORKER_NAME`: for workers only, the user-friendly name of the worker.
+* `REGISTRY_NODE_MASTER_URI`:  for workers only, the web socket URI to the master, for example `wss://cargo.mycompany.com`.
+* `REGISTRY_NODE_WORKER_CAPABILITIES`: for workers only, a comma-separated list of capabilities provided by the worker. Crates can then be configured to require specific capabilities. For example the presence of `openssl` on the system.
+
 
 ## Contributing
 
