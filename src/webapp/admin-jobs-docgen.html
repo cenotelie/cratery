@@ -116,29 +116,25 @@
 <script src="/webapp/stream.js"></script>
 <script>
     function doPageLoad() {
-      const STATE = {workers: [], jobs: []};
-
       onPageLoad().then((_user) => {
         apiGetDocGenJobs().then(jobs => {
-          STATE.jobs = jobs;
           const jobsEl = document.getElementById("jobs");
           for (const job of jobs) {
             jobsEl.appendChild(renderJob(job));
           }
           // listen for job updates
           const sourceForJobs = new StreamEventSource("/api/v1/admin/jobs/docgen/updates", null);
-          sourceForJobs.map(message => JSON.parse(message.data)).then((event) => onJobEvent(event, STATE)).catch(() => {});
+          sourceForJobs.map(message => JSON.parse(message.data)).then((event) => onJobEvent(event)).catch(() => {});
           // get workers
           apiGetWorkers().then((workers) => {
-            STATE.workers = workers;
             const table = document.getElementById("workers");
             for (const worker of workers) {
               table.appendChild(renderWorker(worker));
             }
           });
-          // listen for job updates
+          // listen for worker updates
           const sourceForWorkers = new StreamEventSource("/api/v1/admin/workers/updates", null);
-          sourceForWorkers.map(message => JSON.parse(message.data)).then((event) => onWorkerEvent(event, STATE)).catch(() => {});
+          sourceForWorkers.map(message => JSON.parse(message.data)).then((event) => onWorkerEvent(event)).catch(() => {});
         });
       });
     }
@@ -175,13 +171,11 @@
       title.style.marginLeft = "5px";
       title.appendChild(document.createTextNode(worker.descriptor.name));
 
-      const color = worker.state === "Available" ? "green" : "blue";
-      const statusEl = document.createElement("span");
-      statusEl.className = `bg-${color}-100 text-${color}-800 text-xs font-medium me-2 px-2.5 py-0.5 rounded dark:bg-${color}-900 dark:text-${color}-300`;
-      statusEl.style.display = "inline-block";
-      statusEl.style.marginLeft = "5px";
-      statusEl.appendChild(document.createTextNode(worker.state === "Available" ? "Available" : "Working ..."));
-
+      const statusWrapper = document.createElement("span");
+      statusWrapper.id = `worker-state-${worker.descriptor.identifier}`;
+      statusWrapper.className = "mx-1";
+      statusWrapper.appendChild(renderWorkerStatus(worker.state));
+    
       const row = document.createElement("tr");
       row.id = `worker-${worker.descriptor.identifier}`;
       const cell1 = document.createElement("td");
@@ -190,12 +184,21 @@
       cell1.title = `worker id: ${worker.descriptor.identifier}`;
       cell1.appendChild(button);
       cell1.appendChild(title);
-      cell1.appendChild(statusEl);
+      cell1.appendChild(statusWrapper);
       cell1.appendChild(document.createElement("br"));
       cell1.appendChild(detailsEl);
 
       row.appendChild(cell1);
       return row;
+    }
+
+    function renderWorkerStatus(state) {
+      const color = state === "Available" ? "green" : "blue";
+      const statusEl = document.createElement("span");
+      statusEl.className = `bg-${color}-100 text-${color}-800 text-xs font-medium me-2 px-2.5 py-0.5 rounded dark:bg-${color}-900 dark:text-${color}-300`;
+      statusEl.style.display = "inline-block";
+      statusEl.appendChild(document.createTextNode(state === "Available" ? "Available" : "Working ..."));
+      return statusEl;
     }
 
     function renderJob(job) {
@@ -322,11 +325,26 @@
       return null;
     }
 
-    function onWorkerEvent(event, state) {
+    function onWorkerEvent(event) {
       const keys = Object.getOwnPropertyNames(event);
+      if (keys.includes("WorkerConnected")) {
+        const table = document.getElementById("workers");
+        table.appendChild(renderWorker(event.WorkerConnected));
+      } else if (keys.includes("WorkerRemoved")) {
+        const row = document.getElementById(`worker-${event.WorkerRemoved.worker_id}`);
+        row.remove();
+      } else if (keys.includes("WorkerStartedJob")) {
+        const statusWrapper = document.getElementById(`worker-state-${event.WorkerStartedJob.worker_id}`);
+        removeAllChildren(statusWrapper);
+        statusWrapper.appendChild(renderWorkerStatus("InUse"));
+      } else if (keys.includes("WorkerAvailable")) {
+        const statusWrapper = document.getElementById(`worker-state-${event.WorkerAvailable.worker_id}`);
+        removeAllChildren(statusWrapper);
+        statusWrapper.appendChild(renderWorkerStatus("Available"));
+      }
     }
 
-    function onJobEvent(event, state) {
+    function onJobEvent(event) {
       const keys = Object.getOwnPropertyNames(event);
       if (keys.includes("Queued")) {
         const jobsEl = document.getElementById("jobs");

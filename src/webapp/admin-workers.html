@@ -82,24 +82,26 @@
 <link href="/webapp/index.css" rel="stylesheet" />
 <script src="/webapp/api.js"></script>
 <script src="/webapp/index.js"></script>
+<script src="/webapp/stream.js"></script>
 <script>
     function doPageLoad() {
       onPageLoad().then((_user) => {
-        apiGetRegistryInformation().then((registryInformation) => {
-          window.localStorage.setItem("cratery-registry-name", registryInformation.registryName);
-        });
         apiGetWorkers().then((workers) => {
           const table = document.getElementById("workers");
           for (const worker of workers) {
             table.appendChild(renderWorker(worker));
           }
         });
+        // listen for worker updates
+        const sourceForWorkers = new StreamEventSource("/api/v1/admin/workers/updates", null);
+        sourceForWorkers.map(message => JSON.parse(message.data)).then((event) => onWorkerEvent(event)).catch(() => {});
       });
     }
 
     function renderWorker(worker) {
       const row = document.createElement("tr");
       row.className = "bg-white border-b dark:bg-gray-800 dark:border-gray-700";
+      row.id = `worker-${worker.descriptor.identifier}`;
       const cell1 = document.createElement("th");
       cell1.setAttribute("scope", "row");
       cell1.className = "px-6 py-4 font-medium text-gray-900 whitespace-nowrap dark:text-white";
@@ -126,12 +128,8 @@
       }
       const cell6 = document.createElement("td");
       cell6.className = "px-6 py-4";
-      const color = worker.state === "Available" ? "green" : "blue";
-      const statusEl = document.createElement("span");
-      statusEl.className = `bg-${color}-100 text-${color}-800 text-xs font-medium me-2 px-2.5 py-0.5 rounded dark:bg-${color}-900 dark:text-${color}-300`;
-      statusEl.style.display = "inline-block";
-      statusEl.appendChild(document.createTextNode(worker.state === "Available" ? "Available" : "Working ..."));
-      cell6.appendChild(statusEl);
+      cell6.id = `worker-state-${worker.descriptor.identifier}`;
+      cell6.appendChild(renderWorkerStatus(worker.state));
 
       row.appendChild(cell1);
       row.appendChild(cell2);
@@ -141,79 +139,33 @@
       row.appendChild(cell6);
       return row;
     }
-
-    function onOpenCreateToken() {
-      const modalEl = document.getElementById('modal-create-token');
-      modalEl.style.display = "unset";
-      const newTokenNameEl = document.getElementById("new-token-name");
-      newTokenNameEl.value = "";
-      newTokenNameEl.focus();
-
-      const closeEl = document.getElementById('modal-create-token-close');
-      closeEl.addEventListener('click', function() {
-        modalEl.style.display = "none";
-      });
-
-      const confirmEl = document.getElementById('modal-create-token-confirm');
-      confirmEl.addEventListener('click', function() {
-        const name = newTokenNameEl.value;
-        if (name.length === 0) {
-          return;
-        }
-        newTokenNameEl.disabled = true;
-        closeEl.disabled = true;
-        confirmEl.disabled = true;
-        apiCreateGlobalToken(name).then((tokenData) => {
-          modalEl.style.display = "none";
-          openTokenCreatedModal(tokenData);
-        }).finally(() => {
-          newTokenNameEl.disabled = false;
-          newTokenNameEl.value = "";
-          closeEl.disabled = false;
-          confirmEl.disabled = false;
-        });
-      });
+  
+    function renderWorkerStatus(state) {
+      const color = state === "Available" ? "green" : "blue";
+      const statusEl = document.createElement("span");
+      statusEl.className = `bg-${color}-100 text-${color}-800 text-xs font-medium me-2 px-2.5 py-0.5 rounded dark:bg-${color}-900 dark:text-${color}-300`;
+      statusEl.style.display = "inline-block";
+      statusEl.appendChild(document.createTextNode(state === "Available" ? "Available" : "Working ..."));
+      return statusEl;
     }
 
-    function openTokenCreatedModal(tokenData) {
-      const user = JSON.parse(window.localStorage.getItem("cratery-user"));
-      const regName = window.localStorage.getItem("cratery-registry-name");
-      const gitCredEl = document.getElementById("modal-token-created-git-cred");
-      gitCredEl.value = `${window.location.protocol}//${tokenData.name}:${tokenData.secret}@${window.location.hostname}`;
-      const cargoCredEl = document.getElementById("modal-token-created-cargo-cred");
-      cargoCredEl.value = `[registries.${regName}]\ntoken = "Basic ${btoa(`${tokenData.name}:${tokenData.secret}`)}"`;
-      const cargoRegEl = document.getElementById("modal-token-created-cargo-reg");
-      cargoRegEl.value = `[registries]\n${regName} = { index = "sparse+${window.location.protocol}//${window.location.hostname}/" }\n\n[registry]\nglobal-credential-providers = ["cargo:token"]`;
-      const modalEl = document.getElementById('modal-token-created');
-      modalEl.style.display = "unset";
-
-      const confirmEl = document.getElementById('modal-token-created-confirm');
-      confirmEl.addEventListener('click', function() {
-        modalEl.style.display = "none";
-        window.location.reload();
-      });
-    }
-
-    function openRevokeTokenModal(token) {
-      const modalEl = document.getElementById('modal-revoke-token');
-      modalEl.style.display = "unset";
-      const tokenNameEl = document.getElementById("revoke-token-name");
-      tokenNameEl.value = token.name;
-      const closeEl = document.getElementById('modal-revoke-token-close');
-      closeEl.addEventListener('click', function() {
-        modalEl.style.display = "none";
-      });
-      const confirmEl = document.getElementById('modal-revoke-token-confirm');
-      confirmEl.addEventListener('click', function() {
-        closeEl.disabled = true;
-        confirmEl.disabled = true;
-        apiRevokeGlobalToken(token.id).then((_) => {
-          window.location.reload();
-        }).finally(() => {
-          closeEl.disabled = false;
-          confirmEl.disabled = false;
-        });
-      });
+    function onWorkerEvent(event) {
+      const keys = Object.getOwnPropertyNames(event);
+      if (keys.includes("WorkerConnected")) {
+        const table = document.getElementById("workers");
+        table.appendChild(renderWorker(event.WorkerConnected));
+      } else if (keys.includes("WorkerRemoved")) {
+        const row = document.getElementById(`worker-${event.WorkerRemoved.worker_id}`);
+        row.remove();
+      } else if (keys.includes("WorkerStartedJob")) {
+        const cell6 = document.getElementById(`worker-state-${event.WorkerStartedJob.worker_id}`);
+        removeAllChildren(cell6);
+        cell6.appendChild(renderWorkerStatus("InUse"));
+      } else if (keys.includes("WorkerAvailable")) {
+        const cell6 = document.getElementById(`worker-state-${event.WorkerAvailable.worker_id}`);
+        removeAllChildren(cell6);
+        cell6.appendChild(renderWorkerStatus("Available"));
+      }
     }
 </script>
 </html>
