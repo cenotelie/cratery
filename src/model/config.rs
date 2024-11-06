@@ -835,6 +835,20 @@ impl Configuration {
             token: self.self_service_token.clone(),
         }
     }
+
+    /// Sets the self configuration from a external registry spec
+    pub fn set_self_from_external(&mut self, external_config: ExternalRegistry) {
+        self.self_local_name = external_config.name;
+        self.web_public_uri = if external_config.protocol == ExternalRegistryProtocol::Sparse {
+            external_config.index[..(external_config.index.len() - 1)].to_string()
+        } else {
+            external_config.index
+        };
+        self.index.allow_protocol_sparse = external_config.protocol == ExternalRegistryProtocol::Sparse;
+        self.index.allow_protocol_git = external_config.protocol == ExternalRegistryProtocol::Git;
+        self.self_service_login = external_config.login;
+        self.self_service_token = external_config.token;
+    }
 }
 
 /// Gets the rustc version

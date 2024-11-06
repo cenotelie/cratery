@@ -84,7 +84,7 @@ async fn main_loop(
         ));
     };
     let external_config = serde_json::from_str::<ExternalRegistry>(&message)?;
-    config.external_registries.push(external_config);
+    config.set_self_from_external(external_config);
     config.write_auth_config().await?;
     let config = &config;
 
