@@ -241,8 +241,8 @@ impl DocsGeneratorImpl {
     async fn docs_worker_execute_job_remote(&self, job: &DocGenJob) -> Result<(), ApiError> {
         let mut worker = self
             .worker_nodes
-            .get_worker_for(job.get_worker_selector(), JobIdentifier::DocGen(job.id))
-            .await;
+            .get_worker_for(job.get_worker_selector(), JobIdentifier::DocGen(job.id))?
+            .await?;
         self.update_job(job, DocGenJobState::Working, None).await?;
         worker.sender().send(JobSpecification::DocGen(job.clone())).await?;
         while let Some(update) = worker.update_receiver().recv().await {

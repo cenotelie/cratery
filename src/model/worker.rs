@@ -4,6 +4,7 @@
 
 //! Data model for worker nodes and the protocol to communicate between the master and the workers
 
+use std::fmt::Display;
 use std::future::Future;
 use std::pin::Pin;
 use std::sync::{Arc, RwLock};
@@ -224,6 +225,61 @@ impl WorkerSelector {
     }
 }
 
+impl Display for WorkerSelector {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let mut first = true;
+        write!(f, "(")?;
+        if let Some(host) = &self.toolchain_host {
+            write!(f, "host={host}")?;
+            first = false;
+        }
+        if let Some(target) = &self.toolchain_installed_target {
+            if !first {
+                write!(f, ", ")?;
+            }
+            write!(f, "installed target={target}")?;
+            first = false;
+        }
+        if let Some(target) = &self.toolchain_available_target {
+            if !first {
+                write!(f, ", ")?;
+            }
+            write!(f, "available target={target}")?;
+            first = false;
+        }
+        if !self.capabilities.is_empty() {
+            if !first {
+                write!(f, ", ")?;
+            }
+            write!(f, "capabilities=")?;
+            first = true;
+            for capability in &self.capabilities {
+                if !first {
+                    write!(f, ",")?;
+                }
+                write!(f, "{capability}")?;
+            }
+        }
+        write!(f, ")")?;
+        Ok(())
+    }
+}
+
+/// Error when no worker matches the selector
+#[derive(Debug, Clone)]
+pub struct NoMatchingWorkerError {
+    /// The selector that was used
+    pub selector: WorkerSelector,
+}
+
+impl Display for NoMatchingWorkerError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "no connected worker matches the selector: {}", self.selector)
+    }
+}
+
+impl std::error::Error for NoMatchingWorkerError {}
+
 /// Wait for a worker
 pub struct WorkerWaiter {
     /// The parent manager
@@ -237,7 +293,7 @@ pub struct WorkerWaiter {
 }
 
 impl Future for WorkerWaiter {
-    type Output = WorkerCheckout;
+    type Output = Result<WorkerCheckout, NoMatchingWorkerError>;
 
     fn poll(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
         if let Some(data) = self.worker.take() {
@@ -245,26 +301,31 @@ impl Future for WorkerWaiter {
                 worker_id: data.descriptor.identifier.clone(),
                 job_id: self.job_id,
             });
-            return Poll::Ready(data);
+            return Poll::Ready(Ok(data));
         }
         let mut inner = self.manager.inner.write().unwrap();
-        if let Some(worker) = self
+        match self
             .manager
             .clone()
             .try_get_worker_for(&mut inner, &self.selector, self.job_id)
         {
-            self.manager.send_event(WorkerEvent::WorkerStartedJob {
-                worker_id: worker.descriptor.identifier.clone(),
-                job_id: self.job_id,
-            });
-            return Poll::Ready(worker);
+            Ok(Some(worker)) => {
+                self.manager.send_event(WorkerEvent::WorkerStartedJob {
+                    worker_id: worker.descriptor.identifier.clone(),
+                    job_id: self.job_id,
+                });
+                Poll::Ready(Ok(worker))
+            }
+            Ok(None) => {
+                // queue
+                inner.queue.push(QueuedRequest {
+                    selector: self.selector.clone(),
+                    waker: cx.waker().clone(),
+                });
+                Poll::Pending
+            }
+            Err(error) => Poll::Ready(Err(error)),
         }
-        // queue
-        inner.queue.push(QueuedRequest {
-            selector: self.selector.clone(),
-            waker: cx.waker().clone(),
-        });
-        Poll::Pending
     }
 }
 
@@ -376,17 +437,20 @@ impl WorkersManager {
     }
 
     /// Gets a worker for a selector
-    #[must_use]
-    pub fn get_worker_for(&self, selector: WorkerSelector, job_id: JobIdentifier) -> WorkerWaiter {
+    pub fn get_worker_for(
+        &self,
+        selector: WorkerSelector,
+        job_id: JobIdentifier,
+    ) -> Result<WorkerWaiter, NoMatchingWorkerError> {
         let worker = self
             .clone()
-            .try_get_worker_for(&mut self.inner.write().unwrap(), &selector, job_id);
-        WorkerWaiter {
+            .try_get_worker_for(&mut self.inner.write().unwrap(), &selector, job_id)?;
+        Ok(WorkerWaiter {
             manager: self.clone(),
             selector,
             job_id,
             worker,
-        }
+        })
     }
 
     /// Put back a worker as available
@@ -430,17 +494,26 @@ impl WorkersManager {
         inner: &mut WorkersManagerInner,
         selector: &WorkerSelector,
         job_id: JobIdentifier,
-    ) -> Option<WorkerCheckout> {
-        let target = inner
-            .workers
-            .iter_mut()
-            .find(|w| w.descriptor.matches(selector) && w.state.is_available())?;
-        Some(WorkerCheckout {
-            manager: self,
-            descriptor: target.descriptor.clone(),
-            job_sender: target.job_sender.clone(),
-            update_receiver: Some(target.checkout(job_id)),
-        })
+    ) -> Result<Option<WorkerCheckout>, NoMatchingWorkerError> {
+        let mut at_least_one = false;
+        for candidate in inner.workers.iter_mut().filter(|w| w.descriptor.matches(selector)) {
+            at_least_one = true;
+            if candidate.state.is_available() {
+                return Ok(Some(WorkerCheckout {
+                    manager: self,
+                    descriptor: candidate.descriptor.clone(),
+                    job_sender: candidate.job_sender.clone(),
+                    update_receiver: Some(candidate.checkout(job_id)),
+                }));
+            }
+        }
+        if at_least_one {
+            Ok(None)
+        } else {
+            Err(NoMatchingWorkerError {
+                selector: selector.clone(),
+            })
+        }
     }
 
     /// Adds a listener to job updates
