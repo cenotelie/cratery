@@ -333,10 +333,10 @@ impl NodeRole {
         }
     }
 
-    /// Gets whether this configuration is for a master node
+    /// Gets whether this configuration is for a worker node
     #[must_use]
-    pub fn is_master(&self) -> bool {
-        matches!(self, Self::Master(_))
+    pub fn is_worker(&self) -> bool {
+        matches!(self, Self::Worker(_))
     }
 }
 

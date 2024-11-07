@@ -191,7 +191,10 @@ async fn main() {
     setup_log();
     info!("{} commit={} tag={}", CRATE_NAME, GIT_HASH, GIT_TAG);
     let configuration = services::StandardServiceProvider::get_configuration().await.unwrap();
-    if configuration.self_role.is_master() {
+    if configuration.self_role.is_worker() {
+        let _ = waiting_sigterm(pin!(worker::main_worker(configuration))).await;
+    } else {
+        // standalone or master
         let application = Application::launch::<services::StandardServiceProvider>(configuration)
             .await
             .unwrap();
@@ -202,7 +205,5 @@ async fn main() {
         );
         let server = pin!(main_serve_app(application, cookie_key,));
         let _ = waiting_sigterm(server).await;
-    } else {
-        let _ = waiting_sigterm(pin!(worker::main_worker(configuration))).await;
     }
 }
