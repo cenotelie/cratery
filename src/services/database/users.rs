@@ -48,6 +48,7 @@ impl Database {
                 ("client_id", &configuration.oauth_client_id),
                 ("client_secret", &configuration.oauth_client_secret),
             ])
+            .header(reqwest::header::ACCEPT, "application/json")
             .send()
             .await?;
         if !response.status().is_success() {
