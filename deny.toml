@@ -26,9 +26,6 @@ exceptions = [
     { allow = [
         "OpenSSL",
     ], crate = "ring" },
-    { allow = [
-        "Unicode-DFS-2016",
-    ], crate = "unicode-ident" },
 ]
 
 [[licenses.clarify]]
