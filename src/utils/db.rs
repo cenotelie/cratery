@@ -122,7 +122,7 @@ pub struct CheckedOutAppTransaction<'t> {
     lock: ResourceLock<'t, Transaction<'static, Sqlite>>,
 }
 
-impl<'t> Deref for CheckedOutAppTransaction<'t> {
+impl Deref for CheckedOutAppTransaction<'_> {
     type Target = SqliteConnection;
 
     fn deref(&self) -> &Self::Target {
@@ -130,7 +130,7 @@ impl<'t> Deref for CheckedOutAppTransaction<'t> {
     }
 }
 
-impl<'t> DerefMut for CheckedOutAppTransaction<'t> {
+impl DerefMut for CheckedOutAppTransaction<'_> {
     fn deref_mut(&mut self) -> &mut Self::Target {
         &mut self.lock
     }

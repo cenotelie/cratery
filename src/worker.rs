@@ -178,12 +178,15 @@ where
             sender
                 .lock()
                 .await
-                .send(Message::Text(serde_json::to_string(&JobUpdate::DocGen(DocGenJobUpdate {
-                    job_id: job.id,
-                    state,
-                    last_update: now,
-                    log: Some(log),
-                }))?.into()))
+                .send(Message::Text(
+                    serde_json::to_string(&JobUpdate::DocGen(DocGenJobUpdate {
+                        job_id: job.id,
+                        state,
+                        last_update: now,
+                        log: Some(log),
+                    }))?
+                    .into(),
+                ))
                 .await?;
         }
         Err(error) => {
@@ -191,12 +194,15 @@ where
             sender
                 .lock()
                 .await
-                .send(Message::Text(serde_json::to_string(&JobUpdate::DocGen(DocGenJobUpdate {
-                    job_id: job.id,
-                    state: DocGenJobState::Failure,
-                    last_update: now,
-                    log: Some(format!("{error}")),
-                }))?.into()))
+                .send(Message::Text(
+                    serde_json::to_string(&JobUpdate::DocGen(DocGenJobUpdate {
+                        job_id: job.id,
+                        state: DocGenJobState::Failure,
+                        last_update: now,
+                        log: Some(format!("{error}")),
+                    }))?
+                    .into(),
+                ))
                 .await?;
         }
     }

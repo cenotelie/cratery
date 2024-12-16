@@ -30,14 +30,14 @@ pub struct ResourceLock<'r, R> {
     inner: MutexGuard<'r, R>,
 }
 
-impl<'r, R> Deref for ResourceLock<'r, R> {
+impl<R> Deref for ResourceLock<'_, R> {
     type Target = R;
     fn deref(&self) -> &Self::Target {
         &self.inner
     }
 }
 
-impl<'r, R> DerefMut for ResourceLock<'r, R> {
+impl<R> DerefMut for ResourceLock<'_, R> {
     fn deref_mut(&mut self) -> &mut Self::Target {
         &mut self.inner
     }

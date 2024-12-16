@@ -133,7 +133,7 @@ pub enum WorkerPublicState {
     InUse(JobIdentifier),
 }
 
-impl<'a> From<&'a WorkerState> for WorkerPublicState {
+impl From<&'_ WorkerState> for WorkerPublicState {
     fn from(value: &WorkerState) -> Self {
         match value {
             WorkerState::Available(_) => Self::Available,
