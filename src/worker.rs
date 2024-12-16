@@ -71,7 +71,7 @@ async fn main_loop(
 ) -> Result<(), ApiError> {
     let (mut sender, mut receiver) = ws.split();
     // handshake: send the worker's descriptor
-    sender.send(Message::Text(serde_json::to_string(descriptor)?)).await?;
+    sender.send(Message::Text(serde_json::to_string(descriptor)?.into())).await?;
     // handshake: get the connection data to the master
     let message = receiver
         .next()
@@ -83,7 +83,7 @@ async fn main_loop(
             String::from("expected configuration from server"),
         ));
     };
-    let external_config = serde_json::from_str::<ExternalRegistry>(&message)?;
+    let external_config = serde_json::from_str::<ExternalRegistry>(message.as_str())?;
     config.set_self_from_external(external_config);
     config.write_auth_config().await?;
     let config = &config;
@@ -108,7 +108,7 @@ async fn main_loop(
                     warn!("heartbeat: waited too long: {}ms", elapsed.as_millis());
                 }
                 // send the hearbeat
-                sender.lock().await.send(Message::Pong(vec![code])).await?;
+                sender.lock().await.send(Message::Pong(vec![code].into())).await?;
                 code = code.wrapping_add(1);
                 last = std::time::Instant::now();
             }
@@ -127,12 +127,12 @@ async fn main_loop(
                             return Ok(());
                         }
                         Message::Binary(bytes) => {
-                            if let Ok(job) = serde_json::from_slice::<JobSpecification>(&bytes) {
+                            if let Ok(job) = serde_json::from_slice::<JobSpecification>(bytes.as_slice()) {
                                 current_job = Box::pin(worker_on_job(sender.clone(), job, config)).maybe();
                             }
                         }
                         Message::Text(data) => {
-                            if let Ok(job) = serde_json::from_str::<JobSpecification>(&data) {
+                            if let Ok(job) = serde_json::from_str::<JobSpecification>(data.as_str()) {
                                 current_job = Box::pin(worker_on_job(sender.clone(), job, config)).maybe();
                             }
                         }
@@ -183,7 +183,7 @@ where
                     state,
                     last_update: now,
                     log: Some(log),
-                }))?))
+                }))?.into()))
                 .await?;
         }
         Err(error) => {
@@ -196,7 +196,7 @@ where
                     state: DocGenJobState::Failure,
                     last_update: now,
                     log: Some(format!("{error}")),
-                }))?))
+                }))?.into()))
                 .await?;
         }
     }
