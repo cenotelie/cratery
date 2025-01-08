@@ -10,7 +10,7 @@ use std::ops::{Deref, DerefMut};
 
 use axum::extract::{ConnectInfo, FromRequestParts};
 use axum::http::request::Parts;
-use axum::{async_trait, RequestPartsExt};
+use axum::RequestPartsExt;
 use base64::prelude::BASE64_URL_SAFE;
 use base64::Engine;
 use cookie::{Cookie, CookieJar};
@@ -21,7 +21,6 @@ use serde::Deserialize;
 #[derive(Debug, Clone)]
 pub struct ClientIp(pub Option<IpAddr>);
 
-#[async_trait]
 impl<S> FromRequestParts<S> for ClientIp
 where
     S: Send + Sync,
@@ -117,7 +116,6 @@ impl<'de> Visitor<'de> for Base64Visitor {
 #[derive(Debug, Clone)]
 pub struct Cookies(pub CookieJar);
 
-#[async_trait]
 impl<S> FromRequestParts<S> for Cookies
 where
     S: Send + Sync,

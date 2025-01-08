@@ -29,7 +29,7 @@ data-encoding = "2.1"
 flate2 ="1.0"
 http-body = "1"
 mime = "0.3"
-opendal = { version = "0.50", features = ["services-fs", "services-s3"] }
+opendal = { version = "0.51", features = ["services-fs", "services-s3"] }
 quick-xml = "0.37"
 rand = "0.8"
 ring = "0.17"
@@ -47,6 +47,6 @@ tokio-util = {version = "0.7", features = ["io"]}
 # framework for the application
 lettre = { version = "0.11", default-features = false, features = ["builder", "smtp-transport", "rustls-tls", "tokio1", "tokio1-rustls-tls"] }
 sqlx = { version = "0.8", default-features = false, features = ["runtime-tokio-rustls", "sqlite", "macros", "chrono"] }
-axum = { version = "0.7", features = ["http2", "ws"] }
+axum = { version = "0.8", features = ["http2", "ws"] }
 reqwest = { version = "0.12", default-features = false, features = ["stream", "rustls-tls", "rustls-tls-native-roots"] }
-tokio-tungstenite = "0.25"
+tokio-tungstenite = "0.26"

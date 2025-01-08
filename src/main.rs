@@ -44,6 +44,7 @@ pub const GIT_HASH: &str = env!("GIT_HASH");
 pub const GIT_TAG: &str = env!("GIT_TAG");
 
 /// Main payload for serving the application
+#[allow(clippy::too_many_lines)]
 async fn main_serve_app(application: Arc<Application>, cookie_key: Key) -> Result<(), std::io::Error> {
     // web application
     let webapp_resources = webapp::get_resources();
@@ -64,13 +65,13 @@ async fn main_serve_app(application: Arc<Application>, cookie_key: Key) -> Resul
         .route("/git-upload-pack", post(routes::index_serve_git_upload_pack))
         // web resources
         .route("/favicon.png", get(routes::get_favicon))
-        .route("/crates/:package/:version", get(routes::get_redirection_crate_version))
-        .route("/crates/:package", get(routes::get_redirection_crate))
-        .route("/webapp/*path", get(routes::get_webapp_resource))
+        .route("/crates/{package}/{version}", get(routes::get_redirection_crate_version))
+        .route("/crates/{package}", get(routes::get_redirection_crate))
+        .route("/webapp/{*path}", get(routes::get_webapp_resource))
         // special handling for cargo login
         .route("/me", get(routes::webapp_me))
         // serve the documentation
-        .route("/docs/*path", get(routes::get_docs_resource))
+        .route("/docs/{*path}", get(routes::get_docs_resource))
         // API
         .nest(
             "/api/v1",
@@ -84,7 +85,7 @@ async fn main_serve_app(application: Arc<Application>, cookie_key: Key) -> Resul
                         Router::new()
                             .route("/", get(routes::api_v1_get_user_tokens))
                             .route("/", put(routes::api_v1_create_user_token))
-                            .route("/:token_id", delete(routes::api_v1_revoke_user_token)),
+                            .route("/{token_id}", delete(routes::api_v1_revoke_user_token)),
                     ),
                 )
                 .route("/oauth/code", post(routes::api_v1_login_with_oauth_code))
@@ -96,21 +97,21 @@ async fn main_serve_app(application: Arc<Application>, cookie_key: Key) -> Resul
                             "/users",
                             Router::new()
                                 .route("/", get(routes::api_v1_get_users))
-                                .route("/:target", patch(routes::api_v1_update_user))
-                                .route("/:target", delete(routes::api_v1_delete_user))
-                                .route("/:target/deactivate", post(routes::api_v1_deactivate_user))
-                                .route("/:target/reactivate", post(routes::api_v1_reactivate_user)),
+                                .route("/{target}", patch(routes::api_v1_update_user))
+                                .route("/{target}", delete(routes::api_v1_delete_user))
+                                .route("/{target}/deactivate", post(routes::api_v1_deactivate_user))
+                                .route("/{target}/reactivate", post(routes::api_v1_reactivate_user)),
                         )
                         .nest(
                             "/tokens",
                             Router::new()
                                 .route("/", get(routes::api_v1_get_global_tokens))
                                 .route("/", put(routes::api_v1_create_global_token))
-                                .route("/:token_id", delete(routes::api_v1_revoke_global_token)),
+                                .route("/{token_id}", delete(routes::api_v1_revoke_global_token)),
                         )
                         .route("/jobs/docgen", get(routes::api_v1_get_doc_gen_jobs))
                         .route("/jobs/docgen/updates", get(routes::api_v1_get_doc_gen_job_updates))
-                        .route("/jobs/docgen/:job_id/log", get(routes::api_v1_get_doc_gen_job_log))
+                        .route("/jobs/docgen/{job_id}/log", get(routes::api_v1_get_doc_gen_job_log))
                         .route("/workers", get(routes::api_v1_get_workers))
                         .route("/workers/updates", get(routes::api_v1_get_workers_updates))
                         .route("/workers/connect", get(routes::api_v1_worker_connect)),
@@ -123,26 +124,26 @@ async fn main_serve_app(application: Arc<Application>, cookie_key: Key) -> Resul
                         .route("/undocumented", get(routes::api_v1_get_crates_undocumented))
                         .route("/outdated", get(routes::api_v1_get_crates_outdated_heads))
                         .route("/new", put(routes::api_v1_cargo_publish_crate_version))
-                        .route("/:package", get(routes::api_v1_get_crate_info))
-                        .route("/:package/readme", get(routes::api_v1_get_crate_last_readme))
-                        .route("/:package/:version/readme", get(routes::api_v1_get_crate_readme))
-                        .route("/:package/:version/download", get(routes::api_v1_download_crate))
-                        .route("/:package/:version/yank", delete(routes::api_v1_cargo_yank))
-                        .route("/:package/:version/unyank", put(routes::api_v1_cargo_unyank))
-                        .route("/:package/:version/docsregen", post(routes::api_v1_regen_crate_version_doc))
-                        .route("/:package/:version/checkdeps", get(routes::api_v1_check_crate_version))
-                        .route("/:package/dlstats", get(routes::api_v1_get_crate_dl_stats))
-                        .route("/:package/owners", get(routes::api_v1_cargo_get_crate_owners))
-                        .route("/:package/owners", put(routes::api_v1_cargo_add_crate_owners))
-                        .route("/:package/owners", delete(routes::api_v1_cargo_remove_crate_owners))
-                        .route("/:package/targets", get(routes::api_v1_get_crate_targets))
-                        .route("/:package/targets", patch(routes::api_v1_set_crate_targets))
-                        .route("/:package/capabilities", get(routes::api_v1_get_crate_required_capabilities))
+                        .route("/{package}", get(routes::api_v1_get_crate_info))
+                        .route("/{package}/readme", get(routes::api_v1_get_crate_last_readme))
+                        .route("/{package}/{version}/readme", get(routes::api_v1_get_crate_readme))
+                        .route("/{package}/{version}/download", get(routes::api_v1_download_crate))
+                        .route("/{package}/{version}/yank", delete(routes::api_v1_cargo_yank))
+                        .route("/{package}/{version}/unyank", put(routes::api_v1_cargo_unyank))
+                        .route("/{package}/{version}/docsregen", post(routes::api_v1_regen_crate_version_doc))
+                        .route("/{package}/{version}/checkdeps", get(routes::api_v1_check_crate_version))
+                        .route("/{package}/dlstats", get(routes::api_v1_get_crate_dl_stats))
+                        .route("/{package}/owners", get(routes::api_v1_cargo_get_crate_owners))
+                        .route("/{package}/owners", put(routes::api_v1_cargo_add_crate_owners))
+                        .route("/{package}/owners", delete(routes::api_v1_cargo_remove_crate_owners))
+                        .route("/{package}/targets", get(routes::api_v1_get_crate_targets))
+                        .route("/{package}/targets", patch(routes::api_v1_set_crate_targets))
+                        .route("/{package}/capabilities", get(routes::api_v1_get_crate_required_capabilities))
                         .route(
-                            "/:package/capabilities",
+                            "/{package}/capabilities",
                             patch(routes::api_v1_set_crate_required_capabilities),
                         )
-                        .route("/:package/deprecated", patch(routes::api_v1_set_crate_deprecation)),
+                        .route("/{package}/deprecated", patch(routes::api_v1_set_crate_deprecation)),
                 ),
         )
         // fall back to serving the index

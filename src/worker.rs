@@ -127,7 +127,7 @@ async fn main_loop(
                             return Ok(());
                         }
                         Message::Binary(bytes) => {
-                            if let Ok(job) = serde_json::from_slice::<JobSpecification>(bytes.as_slice()) {
+                            if let Ok(job) = serde_json::from_slice::<JobSpecification>(bytes.as_ref()) {
                                 current_job = Box::pin(worker_on_job(sender.clone(), job, config)).maybe();
                             }
                         }

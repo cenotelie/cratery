@@ -555,9 +555,9 @@ async fn worker_connect_handle_inner(web_socket: WebSocket, state: Arc<AxumState
     ws_sender
         .lock()
         .await
-        .send(Message::Text(serde_json::to_string(
-            &state.application.configuration.get_self_as_external(),
-        )?))
+        .send(Message::Text(
+            serde_json::to_string(&state.application.configuration.get_self_as_external())?.into(),
+        ))
         .await?;
 
     // communication channels
@@ -581,7 +581,7 @@ async fn worker_connect_handle_inner(web_socket: WebSocket, state: Arc<AxumState
                     Message::Ping(_) => { /* do nothing */ }
                     Message::Pong(data) => {
                         // dispatch to health_checker
-                        to_health_checker.send(data).await?;
+                        to_health_checker.send(data.into()).await?;
                     }
                     Message::Close(_) => {
                         break;
@@ -616,7 +616,7 @@ async fn worker_connect_handle_inner(web_socket: WebSocket, state: Arc<AxumState
                 ws_sender
                     .lock()
                     .await
-                    .send(Message::Text(serde_json::to_string(&job)?))
+                    .send(Message::Text(serde_json::to_string(&job)?.into()))
                     .await?;
             }
             Ok::<_, ApiError>(())

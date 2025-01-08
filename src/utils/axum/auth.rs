@@ -9,7 +9,7 @@ use std::sync::Arc;
 
 use axum::extract::FromRequestParts;
 use axum::http::request::Parts;
-use axum::{async_trait, RequestPartsExt};
+use axum::RequestPartsExt;
 use base64::prelude::BASE64_STANDARD;
 use base64::Engine;
 use cookie::time::OffsetDateTime;
@@ -106,7 +106,6 @@ impl From<Token> for AuthData {
     }
 }
 
-#[async_trait]
 impl<S> FromRequestParts<Arc<S>> for AuthData
 where
     S: AxumStateForCookies + Send + Sync,
