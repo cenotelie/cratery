@@ -100,14 +100,14 @@ impl Database {
         versions_in_index: Vec<IndexCrateMetadata>,
     ) -> Result<CrateInfo, ApiError> {
         let row = sqlx::query!(
-            "SELECT isDeprecated AS is_deprecated, canOverwrite AS can_overwrite, targets, nativeTargets AS nativetargets, capabilities FROM Package WHERE name = $1 LIMIT 1",
+            "SELECT isDeprecated AS is_deprecated, canRemove AS can_remove, targets, nativeTargets AS nativetargets, capabilities FROM Package WHERE name = $1 LIMIT 1",
             package
         )
         .fetch_optional(&mut *self.transaction.borrow().await)
         .await?
         .ok_or_else(error_not_found)?;
         let is_deprecated = row.is_deprecated;
-        let can_overwrite = row.can_overwrite;
+        let can_remove = row.can_remove;
         let targets = comma_sep_to_vec(&row.targets);
         let native_targets = comma_sep_to_vec(&row.nativetargets);
         let capabilities = comma_sep_to_vec(&row.capabilities);
@@ -157,7 +157,7 @@ impl Database {
         Ok(CrateInfo {
             metadata: None,
             is_deprecated,
-            can_overwrite,
+            can_remove,
             versions,
             targets: targets
                 .into_iter()
@@ -172,54 +172,35 @@ impl Database {
 
     /// Publish a crate
     #[allow(clippy::similar_names)]
-    pub async fn publish_crate_version(
-        &self,
-        uid: i64,
-        package: &CrateUploadData,
-    ) -> Result<(CrateUploadResult, bool), ApiError> {
-        let mut warnings = package.metadata.validate()?;
+    pub async fn publish_crate_version(&self, uid: i64, package: &CrateUploadData) -> Result<CrateUploadResult, ApiError> {
+        let warnings = package.metadata.validate()?;
         let lowercase = package.metadata.name.to_ascii_lowercase();
-
-        // get existing package and version data
-        let package_row = sqlx::query!(
-            "SELECT name, canOverwrite AS can_overwrite FROM Package WHERE lowercase = $1 LIMIT 1",
-            lowercase
-        )
-        .fetch_optional(&mut *self.transaction.borrow().await)
-        .await?;
-        let version_row = sqlx::query!(
+        let row = sqlx::query!(
             "SELECT upload FROM PackageVersion WHERE package = $1 AND version = $2 LIMIT 1",
             package.metadata.name,
             package.metadata.vers
         )
         .fetch_optional(&mut *self.transaction.borrow().await)
         .await?;
-
-        // check for previous version
-        let is_overwriting = if let Some(version_row) = version_row {
-            // has previous version
-            if package_row.as_ref().is_some_and(|r| !r.can_overwrite) {
-                // cannot overwrite
-                return Err(specialize(
-                    error_invalid_request(),
-                    format!(
-                        "Package {} already exists in version {}, uploaded on {}",
-                        &package.metadata.name, &package.metadata.vers, version_row.upload
-                    ),
-                ));
-            }
-            true
-        } else {
-            false
-        };
-
+        if let Some(row) = row {
+            return Err(specialize(
+                error_invalid_request(),
+                format!(
+                    "Package {} already exists in version {}, uploaded on {}",
+                    &package.metadata.name, &package.metadata.vers, row.upload
+                ),
+            ));
+        }
         // check whether the package already exists
-        if let Some(package_row) = package_row {
+        let row = sqlx::query!("SELECT name FROM Package WHERE lowercase = $1 LIMIT 1", lowercase)
+            .fetch_optional(&mut *self.transaction.borrow().await)
+            .await?;
+        if let Some(row) = row {
             // check this is the same package
-            if package_row.name != lowercase {
+            if row.name != lowercase {
                 return Err(specialize(
                     error_invalid_request(),
-                    format!("A package named {} already exists", package_row.name),
+                    format!("A package named {} already exists", row.name),
                 ));
             }
             // check the ownership
@@ -227,7 +208,7 @@ impl Database {
         } else {
             // create the package
             sqlx::query!(
-                "INSERT INTO Package (name, lowercase, targets, nativeTargets, capabilities, isDeprecated, canOverwrite) VALUES ($1, $2, '', '', '', FALSE, FALSE)",
+                "INSERT INTO Package (name, lowercase, targets, nativeTargets, capabilities, isDeprecated, canRemove) VALUES ($1, $2, '', '', '', FALSE, FALSE)",
                 package.metadata.name,
                 lowercase
             )
@@ -242,37 +223,68 @@ impl Database {
             .execute(&mut *self.transaction.borrow().await)
             .await?;
         }
-
         let now = Local::now().naive_local();
+        // create the version
         let description = package.metadata.description.as_ref().map_or("", String::as_str);
-        if is_overwriting {
-            // update the version
-            sqlx::query!("UPDATE PackageVersion SET description = $3, upload = $4, uploadedBy = $5, yanked = FALSE, depsLastCheck = 0, depsHasOutdated = FALSE, depsHasCVEs = 0 WHERE package = $1 AND version = $2",
-                package.metadata.name,
-                package.metadata.vers,
-                description,
-                now,
-                uid
-            ).execute(&mut *self.transaction.borrow().await)
-            .await?;
-            warnings
-                .warnings
-                .other
-                .push(format!("overwriting existing version {}", package.metadata.vers));
-        } else {
-            // create the version
-            sqlx::query!(
-                "INSERT INTO PackageVersion (package, version, description, upload, uploadedBy, yanked, downloadCount, downloads, depsLastCheck, depsHasOutdated, depsHasCVEs) VALUES ($1, $2, $3, $4, $5, false, 0, NULL, 0, false, false)",
-                package.metadata.name,
-                package.metadata.vers,
-                description,
-                now,
-                uid,
-            )
-            .execute(&mut *self.transaction.borrow().await)
-            .await?;
+        sqlx::query!(
+            "INSERT INTO PackageVersion (package, version, description, upload, uploadedBy, yanked, downloadCount, downloads, depsLastCheck, depsHasOutdated, depsHasCVEs) VALUES ($1, $2, $3, $4, $5, false, 0, NULL, 0, false, false)",
+            package.metadata.name,
+            package.metadata.vers,
+            description,
+            now,
+            uid,
+        )
+        .execute(&mut *self.transaction.borrow().await)
+        .await?;
+        Ok(warnings)
+    }
+
+    /// Completely removes a version from the registry
+    pub async fn remove_crate_version(&self, package: &str, version: &str) -> Result<(), ApiError> {
+        // check whether this is allowed
+        let can_remove = sqlx::query!(
+            "SELECT canRemove AS can_remove FROM Package WHERE lowercase = $1 LIMIT 1",
+            package
+        )
+        .fetch_optional(&mut *self.transaction.borrow().await)
+        .await?
+        .is_some_and(|r| r.can_remove);
+        if !can_remove {
+            return Err(specialize(
+                error_invalid_request(),
+                format!("Package {package} does not allow removing versions",),
+            ));
         }
-        Ok((warnings, is_overwriting))
+        // check version exists
+        let row = sqlx::query!(
+            "SELECT id FROM PackageVersion WHERE package = $1 AND version = $2 LIMIT 1",
+            package,
+            version
+        )
+        .fetch_optional(&mut *self.transaction.borrow().await)
+        .await?;
+        if row.is_none() {
+            return Err(specialize(
+                error_not_found(),
+                format!("Package {package}, version {version} not found",),
+            ));
+        }
+        sqlx::query!(
+            "DELETE FROM PackageVersion WHERE package = $1 AND version = $2",
+            package,
+            version
+        )
+        .execute(&mut *self.transaction.borrow().await)
+        .await?;
+        sqlx::query!(
+            "DELETE FROM PackageVersionDocs WHERE package = $1 AND version = $2",
+            package,
+            version
+        )
+        .execute(&mut *self.transaction.borrow().await)
+        .await?;
+
+        Ok(())
     }
 
     /// Yank a crate version
@@ -848,9 +860,9 @@ impl Database {
         Ok(())
     }
 
-    /// Sets whether a crate can overwrite existing versions
-    pub async fn set_crate_can_overwrite(&self, package: &str, can_overwrite: bool) -> Result<(), ApiError> {
-        sqlx::query!("UPDATE Package SET canOverwrite = $2 WHERE name = $1", package, can_overwrite)
+    /// Sets whether a crate can have versions completely removed
+    pub async fn set_crate_can_can_remove(&self, package: &str, can_remove: bool) -> Result<(), ApiError> {
+        sqlx::query!("UPDATE Package SET canRemove = $2 WHERE name = $1", package, can_remove)
             .execute(&mut *self.transaction.borrow().await)
             .await?;
         Ok(())

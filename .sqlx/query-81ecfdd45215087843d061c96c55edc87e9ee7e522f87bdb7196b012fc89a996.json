@@ -1,6 +1,6 @@
 {
   "db_name": "SQLite",
-  "query": "SELECT isDeprecated AS is_deprecated, canOverwrite AS can_overwrite, targets, nativeTargets AS nativetargets, capabilities FROM Package WHERE name = $1 LIMIT 1",
+  "query": "SELECT isDeprecated AS is_deprecated, canRemove AS can_remove, targets, nativeTargets AS nativetargets, capabilities FROM Package WHERE name = $1 LIMIT 1",
   "describe": {
     "columns": [
       {
@@ -9,7 +9,7 @@
         "type_info": "Bool"
       },
       {
-        "name": "can_overwrite",
+        "name": "can_remove",
         "ordinal": 1,
         "type_info": "Bool"
       },
@@ -40,5 +40,5 @@
       false
     ]
   },
-  "hash": "a8a83d769e720d6116b79148a8d167c24ce5c5a78461eded667c5fbd909bbead"
+  "hash": "81ecfdd45215087843d061c96c55edc87e9ee7e522f87bdb7196b012fc89a996"
 }

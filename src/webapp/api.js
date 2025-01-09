@@ -234,10 +234,10 @@ async function apiSetCrateDeprecation(crate, isDeprecated) {
   return await onResponseJson(response);
 }
 
-async function apiSetCrateCanOverwrite(crate, canOverwrite) {
-  const response = await fetch(`/api/v1/crates/${crate}/canoverwrite`, {
+async function apiSetCrateCanRemove(crate, canRemove) {
+  const response = await fetch(`/api/v1/crates/${crate}/canremove`, {
     method: "PATCH",
-    body: JSON.stringify(canOverwrite),
+    body: JSON.stringify(canRemove),
     headers: [["content-type", "application/json"]],
   });
   return await onResponseJson(response);
@@ -246,6 +246,13 @@ async function apiSetCrateCanOverwrite(crate, canOverwrite) {
 async function apiRegenCrateDoc(crate, version) {
   const response = await fetch(`/api/v1/crates/${crate}/${version}/docsregen`, {
     method: "POST",
+  });
+  return await onResponseJson(response);
+}
+
+async function apiRemoveCrateVersion(crate, version) {
+  const response = await fetch(`/api/v1/crates/${crate}/${version}`, {
+    method: "DELETE",
   });
   return await onResponseJson(response);
 }

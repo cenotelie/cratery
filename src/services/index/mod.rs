@@ -26,7 +26,10 @@ pub trait Index {
     fn get_upload_pack_for<'a>(&'a self, input: &'a [u8]) -> FaillibleFuture<'a, Vec<u8>>;
 
     /// Publish a new version for a crate
-    fn publish_crate_version<'a>(&'a self, metadata: &'a IndexCrateMetadata, is_overwriting: bool) -> FaillibleFuture<'a, ()>;
+    fn publish_crate_version<'a>(&'a self, metadata: &'a IndexCrateMetadata) -> FaillibleFuture<'a, ()>;
+
+    /// Removes a crate version from the index
+    fn remove_crate_version<'a>(&'a self, package: &'a str, version: &'a str) -> FaillibleFuture<'a, ()>;
 
     ///  Gets the data for a crate
     fn get_crate_data<'a>(&'a self, package: &'a str) -> FaillibleFuture<'a, Vec<IndexCrateMetadata>>;

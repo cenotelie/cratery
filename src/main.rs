@@ -126,6 +126,7 @@ async fn main_serve_app(application: Arc<Application>, cookie_key: Key) -> Resul
                         .route("/new", put(routes::api_v1_cargo_publish_crate_version))
                         .route("/{package}", get(routes::api_v1_get_crate_info))
                         .route("/{package}/readme", get(routes::api_v1_get_crate_last_readme))
+                        .route("/{package}/{version}", delete(routes::api_v1_remove_crate_version))
                         .route("/{package}/{version}/readme", get(routes::api_v1_get_crate_readme))
                         .route("/{package}/{version}/download", get(routes::api_v1_download_crate))
                         .route("/{package}/{version}/yank", delete(routes::api_v1_cargo_yank))
@@ -144,7 +145,7 @@ async fn main_serve_app(application: Arc<Application>, cookie_key: Key) -> Resul
                             patch(routes::api_v1_set_crate_required_capabilities),
                         )
                         .route("/{package}/deprecated", patch(routes::api_v1_set_crate_deprecation))
-                        .route("/{package}/canoverwrite", patch(routes::api_v1_set_crate_can_overwrite)),
+                        .route("/{package}/canremove", patch(routes::api_v1_set_crate_can_can_remove)),
                 ),
         )
         // fall back to serving the index

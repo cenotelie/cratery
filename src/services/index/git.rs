@@ -45,8 +45,12 @@ impl Index for GitIndex {
         Box::pin(async move { self.inner.lock().await.get_upload_pack_for(input).await })
     }
 
-    fn publish_crate_version<'a>(&'a self, metadata: &'a IndexCrateMetadata, is_overwriting: bool) -> FaillibleFuture<'a, ()> {
-        Box::pin(async move { self.inner.lock().await.publish_crate_version(metadata, is_overwriting).await })
+    fn publish_crate_version<'a>(&'a self, metadata: &'a IndexCrateMetadata) -> FaillibleFuture<'a, ()> {
+        Box::pin(async move { self.inner.lock().await.publish_crate_version(metadata).await })
+    }
+
+    fn remove_crate_version<'a>(&'a self, package: &'a str, version: &'a str) -> FaillibleFuture<'a, ()> {
+        Box::pin(async move { self.inner.lock().await.remove_crate_version(package, version).await })
     }
 
     fn get_crate_data<'a>(&'a self, package: &'a str) -> FaillibleFuture<'a, Vec<IndexCrateMetadata>> {
@@ -88,23 +92,24 @@ impl GitIndexImpl {
         if content.next_entry().await?.is_none() {
             // the folder is empty
             info!("index: initializing on empty index");
-            index.initialize_on_empty(location, expect_empty).await?;
+            index.initialize_on_empty(&location, expect_empty).await?;
         } else if index.config.remote_origin.is_some() {
             // attempt to pull changes
             info!("index: pulling changes from origin");
             execute_git(&location, &["pull", "origin", "master"]).await?;
         }
+        index.configure_user(&location).await?;
         Ok(index)
     }
 
     /// Initializes the index at the specified location when found empty
-    async fn initialize_on_empty(&self, location: PathBuf, expect_empty: bool) -> Result<(), ApiError> {
+    async fn initialize_on_empty(&self, location: &Path, expect_empty: bool) -> Result<(), ApiError> {
         if let Some(remote_origin) = &self.config.remote_origin {
             // attempts to clone
             info!("index: cloning from {remote_origin}");
-            match execute_git(&location, &["clone", remote_origin, "."]).await {
+            match execute_git(location, &["clone", remote_origin, "."]).await {
                 Ok(()) => {
-                    self.configure_user(&location).await?;
+                    self.configure_user(location).await?;
                     // cloned and (re-)configured the git user
                     return Ok(());
                 }
@@ -133,18 +138,18 @@ impl GitIndexImpl {
     }
 
     /// Initializes an empty index at the specified location
-    async fn initialize_new_index(&self, location: PathBuf) -> Result<(), ApiError> {
+    async fn initialize_new_index(&self, location: &Path) -> Result<(), ApiError> {
         // initialise an empty repo
         info!("index: initializing empty index");
-        execute_git(&location, &["init"]).await?;
-        self.configure_user(&location).await?;
+        execute_git(location, &["init"]).await?;
+        self.configure_user(location).await?;
         if let Some(remote_origin) = &self.config.remote_origin {
-            execute_git(&location, &["remote", "add", "origin", remote_origin]).await?;
+            execute_git(location, &["remote", "add", "origin", remote_origin]).await?;
         }
         // write the index configuration
         {
             let index_config = serde_json::to_vec(&self.config.public)?;
-            let mut file_name = location.clone();
+            let mut file_name = location.to_path_buf();
             file_name.push("config.json");
             let mut file = File::create(&file_name).await?;
             file.write_all(&index_config).await?;
@@ -152,12 +157,12 @@ impl GitIndexImpl {
             file.sync_all().await?;
         }
         // commit the configuration
-        execute_git(&location, &["add", "."]).await?;
-        execute_git(&location, &["commit", "-m", "Add initial configuration"]).await?;
-        execute_git(&location, &["update-server-info"]).await?;
+        execute_git(location, &["add", "."]).await?;
+        execute_git(location, &["commit", "-m", "Add initial configuration"]).await?;
+        execute_git(location, &["update-server-info"]).await?;
         if let (Some(remote_origin), true) = (self.config.remote_origin.as_ref(), self.config.remote_push_changes) {
             info!("index: pushing to {remote_origin}");
-            execute_git(&location, &["push", "origin", "master"]).await?;
+            execute_git(location, &["push", "origin", "master"]).await?;
         }
         Ok(())
     }
@@ -203,32 +208,63 @@ impl GitIndexImpl {
     }
 
     /// Publish a new version for a crate
-    async fn publish_crate_version(&self, metadata: &IndexCrateMetadata, is_overwriting: bool) -> Result<(), ApiError> {
+    async fn publish_crate_version(&self, metadata: &IndexCrateMetadata) -> Result<(), ApiError> {
         let file_name = build_package_file_path(PathBuf::from(&self.config.location), &metadata.name);
         create_dir_all(file_name.parent().unwrap()).await?;
         let buffer = serde_json::to_vec(metadata)?;
         // write to package file
-        if is_overwriting {
-            // replace the metadata
-            Self::publish_crate_version_replace(&file_name, metadata).await?;
-        } else {
-            // append the metadata at the end
-            let mut file = OpenOptions::new().create(true).append(true).open(file_name).await?;
-            file.write_all(&buffer).await?;
-            file.write_all(&[0x0A]).await?; // add line end
+        // append the metadata at the end
+        let mut file = OpenOptions::new().create(true).append(true).open(file_name).await?;
+        file.write_all(&buffer).await?;
+        file.write_all(&[0x0A]).await?; // add line end
+        file.flush().await?;
+        file.sync_all().await?;
+        // commit and update
+        let message = format!("Publish {}:{}", &metadata.name, &metadata.vers);
+        self.commit_changes(&message).await?;
+        Ok(())
+    }
+
+    /// Completely removes a version from the registry
+    async fn remove_crate_version(&self, package: &str, version: &str) -> Result<(), ApiError> {
+        let file_name = build_package_file_path(PathBuf::from(&self.config.location), package);
+        create_dir_all(file_name.parent().unwrap()).await?;
+        // get the existing versions
+        let mut versions = {
+            // expect the file to be present
+            let file = OpenOptions::new().read(true).open(&file_name).await?;
+            let reader = BufReader::new(file);
+            let mut lines = reader.lines();
+            let mut versions = Vec::new();
+            while let Some(line) = lines.next_line().await? {
+                versions.push(serde_json::from_str::<IndexCrateMetadata>(&line)?);
+            }
+            versions
+        };
+        // remove the version of interest
+        versions.retain(|v| v.vers != version);
+        // write back
+        {
+            let mut file = OpenOptions::new().write(true).truncate(true).open(file_name).await?;
+            for version in versions {
+                let buffer = serde_json::to_vec(&version)?;
+                file.write_all(&buffer).await?;
+                file.write_all(&[0x0A]).await?; // add line end
+            }
             file.flush().await?;
             file.sync_all().await?;
         }
         // commit and update
+        let message = format!("Removed {package}:{version}");
+        self.commit_changes(&message).await?;
+        Ok(())
+    }
+
+    /// Commits the local changes to the index
+    async fn commit_changes(&self, message: &str) -> Result<(), ApiError> {
         let location = PathBuf::from(&self.config.location);
-        let message = format!(
-            "Publish{} {}:{}",
-            if is_overwriting { " (overwriting)" } else { "" },
-            &metadata.name,
-            &metadata.vers
-        );
         execute_git(&location, &["add", "."]).await?;
-        execute_git(&location, &["commit", "-m", &message]).await?;
+        execute_git(&location, &["commit", "-m", message]).await?;
         execute_git(&location, &["update-server-info"]).await?;
         if let (Some(_), true) = (self.config.remote_origin.as_ref(), self.config.remote_push_changes) {
             execute_git(&location, &["push", "origin", "master"]).await?;
@@ -253,41 +289,5 @@ impl GitIndexImpl {
             results.push(data);
         }
         Ok(results)
-    }
-
-    /// Replaces the metadata for a version in a file
-    async fn publish_crate_version_replace(file_name: &Path, metadata: &IndexCrateMetadata) -> Result<(), ApiError> {
-        // get the existing versions
-        let mut versions = {
-            // expect the file to be present
-            let file = OpenOptions::new().read(true).open(file_name).await?;
-            let reader = BufReader::new(file);
-            let mut lines = reader.lines();
-            let mut versions = Vec::new();
-            while let Some(line) = lines.next_line().await? {
-                versions.push(serde_json::from_str::<IndexCrateMetadata>(&line)?);
-            }
-            versions
-        };
-        // replace old with the new version
-        let index = versions.iter().position(|e| e.vers == metadata.vers).ok_or_else(|| {
-            specialize(
-                error_not_found(),
-                format!("could not find previous version {}", metadata.vers),
-            )
-        })?;
-        versions[index] = metadata.clone();
-        // write back
-        {
-            let mut file = OpenOptions::new().write(true).truncate(true).open(file_name).await?;
-            for version in versions {
-                let buffer = serde_json::to_vec(&version)?;
-                file.write_all(&buffer).await?;
-                file.write_all(&[0x0A]).await?; // add line end
-            }
-            file.flush().await?;
-            file.sync_all().await?;
-        }
-        Ok(())
     }
 }

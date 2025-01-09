@@ -435,14 +435,14 @@ impl Application {
         let package = CrateUploadData::new(content)?;
         let index_data = package.build_index_data();
 
-        let (user, result, targets, capabilities, is_overwriting) = {
+        let (user, result, targets, capabilities) = {
             let package = &package;
             self.db_transaction_write("publish_crate_version", |app| async move {
                 let authentication = app.authenticate(auth_data).await?;
                 authentication.check_can_write()?;
                 let user = app.database.get_user_profile(authentication.uid()?).await?;
                 // publish
-                let (result, is_overwriting) = app.database.publish_crate_version(user.id, package).await?;
+                let result = app.database.publish_crate_version(user.id, package).await?;
                 let mut targets = app.database.get_crate_targets(&package.metadata.name).await?;
                 if targets.is_empty() {
                     targets.push(CrateInfoTarget {
@@ -456,13 +456,13 @@ impl Application {
                         .await?;
                 }
                 let capabilities = app.database.get_crate_required_capabilities(&package.metadata.name).await?;
-                Ok::<_, ApiError>((user, result, targets, capabilities, is_overwriting))
+                Ok::<_, ApiError>((user, result, targets, capabilities))
             })
             .await
         }?;
 
         self.service_storage.store_crate(&package.metadata, package.content).await?;
-        self.service_index.publish_crate_version(&index_data, is_overwriting).await?;
+        self.service_index.publish_crate_version(&index_data).await?;
         for info in targets {
             self.service_docs_generator
                 .queue(
@@ -533,6 +533,18 @@ impl Application {
             }))
             .await?;
         Ok(content)
+    }
+
+    /// Completely removes a version from the registry
+    pub async fn remove_crate_version(&self, auth_data: &AuthData, package: &str, version: &str) -> Result<(), ApiError> {
+        self.db_transaction_write("remove_crate_version", |app| async move {
+            let authentication = app.authenticate(auth_data).await?;
+            app.check_can_manage_crate(&authentication, package).await?;
+            app.database.remove_crate_version(package, version).await?;
+            self.service_index.remove_crate_version(package, version).await?;
+            Ok(())
+        })
+        .await
     }
 
     /// Yank a crate version
@@ -776,17 +788,17 @@ impl Application {
         .await
     }
 
-    /// Sets whether a crate can overwrite existing versions
-    pub async fn set_crate_can_overwrite(
+    /// Sets whether a crate can have versions completely removed
+    pub async fn set_crate_can_can_remove(
         &self,
         auth_data: &AuthData,
         package: &str,
-        can_overwrite: bool,
+        can_remove: bool,
     ) -> Result<(), ApiError> {
-        self.db_transaction_write("set_crate_can_overwrite", |app| async move {
+        self.db_transaction_write("set_crate_can_can_remove", |app| async move {
             let authentication = app.authenticate(auth_data).await?;
             app.check_can_manage_crate(&authentication, package).await?;
-            app.database.set_crate_can_overwrite(package, can_overwrite).await
+            app.database.set_crate_can_can_remove(package, can_remove).await
         })
         .await
     }

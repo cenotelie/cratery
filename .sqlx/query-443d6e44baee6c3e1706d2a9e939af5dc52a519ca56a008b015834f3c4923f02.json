@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "DELETE FROM PackageVersion WHERE package = $1 AND version = $2",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 2
+    },
+    "nullable": []
+  },
+  "hash": "443d6e44baee6c3e1706d2a9e939af5dc52a519ca56a008b015834f3c4923f02"
+}

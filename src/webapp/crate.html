@@ -178,18 +178,40 @@
             <span class="ms-3 text-sm font-medium text-gray-900 dark:text-gray-300">Is deprecated</span>
           </label>
         </div>
-        <div id="tab-admin-overwriting" class="m-4">
-          <h5 class="text-xl font-bold tracking-tight text-gray-900 dark:text-white mt-8">Versions overwriting</h5>
-          <p class="mb-3 text-gray-500 dark:text-gray-400">DANGEROUS: When activated, this allows cargo to overwrite existing versions with the 'cargo publish' command.</p>
+        <div id="tab-admin-removal" class="m-4">
+          <h5 class="text-xl font-bold tracking-tight text-gray-900 dark:text-white mt-8">Versions removal</h5>
+          <p class="mb-3 text-gray-500 dark:text-gray-400">DANGEROUS: When activated, this allows the full removal of package versions.</p>
           <label class="relative inline-flex items-center cursor-pointer">
-            <input id="tab-admin-overwriting-toggle" type="checkbox" class="sr-only peer">
+            <input id="tab-admin-removal-toggle" type="checkbox" class="sr-only peer">
             <div class="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-red-300 dark:peer-focus:ring-red-800 rounded-full peer dark:bg-gray-700 peer-checked:after:translate-x-full rtl:peer-checked:after:-translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:start-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all dark:border-gray-600 peer-checked:bg-red-600"></div>
-            <span class="ms-3 text-sm font-medium text-gray-900 dark:text-gray-300">Allow overwriting versions</span>
+            <span class="ms-3 text-sm font-medium text-gray-900 dark:text-gray-300">Allow version removal</span>
           </label>
         </div>
       </div>
     </div>
   </section>
+  <div id="modal-remove-version" tabindex="-1" class="overflow-y-auto overflow-x-hidden fixed top-0 right-0 left-0 z-50 w-full md:inset-0 h-modal md:h-full" style="display: none;">
+    <div class="overflow-y-auto overflow-x-hidden fixed top-0 right-0 left-0 z-51 w-full md:inset-0 h-modal md:h-full" style="background-color: black; opacity: 0.75;"></div>
+    <div class="relative" style="margin: auto; margin-top: 10%; width: 800px;">
+        <div class="relative p-4 bg-white rounded-lg shadow dark:bg-gray-800 md:p-8">
+            <div class="mb-4 text-sm font-light text-gray-500 dark:text-gray-400">
+              <h3 class="mb-3 text-2xl font-bold text-gray-900 dark:text-white">Remove this crate version?</h3>
+            </div>
+            <form class="mb-3 space-y-8">
+              <div>
+                <label for="remove-version-field" class="block mb-2 text-sm font-medium text-gray-900 dark:text-gray-300">Version</label>
+                <input type="text" id="remove-version-field" class="block p-3 w-full text-sm text-gray-900 bg-gray-50 rounded-lg border border-gray-300 shadow-sm focus:ring-primary-500 focus:border-primary-500 dark:bg-gray-700 dark:border-gray-600 dark:placeholder-gray-400 dark:text-white dark:focus:ring-primary-500 dark:focus:border-primary-500 dark:shadow-sm-light" disabled>
+              </div>
+            </form>
+            <div class="justify-between items-center pt-0 space-y-4 sm:flex sm:space-y-0">
+              <div class="items-center space-y-4 sm:space-x-4 sm:flex sm:space-y-0">
+                <button id="modal-remove-version-close" type="button"  class="py-2 px-4 w-full text-sm font-medium text-gray-500 bg-white rounded-lg border border-gray-200 sm:w-auto hover:bg-gray-100 focus:ring-4 focus:outline-none focus:ring-primary-300 hover:text-gray-900 focus:z-10 dark:bg-gray-700 dark:text-gray-300 dark:border-gray-500 dark:hover:text-white dark:hover:bg-gray-600 dark:focus:ring-gray-600">Cancel</button>
+                <button id="modal-remove-version-confirm" type="button" class="focus:outline-none text-white bg-red-700 hover:bg-red-800 focus:ring-4 focus:ring-red-300 font-medium rounded-lg text-sm px-5 py-2.5 me-2 mb-2 dark:bg-red-600 dark:hover:bg-red-700 dark:focus:ring-red-900">Remove</button>
+              </div>
+            </div>
+        </div>
+    </div>
+  </div>
   <div id="modal-add-owner" tabindex="-1" class="overflow-y-auto overflow-x-hidden fixed top-0 right-0 left-0 z-50 w-full md:inset-0 h-modal md:h-full" style="display: none;">
     <div class="overflow-y-auto overflow-x-hidden fixed top-0 right-0 left-0 z-51 w-full md:inset-0 h-modal md:h-full" style="background-color: black; opacity: 0.75;"></div>
     <div class="relative" style="margin: auto; margin-top: 10%; width: 800px;">
@@ -417,7 +439,7 @@
 
     const tabVersions = document.getElementById("tab-versions");
     for (const version of crate.versions.reverse()) {
-      tabVersions.appendChild(renderVersion(version));
+      tabVersions.appendChild(renderVersion(version, crate.canRemove));
     }
 
     const tabFeatures = document.getElementById("tab-features");
@@ -429,7 +451,7 @@
     renderDocs(crate);
 
     document.getElementById("tab-admin-deprecation-toggle").checked = crate.isDeprecated;
-    document.getElementById("tab-admin-overwriting-toggle").checked = crate.canOverwrite;
+    document.getElementById("tab-admin-removal-toggle").checked = crate.canRemove;
     const canAdmin = currentUser.roles.includes("admin") || owners.users.find(u => u.id === currentUser.id) !== undefined;
     if (canAdmin) {
       document.getElementById("header-admin").parentElement.style.display = null;
@@ -476,9 +498,9 @@
           document.getElementById("meta-deprecation").style.display = crate.isDeprecated ? null : "none";
         });
       }
-      document.getElementById("tab-admin-overwriting-toggle").onchange = () => {
-        apiSetCrateCanOverwrite(currentVersion.index.name, !crate.canOverwrite).then(() => {
-          crate.canOverwrite = !crate.canOverwrite;
+      document.getElementById("tab-admin-removal-toggle").onchange = () => {
+        apiSetCrateCanRemove(currentVersion.index.name, !crate.canRemove).then(() => {
+          crate.canRemove = !crate.canRemove;
         });
       }
     }
@@ -570,11 +592,11 @@
     return wrapper;
   }
 
-  function renderVersion(version) {
-    const card = document.createElement("a");
-    card.href = `/crates/${version.index.name}/${version.index.vers}`;
+  function renderVersion(version, canRemove) {
+    const card = document.createElement("div");
     card.className = "flex block mb-4 p-6 bg-white border border-gray-200 rounded-lg shadow hover:bg-gray-100 dark:bg-gray-800 dark:border-gray-700 dark:hover:bg-gray-700";
-    const wrapper = document.createElement("div");
+    const wrapper = document.createElement("a");
+    wrapper.href = `/crates/${version.index.name}/${version.index.vers}`;
     wrapper.className = "flex items-center me-4";
     const title = document.createElement("h5");
     title.className = "text-xl font-bold tracking-tight text-gray-900 dark:text-white";
@@ -617,6 +639,23 @@
     dataDeps.appendChild(document.createTextNode(`${version.index.deps.length} dependencies`));
     wrapper.appendChild(dataDeps);
     card.appendChild(wrapper);
+
+    if (canRemove) {
+      const wrapper = document.createElement("div");
+      wrapper.className = "flex items-center me-4";
+      wrapper.style.cursor = "pointer";
+      wrapper.title = "Remove this version";
+      wrapper.innerHTML += '<p class="ml-4 font-normal text-gray-700 dark:text-gray-400">\
+                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="red" class="size-6">\
+                  <path stroke-linecap="round" stroke-linejoin="round" d="m14.74 9-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 0 1-2.244 2.077H8.084a2.25 2.25 0 0 1-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 0 0-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 0 1 3.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 0 0-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 0 0-7.5 0" />\
+                </svg>\
+              </p>';
+      wrapper.onclick = (event) => {
+        onClickRemoveVersion(version);
+        event.stopPropagation();
+      };
+      card.appendChild(wrapper);
+    }
     return card;
   }
 
@@ -918,6 +957,28 @@
     for (let i = 0; i != node.children.length; i++) {
       applyStyle(node.children.item(i));
     }
+  }
+
+  function onClickRemoveVersion(version) {
+    const modalEl = document.getElementById('modal-remove-version');
+    modalEl.style.display = "unset";
+    const versionEl = document.getElementById("remove-version-field");
+    versionEl.value = `${version.index.name}:${version.index.vers}`;
+    const closeEl = document.getElementById('modal-remove-version-close');
+    closeEl.addEventListener('click', function() {
+      modalEl.style.display = "none";
+    });
+    const confirmEl = document.getElementById('modal-remove-version-confirm');
+    confirmEl.addEventListener('click', function() {
+      closeEl.disabled = true;
+      confirmEl.disabled = true;
+      apiRemoveCrateVersion(version.index.name, version.index.vers).then((_) => {
+        window.location.reload();
+      }).finally(() => {
+        closeEl.disabled = false;
+        confirmEl.disabled = false;
+      });
+    });
   }
 
   function openAddOwner(crateName) {

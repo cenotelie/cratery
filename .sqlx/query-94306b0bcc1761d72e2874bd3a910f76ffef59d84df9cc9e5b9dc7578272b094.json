@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "UPDATE Package SET canRemove = $2 WHERE name = $1",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 2
+    },
+    "nullable": []
+  },
+  "hash": "94306b0bcc1761d72e2874bd3a910f76ffef59d84df9cc9e5b9dc7578272b094"
+}

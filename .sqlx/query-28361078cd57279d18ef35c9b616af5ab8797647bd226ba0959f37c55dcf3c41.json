@@ -1,0 +1,20 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT canRemove AS can_remove FROM Package WHERE lowercase = $1 LIMIT 1",
+  "describe": {
+    "columns": [
+      {
+        "name": "can_remove",
+        "ordinal": 0,
+        "type_info": "Bool"
+      }
+    ],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": [
+      false
+    ]
+  },
+  "hash": "28361078cd57279d18ef35c9b616af5ab8797647bd226ba0959f37c55dcf3c41"
+}

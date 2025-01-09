@@ -45,7 +45,7 @@ CREATE TABLE Package (
     nativeTargets TEXT NOT NULL,
     capabilities TEXT NOT NULL,
     isDeprecated BOOLEAN NOT NULL,
-    canOverwrite BOOLEAN NOT NULL
+    canRemove BOOLEAN NOT NULL
 );
 
 CREATE INDEX IndexPackage ON Package (name);
