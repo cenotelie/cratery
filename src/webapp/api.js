@@ -234,6 +234,15 @@ async function apiSetCrateDeprecation(crate, isDeprecated) {
   return await onResponseJson(response);
 }
 
+async function apiSetCrateCanOverwrite(crate, canOverwrite) {
+  const response = await fetch(`/api/v1/crates/${crate}/canoverwrite`, {
+    method: "PATCH",
+    body: JSON.stringify(canOverwrite),
+    headers: [["content-type", "application/json"]],
+  });
+  return await onResponseJson(response);
+}
+
 async function apiRegenCrateDoc(crate, version) {
   const response = await fetch(`/api/v1/crates/${crate}/${version}/docsregen`, {
     method: "POST",

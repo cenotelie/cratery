@@ -178,6 +178,15 @@
             <span class="ms-3 text-sm font-medium text-gray-900 dark:text-gray-300">Is deprecated</span>
           </label>
         </div>
+        <div id="tab-admin-overwriting" class="m-4">
+          <h5 class="text-xl font-bold tracking-tight text-gray-900 dark:text-white mt-8">Versions overwriting</h5>
+          <p class="mb-3 text-gray-500 dark:text-gray-400">DANGEROUS: When activated, this allows cargo to overwrite existing versions with the 'cargo publish' command.</p>
+          <label class="relative inline-flex items-center cursor-pointer">
+            <input id="tab-admin-overwriting-toggle" type="checkbox" class="sr-only peer">
+            <div class="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-red-300 dark:peer-focus:ring-red-800 rounded-full peer dark:bg-gray-700 peer-checked:after:translate-x-full rtl:peer-checked:after:-translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:start-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all dark:border-gray-600 peer-checked:bg-red-600"></div>
+            <span class="ms-3 text-sm font-medium text-gray-900 dark:text-gray-300">Allow overwriting versions</span>
+          </label>
+        </div>
       </div>
     </div>
   </section>
@@ -420,6 +429,7 @@
     renderDocs(crate);
 
     document.getElementById("tab-admin-deprecation-toggle").checked = crate.isDeprecated;
+    document.getElementById("tab-admin-overwriting-toggle").checked = crate.canOverwrite;
     const canAdmin = currentUser.roles.includes("admin") || owners.users.find(u => u.id === currentUser.id) !== undefined;
     if (canAdmin) {
       document.getElementById("header-admin").parentElement.style.display = null;
@@ -464,6 +474,11 @@
         apiSetCrateDeprecation(currentVersion.index.name, !crate.isDeprecated).then(() => {
           crate.isDeprecated = !crate.isDeprecated;
           document.getElementById("meta-deprecation").style.display = crate.isDeprecated ? null : "none";
+        });
+      }
+      document.getElementById("tab-admin-overwriting-toggle").onchange = () => {
+        apiSetCrateCanOverwrite(currentVersion.index.name, !crate.canOverwrite).then(() => {
+          crate.canOverwrite = !crate.canOverwrite;
         });
       }
     }
