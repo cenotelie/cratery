@@ -100,13 +100,14 @@ impl Database {
         versions_in_index: Vec<IndexCrateMetadata>,
     ) -> Result<CrateInfo, ApiError> {
         let row = sqlx::query!(
-            "SELECT isDeprecated AS is_deprecated, targets, nativeTargets AS nativetargets, capabilities FROM Package WHERE name = $1 LIMIT 1",
+            "SELECT isDeprecated AS is_deprecated, canOverwrite AS can_overwrite, targets, nativeTargets AS nativetargets, capabilities FROM Package WHERE name = $1 LIMIT 1",
             package
         )
         .fetch_optional(&mut *self.transaction.borrow().await)
         .await?
         .ok_or_else(error_not_found)?;
         let is_deprecated = row.is_deprecated;
+        let can_overwrite = row.can_overwrite;
         let targets = comma_sep_to_vec(&row.targets);
         let native_targets = comma_sep_to_vec(&row.nativetargets);
         let capabilities = comma_sep_to_vec(&row.capabilities);
@@ -156,6 +157,7 @@ impl Database {
         Ok(CrateInfo {
             metadata: None,
             is_deprecated,
+            can_overwrite,
             versions,
             targets: targets
                 .into_iter()
@@ -206,7 +208,7 @@ impl Database {
         } else {
             // create the package
             sqlx::query!(
-                "INSERT INTO Package (name, lowercase, targets, nativeTargets, capabilities, isDeprecated) VALUES ($1, $2, '', '', '', FALSE)",
+                "INSERT INTO Package (name, lowercase, targets, nativeTargets, capabilities, isDeprecated, canOverwrite) VALUES ($1, $2, '', '', '', FALSE, FALSE)",
                 package.metadata.name,
                 lowercase
             )
@@ -805,6 +807,14 @@ impl Database {
     /// Sets the deprecation status on a crate
     pub async fn set_crate_deprecation(&self, package: &str, deprecated: bool) -> Result<(), ApiError> {
         sqlx::query!("UPDATE Package SET isDeprecated = $2 WHERE name = $1", package, deprecated)
+            .execute(&mut *self.transaction.borrow().await)
+            .await?;
+        Ok(())
+    }
+
+    /// Sets whether a crate can overwrite existing versions
+    pub async fn set_crate_can_overwrite(&self, package: &str, can_overwrite: bool) -> Result<(), ApiError> {
+        sqlx::query!("UPDATE Package SET canOverwrite = $2 WHERE name = $1", package, can_overwrite)
             .execute(&mut *self.transaction.borrow().await)
             .await?;
         Ok(())

@@ -776,6 +776,21 @@ impl Application {
         .await
     }
 
+    /// Sets whether a crate can overwrite existing versions
+    pub async fn set_crate_can_overwrite(
+        &self,
+        auth_data: &AuthData,
+        package: &str,
+        can_overwrite: bool,
+    ) -> Result<(), ApiError> {
+        self.db_transaction_write("set_crate_can_overwrite", |app| async move {
+            let authentication = app.authenticate(auth_data).await?;
+            app.check_can_manage_crate(&authentication, package).await?;
+            app.database.set_crate_can_overwrite(package, can_overwrite).await
+        })
+        .await
+    }
+
     /// Gets the global statistics for the registry
     pub async fn get_crates_stats(&self, auth_data: &AuthData) -> Result<GlobalStats, ApiError> {
         self.db_transaction_read(|app| async move {

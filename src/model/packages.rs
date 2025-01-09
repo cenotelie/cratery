@@ -17,6 +17,9 @@ pub struct CrateInfo {
     /// Whether the entire package is deprecated
     #[serde(rename = "isDeprecated")]
     pub is_deprecated: bool,
+    /// Whether overwriting crate versions is allowed for the crate
+    #[serde(rename = "canOverwrite")]
+    pub can_overwrite: bool,
     /// Gets the versions in the index
     pub versions: Vec<CrateInfoVersion>,
     /// The build targets to use (for docs generation and deps analysis)

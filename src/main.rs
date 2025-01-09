@@ -143,7 +143,8 @@ async fn main_serve_app(application: Arc<Application>, cookie_key: Key) -> Resul
                             "/{package}/capabilities",
                             patch(routes::api_v1_set_crate_required_capabilities),
                         )
-                        .route("/{package}/deprecated", patch(routes::api_v1_set_crate_deprecation)),
+                        .route("/{package}/deprecated", patch(routes::api_v1_set_crate_deprecation))
+                        .route("/{package}/canoverwrite", patch(routes::api_v1_set_crate_can_overwrite)),
                 ),
         )
         // fall back to serving the index

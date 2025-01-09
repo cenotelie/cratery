@@ -932,6 +932,16 @@ pub async fn api_v1_set_crate_deprecation(
     response(state.application.set_crate_deprecation(&auth_data, &package, input.0).await)
 }
 
+/// Sets whether a crate can overwrite existing versions
+pub async fn api_v1_set_crate_can_overwrite(
+    auth_data: AuthData,
+    State(state): State<Arc<AxumState>>,
+    Path(PathInfoCrate { package }): Path<PathInfoCrate>,
+    input: Json<bool>,
+) -> ApiResult<()> {
+    response(state.application.set_crate_can_overwrite(&auth_data, &package, input.0).await)
+}
+
 pub async fn index_serve_inner(
     index: &(dyn Index + Send + Sync),
     path: &str,
