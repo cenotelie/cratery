@@ -45,8 +45,8 @@ impl Index for GitIndex {
         Box::pin(async move { self.inner.lock().await.get_upload_pack_for(input).await })
     }
 
-    fn publish_crate_version<'a>(&'a self, metadata: &'a IndexCrateMetadata) -> FaillibleFuture<'a, ()> {
-        Box::pin(async move { self.inner.lock().await.publish_crate_version(metadata).await })
+    fn publish_crate_version<'a>(&'a self, metadata: &'a IndexCrateMetadata, is_overwriting: bool) -> FaillibleFuture<'a, ()> {
+        Box::pin(async move { self.inner.lock().await.publish_crate_version(metadata, is_overwriting).await })
     }
 
     fn get_crate_data<'a>(&'a self, package: &'a str) -> FaillibleFuture<'a, Vec<IndexCrateMetadata>> {
@@ -203,12 +203,16 @@ impl GitIndexImpl {
     }
 
     /// Publish a new version for a crate
-    async fn publish_crate_version(&self, metadata: &IndexCrateMetadata) -> Result<(), ApiError> {
+    async fn publish_crate_version(&self, metadata: &IndexCrateMetadata, is_overwriting: bool) -> Result<(), ApiError> {
         let file_name = build_package_file_path(PathBuf::from(&self.config.location), &metadata.name);
         create_dir_all(file_name.parent().unwrap()).await?;
         let buffer = serde_json::to_vec(metadata)?;
         // write to package file
-        {
+        if is_overwriting {
+            // replace the metadata
+            Self::publish_crate_version_replace(&file_name, metadata).await?;
+        } else {
+            // append the metadata at the end
             let mut file = OpenOptions::new().create(true).append(true).open(file_name).await?;
             file.write_all(&buffer).await?;
             file.write_all(&[0x0A]).await?; // add line end
@@ -217,7 +221,12 @@ impl GitIndexImpl {
         }
         // commit and update
         let location = PathBuf::from(&self.config.location);
-        let message = format!("Publish {}:{}", &metadata.name, &metadata.vers);
+        let message = format!(
+            "Publish{} {}:{}",
+            if is_overwriting { " (overwriting)" } else { "" },
+            &metadata.name,
+            &metadata.vers
+        );
         execute_git(&location, &["add", "."]).await?;
         execute_git(&location, &["commit", "-m", &message]).await?;
         execute_git(&location, &["update-server-info"]).await?;
@@ -244,5 +253,41 @@ impl GitIndexImpl {
             results.push(data);
         }
         Ok(results)
+    }
+
+    /// Replaces the metadata for a version in a file
+    async fn publish_crate_version_replace(file_name: &Path, metadata: &IndexCrateMetadata) -> Result<(), ApiError> {
+        // get the existing versions
+        let mut versions = {
+            // expect the file to be present
+            let file = OpenOptions::new().read(true).open(file_name).await?;
+            let reader = BufReader::new(file);
+            let mut lines = reader.lines();
+            let mut versions = Vec::new();
+            while let Some(line) = lines.next_line().await? {
+                versions.push(serde_json::from_str::<IndexCrateMetadata>(&line)?);
+            }
+            versions
+        };
+        // replace old with the new version
+        let index = versions.iter().position(|e| e.vers == metadata.vers).ok_or_else(|| {
+            specialize(
+                error_not_found(),
+                format!("could not find previous version {}", metadata.vers),
+            )
+        })?;
+        versions[index] = metadata.clone();
+        // write back
+        {
+            let mut file = OpenOptions::new().write(true).truncate(true).open(file_name).await?;
+            for version in versions {
+                let buffer = serde_json::to_vec(&version)?;
+                file.write_all(&buffer).await?;
+                file.write_all(&[0x0A]).await?; // add line end
+            }
+            file.flush().await?;
+            file.sync_all().await?;
+        }
+        Ok(())
     }
 }

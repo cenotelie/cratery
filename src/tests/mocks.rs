@@ -96,7 +96,11 @@ impl Index for MockService {
         resolved_default()
     }
 
-    fn publish_crate_version<'a>(&'a self, _metadata: &'a IndexCrateMetadata) -> FaillibleFuture<'a, ()> {
+    fn publish_crate_version<'a>(
+        &'a self,
+        _metadata: &'a IndexCrateMetadata,
+        _is_overwriting: bool,
+    ) -> FaillibleFuture<'a, ()> {
         resolved_default()
     }
 

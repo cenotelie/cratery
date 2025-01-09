@@ -172,35 +172,54 @@ impl Database {
 
     /// Publish a crate
     #[allow(clippy::similar_names)]
-    pub async fn publish_crate_version(&self, uid: i64, package: &CrateUploadData) -> Result<CrateUploadResult, ApiError> {
-        let warnings = package.metadata.validate()?;
+    pub async fn publish_crate_version(
+        &self,
+        uid: i64,
+        package: &CrateUploadData,
+    ) -> Result<(CrateUploadResult, bool), ApiError> {
+        let mut warnings = package.metadata.validate()?;
         let lowercase = package.metadata.name.to_ascii_lowercase();
-        let row = sqlx::query!(
+
+        // get existing package and version data
+        let package_row = sqlx::query!(
+            "SELECT name, canOverwrite AS can_overwrite FROM Package WHERE lowercase = $1 LIMIT 1",
+            lowercase
+        )
+        .fetch_optional(&mut *self.transaction.borrow().await)
+        .await?;
+        let version_row = sqlx::query!(
             "SELECT upload FROM PackageVersion WHERE package = $1 AND version = $2 LIMIT 1",
             package.metadata.name,
             package.metadata.vers
         )
         .fetch_optional(&mut *self.transaction.borrow().await)
         .await?;
-        if let Some(row) = row {
-            return Err(specialize(
-                error_invalid_request(),
-                format!(
-                    "Package {} already exists in version {}, uploaded on {}",
-                    &package.metadata.name, &package.metadata.vers, row.upload
-                ),
-            ));
-        }
-        // check whether the package already exists
-        let row = sqlx::query!("SELECT name FROM Package WHERE lowercase = $1 LIMIT 1", lowercase)
-            .fetch_optional(&mut *self.transaction.borrow().await)
-            .await?;
-        if let Some(row) = row {
-            // check this is the same package
-            if row.name != lowercase {
+
+        // check for previous version
+        let is_overwriting = if let Some(version_row) = version_row {
+            // has previous version
+            if package_row.as_ref().is_some_and(|r| !r.can_overwrite) {
+                // cannot overwrite
                 return Err(specialize(
                     error_invalid_request(),
-                    format!("A package named {} already exists", row.name),
+                    format!(
+                        "Package {} already exists in version {}, uploaded on {}",
+                        &package.metadata.name, &package.metadata.vers, version_row.upload
+                    ),
+                ));
+            }
+            true
+        } else {
+            false
+        };
+
+        // check whether the package already exists
+        if let Some(package_row) = package_row {
+            // check this is the same package
+            if package_row.name != lowercase {
+                return Err(specialize(
+                    error_invalid_request(),
+                    format!("A package named {} already exists", package_row.name),
                 ));
             }
             // check the ownership
@@ -223,20 +242,37 @@ impl Database {
             .execute(&mut *self.transaction.borrow().await)
             .await?;
         }
+
         let now = Local::now().naive_local();
-        // create the version
         let description = package.metadata.description.as_ref().map_or("", String::as_str);
-        sqlx::query!(
-            "INSERT INTO PackageVersion (package, version, description, upload, uploadedBy, yanked, downloadCount, downloads, depsLastCheck, depsHasOutdated, depsHasCVEs) VALUES ($1, $2, $3, $4, $5, false, 0, NULL, 0, false, false)",
-            package.metadata.name,
-            package.metadata.vers,
-            description,
-            now,
-            uid,
-        )
-        .execute(&mut *self.transaction.borrow().await)
-        .await?;
-        Ok(warnings)
+        if is_overwriting {
+            // update the version
+            sqlx::query!("UPDATE PackageVersion SET description = $3, upload = $4, uploadedBy = $5, yanked = FALSE, depsLastCheck = 0, depsHasOutdated = FALSE, depsHasCVEs = 0 WHERE package = $1 AND version = $2",
+                package.metadata.name,
+                package.metadata.vers,
+                description,
+                now,
+                uid
+            ).execute(&mut *self.transaction.borrow().await)
+            .await?;
+            warnings
+                .warnings
+                .other
+                .push(format!("overwriting existing version {}", package.metadata.vers));
+        } else {
+            // create the version
+            sqlx::query!(
+                "INSERT INTO PackageVersion (package, version, description, upload, uploadedBy, yanked, downloadCount, downloads, depsLastCheck, depsHasOutdated, depsHasCVEs) VALUES ($1, $2, $3, $4, $5, false, 0, NULL, 0, false, false)",
+                package.metadata.name,
+                package.metadata.vers,
+                description,
+                now,
+                uid,
+            )
+            .execute(&mut *self.transaction.borrow().await)
+            .await?;
+        }
+        Ok((warnings, is_overwriting))
     }
 
     /// Yank a crate version

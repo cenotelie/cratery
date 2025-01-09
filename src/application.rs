@@ -435,14 +435,14 @@ impl Application {
         let package = CrateUploadData::new(content)?;
         let index_data = package.build_index_data();
 
-        let (user, result, targets, capabilities) = {
+        let (user, result, targets, capabilities, is_overwriting) = {
             let package = &package;
             self.db_transaction_write("publish_crate_version", |app| async move {
                 let authentication = app.authenticate(auth_data).await?;
                 authentication.check_can_write()?;
                 let user = app.database.get_user_profile(authentication.uid()?).await?;
                 // publish
-                let result = app.database.publish_crate_version(user.id, package).await?;
+                let (result, is_overwriting) = app.database.publish_crate_version(user.id, package).await?;
                 let mut targets = app.database.get_crate_targets(&package.metadata.name).await?;
                 if targets.is_empty() {
                     targets.push(CrateInfoTarget {
@@ -456,13 +456,13 @@ impl Application {
                         .await?;
                 }
                 let capabilities = app.database.get_crate_required_capabilities(&package.metadata.name).await?;
-                Ok::<_, ApiError>((user, result, targets, capabilities))
+                Ok::<_, ApiError>((user, result, targets, capabilities, is_overwriting))
             })
             .await
         }?;
 
         self.service_storage.store_crate(&package.metadata, package.content).await?;
-        self.service_index.publish_crate_version(&index_data).await?;
+        self.service_index.publish_crate_version(&index_data, is_overwriting).await?;
         for info in targets {
             self.service_docs_generator
                 .queue(
