@@ -86,7 +86,7 @@ function getJobStatusText(status) {
   } else if (status === "Working") {
     return "working ...";
   } else if (status === "Success") {
-    return "sucess";
+    return "success";
   } else if (status === "Failure") {
     return "failed";
   } else {
