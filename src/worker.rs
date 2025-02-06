@@ -107,7 +107,7 @@ async fn main_loop(
                 if elapsed.as_millis() > (HEARTBEAT_INTERVAL + HEARTBEAT_INTERVAL / 2).into() {
                     warn!("heartbeat: waited too long: {}ms", elapsed.as_millis());
                 }
-                // send the hearbeat
+                // send the heartbeat
                 sender.lock().await.send(Message::Pong(vec![code].into())).await?;
                 code = code.wrapping_add(1);
                 last = std::time::Instant::now();

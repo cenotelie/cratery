@@ -286,7 +286,7 @@ pub struct CrateMetadataDependency {
     pub explicit_name_in_toml: Option<String>,
 }
 
-/// The result for the upload fo a crate
+/// The result for the upload of a crate
 #[derive(Default, Debug, Serialize, Deserialize, Clone)]
 pub struct CrateUploadResult {
     /// The warnings

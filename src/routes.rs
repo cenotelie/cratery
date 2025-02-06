@@ -438,7 +438,7 @@ pub async fn api_v1_create_global_token(
     response(state.application.create_global_token(&auth_data, &name).await)
 }
 
-/// Revokes a globel token for the registry
+/// Revokes a global token for the registry
 pub async fn api_v1_revoke_global_token(
     auth_data: AuthData,
     State(state): State<Arc<AxumState>>,
