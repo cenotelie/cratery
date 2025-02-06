@@ -63,7 +63,7 @@ impl Database {
         })
     }
 
-    /// Revokes a globel token for the registry
+    /// Revokes a global token for the registry
     pub async fn revoke_global_token(&self, token_id: i64) -> Result<(), ApiError> {
         sqlx::query!("DELETE FROM RegistryGlobalToken WHERE id = $1", token_id)
             .execute(&mut *self.transaction.borrow().await)

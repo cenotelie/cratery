@@ -41,7 +41,7 @@ impl Database {
         };
         let pattern = format!("%{query}%");
         let deprecated_value = deprecated.unwrap_or_default();
-        let deprecated_short_circuit = deprecated.is_none(); // short-cirtcuit to true if no input
+        let deprecated_short_circuit = deprecated.is_none(); // short-circuit to true if no input
         let rows = sqlx::query!(
             "SELECT name, isDeprecated AS is_deprecated From Package WHERE name LIKE $1 AND (isDeprecated = $2 OR $3)",
             pattern,
@@ -554,7 +554,7 @@ impl Database {
             .collect())
     }
 
-    /// Gets all the lastest version of crates, filtering out yanked and pre-release versions
+    /// Gets all the latest version of crates, filtering out yanked and pre-release versions
     async fn get_crates_version_heads(&self) -> Result<Vec<DepsAnalysisState>, ApiError> {
         struct Elem {
             semver: Version,

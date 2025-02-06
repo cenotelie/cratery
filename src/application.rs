@@ -419,7 +419,7 @@ impl Application {
         .await
     }
 
-    /// Revokes a globel token for the registry
+    /// Revokes a global token for the registry
     pub async fn revoke_global_token(&self, auth_data: &AuthData, token_id: i64) -> Result<(), ApiError> {
         self.db_transaction_write("revoke_global_token", |app| async move {
             let authentication = app.authenticate(auth_data).await?;
