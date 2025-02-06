@@ -17,6 +17,7 @@ jobs:
       with:
           log-level: warn
           command: check
+    - uses: Swatinem/rust-cache@v2
     - name: Check fmt
       run: cargo fmt --check
     - name: Lint
