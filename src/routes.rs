@@ -965,7 +965,7 @@ pub async fn index_serve_inner(
     let stream = ReaderStream::new(file);
     if std::path::Path::new(path)
         .extension()
-        .map_or(false, |ext| ext.eq_ignore_ascii_case("json"))
+        .is_some_and(|ext| ext.eq_ignore_ascii_case("json"))
     {
         Ok((stream, HeaderValue::from_static("application/json")))
     } else if path == "/HEAD" || path.starts_with("/info") {
