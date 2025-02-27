@@ -13,9 +13,9 @@ use std::pin::pin;
 use std::str::FromStr;
 use std::sync::Arc;
 
+use axum::Router;
 use axum::extract::DefaultBodyLimit;
 use axum::routing::{delete, get, patch, post, put};
-use axum::Router;
 use cookie::Key;
 use log::info;
 

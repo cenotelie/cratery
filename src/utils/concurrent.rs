@@ -5,10 +5,10 @@
 //! Utility to run at most n concurrent jobs
 
 use std::future::Future;
-use std::pin::{pin, Pin};
+use std::pin::{Pin, pin};
 use std::task::{Context, Poll};
 
-use futures::future::{select, select_all, Either, FusedFuture};
+use futures::future::{Either, FusedFuture, select, select_all};
 use futures::{FutureExt, Stream, StreamExt};
 
 /// Takes an iterator of futures and executes them concurrently, with at most n concurrent futures.

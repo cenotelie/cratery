@@ -9,8 +9,8 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
-use futures::lock::Mutex;
 use futures::StreamExt;
+use futures::lock::Mutex;
 use log::error;
 use semver::Version;
 use tokio_stream::wrappers::ReadDirStream;
@@ -19,7 +19,7 @@ use crate::model::config::Configuration;
 use crate::model::osv::{Advisory, SimpleAdvisory};
 use crate::utils::apierror::ApiError;
 use crate::utils::concurrent::n_at_a_time_stream;
-use crate::utils::{stale_instant, FaillibleFuture};
+use crate::utils::{FaillibleFuture, stale_instant};
 
 /// Service to use the [RustSec](https://github.com/rustsec) data about crates
 pub trait RustSecChecker {

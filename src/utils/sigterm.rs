@@ -6,12 +6,12 @@
 
 use std::future::Future;
 use std::pin::pin;
-use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Duration;
 
-use futures::future::{select, Either};
-use tokio::signal::unix::{signal, SignalKind};
+use futures::future::{Either, select};
+use tokio::signal::unix::{SignalKind, signal};
 
 /// Executes the specified future and listen for SIGTERM to terminate early
 ///

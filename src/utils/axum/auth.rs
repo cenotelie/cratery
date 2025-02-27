@@ -7,11 +7,11 @@
 use std::borrow::Cow;
 use std::sync::Arc;
 
+use axum::RequestPartsExt;
 use axum::extract::FromRequestParts;
 use axum::http::request::Parts;
-use axum::RequestPartsExt;
-use base64::prelude::BASE64_STANDARD;
 use base64::Engine;
+use base64::prelude::BASE64_STANDARD;
 use cookie::time::OffsetDateTime;
 use cookie::{Cookie, CookieJar, Expiration, Key, SameSite};
 

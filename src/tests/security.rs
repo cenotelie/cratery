@@ -7,7 +7,7 @@
 use super::{async_test, setup_create_user_inactive};
 use crate::application::Application;
 use crate::model::auth::ROLE_ADMIN;
-use crate::tests::{setup_create_token, setup_create_user, ADMIN_NAME, ADMIN_UID};
+use crate::tests::{ADMIN_NAME, ADMIN_UID, setup_create_token, setup_create_user};
 use crate::utils::apierror::ApiError;
 use crate::utils::axum::auth::{AuthData, Token};
 
@@ -49,13 +49,15 @@ fn test_inactive_no_auth() -> Result<(), ApiError> {
     async_test(|application, _admin_auth| async move {
         setup_create_user_inactive(&application, "user", "").await?;
         let token = setup_create_token(&application, 2, false, false).await?;
-        assert!(application
-            .get_current_user(&AuthData::from(Token {
-                id: String::from("user"),
-                secret: token,
-            }))
-            .await
-            .is_err());
+        assert!(
+            application
+                .get_current_user(&AuthData::from(Token {
+                    id: String::from("user"),
+                    secret: token,
+                }))
+                .await
+                .is_err()
+        );
         Ok(())
     })
 }
@@ -66,10 +68,12 @@ fn test_get_registry_information_needs_auth() -> Result<(), ApiError> {
         assert!(application.get_registry_information(&AuthData::default()).await.is_err());
         assert!(application.get_registry_information(&admin_auth).await.is_ok());
         // test with read-only token
-        assert!(application
-            .get_registry_information(&create_auth_user_ro(&application).await?)
-            .await
-            .is_ok());
+        assert!(
+            application
+                .get_registry_information(&create_auth_user_ro(&application).await?)
+                .await
+                .is_ok()
+        );
         Ok(())
     })
 }
@@ -111,15 +115,19 @@ fn test_get_users_admin_only() -> Result<(), ApiError> {
         assert!(application.get_users(&AuthData::default()).await.is_err());
         assert!(application.get_users(&admin_auth).await.is_ok());
         // test user without admin
-        assert!(application
-            .get_users(&create_auth_user_ro(&application).await?)
-            .await
-            .is_err());
+        assert!(
+            application
+                .get_users(&create_auth_user_ro(&application).await?)
+                .await
+                .is_err()
+        );
         // test admin in read-only
-        assert!(application
-            .get_users(&create_auth_admin_ro(&application).await?)
-            .await
-            .is_err());
+        assert!(
+            application
+                .get_users(&create_auth_admin_ro(&application).await?)
+                .await
+                .is_err()
+        );
         Ok(())
     })
 }

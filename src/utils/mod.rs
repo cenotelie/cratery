@@ -8,7 +8,7 @@ use std::path::Path;
 use std::process::Stdio;
 use std::time::{Duration, Instant};
 
-use apierror::{error_backend_failure, specialize, ApiError};
+use apierror::{ApiError, error_backend_failure, specialize};
 use futures::future::BoxFuture;
 use tokio::io::AsyncWriteExt;
 use tokio::process::Command;
@@ -80,11 +80,7 @@ pub fn comma_sep_to_vec(input: &str) -> Vec<String> {
         .split(',')
         .filter_map(|s| {
             let s = s.trim();
-            if s.is_empty() {
-                None
-            } else {
-                Some(s.to_string())
-            }
+            if s.is_empty() { None } else { Some(s.to_string()) }
         })
         .collect::<Vec<_>>()
 }

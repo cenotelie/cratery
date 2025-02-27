@@ -11,8 +11,8 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
-use base64::engine::general_purpose::STANDARD;
 use base64::Engine;
+use base64::engine::general_purpose::STANDARD;
 use futures::lock::Mutex;
 use log::{error, info};
 use tokio::fs::File;
@@ -21,15 +21,15 @@ use tokio::io::AsyncBufReadExt;
 use crate::model::cargo::{IndexCrateDependency, IndexCrateMetadata};
 use crate::model::config::{Configuration, ExternalRegistryProtocol};
 use crate::model::deps::{
-    DepAdvisory, DepsAnalysis, DepsAnalysisJobSpec, DepsGraph, DepsGraphCrateOrigin, BUILTIN_CRATES_REGISTRY_URI,
+    BUILTIN_CRATES_REGISTRY_URI, DepAdvisory, DepsAnalysis, DepsAnalysisJobSpec, DepsGraph, DepsGraphCrateOrigin,
 };
 use crate::services::database::{db_transaction_read, db_transaction_write};
 use crate::services::emails::EmailSender;
 use crate::services::index::Index;
 use crate::services::rustsec::RustSecChecker;
-use crate::utils::apierror::{error_backend_failure, error_not_found, specialize, ApiError};
+use crate::utils::apierror::{ApiError, error_backend_failure, error_not_found, specialize};
 use crate::utils::db::RwSqlitePool;
-use crate::utils::{stale_instant, FaillibleFuture};
+use crate::utils::{FaillibleFuture, stale_instant};
 
 /// Creates a worker for the continuous check of dependencies for head crates
 pub fn create_deps_worker(

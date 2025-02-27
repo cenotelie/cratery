@@ -7,7 +7,7 @@ repository = "https://github.com/cenotelie/cratery"
 homepage = "https://github.com/cenotelie/cratery"
 documentation = "https://github.com/cenotelie/cratery"
 license = "MIT"
-edition = "2021"
+edition = "2024"
 
 [dependencies]
 # logging

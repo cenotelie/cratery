@@ -9,7 +9,7 @@ use chrono::Local;
 
 use super::Database;
 use crate::model::auth::{RegistryUserToken, RegistryUserTokenWithSecret};
-use crate::utils::apierror::{error_invalid_request, specialize, ApiError};
+use crate::utils::apierror::{ApiError, error_invalid_request, specialize};
 use crate::utils::token::{generate_token, hash_token};
 
 impl Database {

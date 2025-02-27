@@ -4,7 +4,7 @@
 
 //! Encapsulation of the web application files
 
-use crate::utils::axum::embedded::{get_content_type, EmbeddedResource, EmbeddedResources};
+use crate::utils::axum::embedded::{EmbeddedResource, EmbeddedResources, get_content_type};
 
 macro_rules! add {
     ($resources: expr, $name: literal) => {

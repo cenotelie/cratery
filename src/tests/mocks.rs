@@ -18,17 +18,17 @@ use crate::model::deps::DepsAnalysis;
 use crate::model::docs::{DocGenEvent, DocGenJob, DocGenJobSpec, DocGenJobState, DocGenTrigger};
 use crate::model::osv::SimpleAdvisory;
 use crate::model::worker::WorkersManager;
+use crate::services::ServiceProvider;
 use crate::services::deps::DepsChecker;
 use crate::services::docs::DocsGenerator;
 use crate::services::emails::EmailSender;
 use crate::services::index::Index;
 use crate::services::rustsec::RustSecChecker;
 use crate::services::storage::Storage;
-use crate::services::ServiceProvider;
+use crate::utils::FaillibleFuture;
 use crate::utils::apierror::ApiError;
 use crate::utils::db::RwSqlitePool;
 use crate::utils::token::generate_token;
-use crate::utils::FaillibleFuture;
 
 /// A mocking service
 pub struct MockService;

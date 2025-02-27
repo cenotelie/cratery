@@ -8,14 +8,14 @@ use std::fmt;
 use std::net::{IpAddr, SocketAddr};
 use std::ops::{Deref, DerefMut};
 
+use axum::RequestPartsExt;
 use axum::extract::{ConnectInfo, FromRequestParts};
 use axum::http::request::Parts;
-use axum::RequestPartsExt;
-use base64::prelude::BASE64_URL_SAFE;
 use base64::Engine;
+use base64::prelude::BASE64_URL_SAFE;
 use cookie::{Cookie, CookieJar};
-use serde::de::Visitor;
 use serde::Deserialize;
+use serde::de::Visitor;
 
 /// The client for the request, if any
 #[derive(Debug, Clone)]

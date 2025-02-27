@@ -13,8 +13,8 @@ use lettre::transport::smtp::client::{Tls, TlsParametersBuilder};
 use lettre::{AsyncSmtpTransport, AsyncTransport, Message, Tokio1Executor};
 
 use crate::model::config::Configuration;
-use crate::utils::apierror::ApiError;
 use crate::utils::FaillibleFuture;
+use crate::utils::apierror::ApiError;
 
 /// The service to send emails
 pub trait EmailSender {

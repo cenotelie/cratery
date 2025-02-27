@@ -15,20 +15,20 @@ use flate2::bufread::GzDecoder;
 use log::{error, info};
 use tar::Archive;
 use tokio::process::Command;
-use tokio::sync::mpsc::Sender;
 use tokio::sync::Mutex;
+use tokio::sync::mpsc::Sender;
 use tokio::time::interval;
 
+use crate::model::CHANNEL_NIGHTLY;
 use crate::model::config::Configuration;
 use crate::model::docs::{DocGenEvent, DocGenJob, DocGenJobSpec, DocGenJobState, DocGenJobUpdate, DocGenTrigger};
 use crate::model::worker::{JobIdentifier, JobSpecification, JobUpdate, WorkersManager};
-use crate::model::CHANNEL_NIGHTLY;
 use crate::services::database::{db_transaction_read, db_transaction_write};
 use crate::services::storage::Storage;
-use crate::utils::apierror::{error_backend_failure, error_invalid_request, specialize, ApiError};
+use crate::utils::FaillibleFuture;
+use crate::utils::apierror::{ApiError, error_backend_failure, error_invalid_request, specialize};
 use crate::utils::concurrent::n_at_a_time;
 use crate::utils::db::RwSqlitePool;
-use crate::utils::FaillibleFuture;
 
 /// Service to generate documentation for a crate
 pub trait DocsGenerator {

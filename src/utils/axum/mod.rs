@@ -9,8 +9,8 @@ pub mod embedded;
 pub mod extractors;
 pub mod sse;
 
-use axum::http::StatusCode;
 use axum::Json;
+use axum::http::StatusCode;
 use log::error;
 
 use crate::utils::apierror::ApiError;

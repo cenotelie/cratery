@@ -17,7 +17,7 @@ use axum::body::{Body, Bytes};
 use axum::extract::ws::{Message, WebSocket};
 use axum::extract::{FromRequest, Path, Query, State, WebSocketUpgrade};
 use axum::http::header::{HeaderName, SET_COOKIE};
-use axum::http::{header, HeaderValue, Request, StatusCode};
+use axum::http::{HeaderValue, Request, StatusCode, header};
 use axum::response::{IntoResponse, Response};
 use axum::{BoxError, Json};
 use cookie::Key;
@@ -26,8 +26,8 @@ use futures::{SinkExt, Stream, StreamExt};
 use log::error;
 use serde::Deserialize;
 use tokio::fs::File;
-use tokio::sync::mpsc::channel;
 use tokio::sync::Mutex;
+use tokio::sync::mpsc::channel;
 use tokio_stream::wrappers::ReceiverStream;
 use tokio_util::io::ReaderStream;
 
@@ -44,13 +44,13 @@ use crate::model::worker::{JobSpecification, JobUpdate, WorkerDescriptor, Worker
 use crate::model::{AppVersion, CrateVersion, RegistryInformation};
 use crate::services::index::Index;
 use crate::utils::apierror::{
-    error_backend_failure, error_invalid_request, error_not_found, error_unauthorized, specialize, ApiError,
+    ApiError, error_backend_failure, error_invalid_request, error_not_found, error_unauthorized, specialize,
 };
 use crate::utils::axum::auth::{AuthData, AxumStateForCookies};
 use crate::utils::axum::embedded::{EmbeddedResources, WebappResource};
 use crate::utils::axum::extractors::Base64;
 use crate::utils::axum::sse::{Event, ServerSentEventStream};
-use crate::utils::axum::{response, response_error, ApiResult};
+use crate::utils::axum::{ApiResult, response, response_error};
 use crate::utils::token::generate_token;
 
 /// The state of this application for axum
@@ -958,7 +958,13 @@ pub async fn api_v1_set_crate_can_can_remove(
 pub async fn index_serve_inner(
     index: &(dyn Index + Send + Sync),
     path: &str,
-) -> Result<(impl Stream<Item = Result<impl Into<Bytes>, impl Into<BoxError>>>, HeaderValue), ApiError> {
+) -> Result<
+    (
+        impl Stream<Item = Result<impl Into<Bytes> + use<>, impl Into<BoxError> + use<>>> + use<>,
+        HeaderValue,
+    ),
+    ApiError,
+> {
     let file_path: PathBuf = path.parse()?;
     let file_path = index.get_index_file(&file_path).await?.ok_or_else(error_not_found)?;
     let file = File::open(file_path).await.map_err(|_e| error_not_found())?;

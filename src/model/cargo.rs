@@ -11,7 +11,7 @@ use std::str::FromStr;
 use byteorder::{LittleEndian, ReadBytesExt};
 use serde_derive::{Deserialize, Serialize};
 
-use crate::utils::apierror::{error_invalid_request, specialize, ApiError};
+use crate::utils::apierror::{ApiError, error_invalid_request, specialize};
 use crate::utils::hashes::sha256;
 
 /// A crate to appear in search results

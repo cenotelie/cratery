@@ -10,7 +10,7 @@ use std::pin::Pin;
 use std::task::{Context, Poll};
 
 use axum::body::{Body, Bytes, HttpBody};
-use axum::http::{header, HeaderValue, Response};
+use axum::http::{HeaderValue, Response, header};
 use axum::response::IntoResponse;
 use futures::Stream;
 use http_body::Frame;

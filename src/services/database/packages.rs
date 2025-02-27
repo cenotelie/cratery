@@ -5,8 +5,8 @@
 //! Service for persisting information in the database
 //! API related to the management of packages (crates)
 
-use std::collections::hash_map::Entry;
 use std::collections::HashMap;
+use std::collections::hash_map::Entry;
 
 use byteorder::ByteOrder;
 use chrono::{Datelike, Duration, Local, NaiveDateTime};
@@ -14,6 +14,7 @@ use futures::StreamExt;
 use semver::Version;
 
 use super::Database;
+use crate::model::CrateVersion;
 use crate::model::cargo::{
     CrateUploadData, CrateUploadResult, IndexCrateMetadata, OwnersQueryResult, RegistryUser, SearchResultCrate, SearchResults,
     SearchResultsMeta, YesNoMsgResult, YesNoResult,
@@ -22,8 +23,7 @@ use crate::model::deps::{DepsAnalysisJobSpec, DepsAnalysisState};
 use crate::model::docs::DocGenJobSpec;
 use crate::model::packages::{CrateInfo, CrateInfoTarget, CrateInfoVersion, CrateInfoVersionDocs};
 use crate::model::stats::{DownloadStats, SERIES_LENGTH};
-use crate::model::CrateVersion;
-use crate::utils::apierror::{error_invalid_request, error_not_found, specialize, ApiError};
+use crate::utils::apierror::{ApiError, error_invalid_request, error_not_found, specialize};
 use crate::utils::comma_sep_to_vec;
 
 impl Database {
@@ -736,7 +736,11 @@ impl Database {
         // remove old users
         for old_user in old_users {
             let old_uid = self.check_is_user(old_user).await?;
-            let index = current_owners.iter().enumerate().find(|(_, &x)| x == old_uid).map(|(i, _)| i);
+            let index = current_owners
+                .iter()
+                .enumerate()
+                .find(|&(_, &x)| x == old_uid)
+                .map(|(i, _)| i);
             if let Some(index) = index {
                 if current_owners.len() == 1 {
                     // cannot remove the last one

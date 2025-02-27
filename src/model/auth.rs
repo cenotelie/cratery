@@ -7,7 +7,7 @@
 use chrono::NaiveDateTime;
 use serde_derive::{Deserialize, Serialize};
 
-use crate::utils::apierror::{error_forbidden, error_invalid_request, specialize, ApiError};
+use crate::utils::apierror::{ApiError, error_forbidden, error_invalid_request, specialize};
 
 /// The admin role
 pub const ROLE_ADMIN: &str = "admin";

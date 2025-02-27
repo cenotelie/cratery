@@ -10,8 +10,8 @@ use std::process::Stdio;
 use std::str::FromStr;
 
 use axum::http::Uri;
-use base64::engine::general_purpose::STANDARD;
 use base64::Engine;
+use base64::engine::general_purpose::STANDARD;
 use serde_derive::{Deserialize, Serialize};
 use tokio::fs::File;
 use tokio::io::{AsyncWriteExt, BufWriter};
@@ -19,7 +19,7 @@ use tokio::process::Command;
 
 use super::{CHANNEL_NIGHTLY, CHANNEL_STABLE};
 use crate::model::errors::MissingEnvVar;
-use crate::utils::apierror::{error_backend_failure, specialize, ApiError};
+use crate::utils::apierror::{ApiError, error_backend_failure, specialize};
 use crate::utils::comma_sep_to_vec;
 use crate::utils::token::generate_token;
 
@@ -45,11 +45,7 @@ impl ExternalRegistryProtocol {
     /// Gets the protocol
     #[must_use]
     pub fn new(sparse: bool) -> Self {
-        if sparse {
-            Self::Sparse
-        } else {
-            Self::Git
-        }
+        if sparse { Self::Sparse } else { Self::Git }
     }
 }
 

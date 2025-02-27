@@ -7,15 +7,15 @@
 use std::path::{Path, PathBuf};
 
 use log::{error, info};
-use tokio::fs::{create_dir_all, File, OpenOptions};
+use tokio::fs::{File, OpenOptions, create_dir_all};
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 use tokio::sync::Mutex;
 
-use super::{build_package_file_path, Index};
+use super::{Index, build_package_file_path};
 use crate::model::cargo::IndexCrateMetadata;
 use crate::model::config::IndexConfig;
-use crate::utils::apierror::{error_backend_failure, error_not_found, specialize, ApiError};
-use crate::utils::{execute_at_location, execute_git, FaillibleFuture};
+use crate::utils::apierror::{ApiError, error_backend_failure, error_not_found, specialize};
+use crate::utils::{FaillibleFuture, execute_at_location, execute_git};
 
 /// Manages the index on git
 pub struct GitIndex {
@@ -184,11 +184,7 @@ impl GitIndexImpl {
         for elem in file_path.iter().skip(1) {
             full_path.push(elem);
         }
-        if full_path.exists() {
-            Some(full_path)
-        } else {
-            None
-        }
+        if full_path.exists() { Some(full_path) } else { None }
     }
 
     /// Gets the upload pack advertisement for /info/refs

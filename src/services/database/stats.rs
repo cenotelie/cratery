@@ -6,8 +6,8 @@
 //! API related to statistics
 
 use super::Database;
-use crate::model::stats::GlobalStats;
 use crate::model::CrateVersion;
+use crate::model::stats::GlobalStats;
 use crate::utils::apierror::ApiError;
 
 impl Database {

@@ -12,8 +12,8 @@ use std::task::{Context, Poll, Waker};
 
 use log::{error, info};
 use serde_derive::{Deserialize, Serialize};
-use tokio::sync::mpsc::{Receiver, Sender};
 use tokio::sync::Mutex;
+use tokio::sync::mpsc::{Receiver, Sender};
 
 use super::docs::{DocGenJob, DocGenJobUpdate};
 use crate::model::config::{Configuration, NodeRole};

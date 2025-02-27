@@ -4,14 +4,14 @@
 
 //! Utility APIs for token generation and management
 
-use base64::engine::general_purpose::STANDARD;
 use base64::Engine;
+use base64::engine::general_purpose::STANDARD;
 use data_encoding::HEXLOWER;
 use rand::distributions::Standard;
-use rand::{thread_rng, Rng};
+use rand::{Rng, thread_rng};
 use ring::digest::{Context, SHA256};
 
-use super::apierror::{error_unauthorized, ApiError};
+use super::apierror::{ApiError, error_unauthorized};
 
 /// Generates a token
 #[must_use]
@@ -40,9 +40,5 @@ pub fn hash_token(input: &str) -> String {
 /// Checks a token hash
 pub fn check_hash(token: &str, hashed: &str) -> Result<(), ApiError> {
     let matches = hashed == sha256(token.as_bytes());
-    if matches {
-        Ok(())
-    } else {
-        Err(error_unauthorized())
-    }
+    if matches { Ok(()) } else { Err(error_unauthorized()) }
 }

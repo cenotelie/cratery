@@ -13,7 +13,7 @@ pub mod users;
 use std::future::Future;
 
 use crate::model::auth::ROLE_ADMIN;
-use crate::utils::apierror::{error_forbidden, error_not_found, error_unauthorized, specialize, ApiError};
+use crate::utils::apierror::{ApiError, error_forbidden, error_not_found, error_unauthorized, specialize};
 use crate::utils::db::{AppTransaction, RwSqlitePool};
 
 /// Executes a piece of work in the context of a transaction
@@ -111,11 +111,7 @@ impl Database {
     /// Checks that a user is an admin
     pub async fn check_is_admin(&self, uid: i64) -> Result<(), ApiError> {
         let is_admin = self.get_is_admin(uid).await?;
-        if is_admin {
-            Ok(())
-        } else {
-            Err(error_forbidden())
-        }
+        if is_admin { Ok(()) } else { Err(error_forbidden()) }
     }
 
     /// Checks that a package exists

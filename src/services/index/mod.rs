@@ -11,8 +11,8 @@ use std::sync::Arc;
 
 use crate::model::cargo::IndexCrateMetadata;
 use crate::model::config::Configuration;
-use crate::utils::apierror::ApiError;
 use crate::utils::FaillibleFuture;
+use crate::utils::apierror::ApiError;
 
 /// Index implementations
 pub trait Index {

@@ -9,7 +9,7 @@ use chrono::Local;
 
 use super::Database;
 use crate::model::docs::{DocGenJob, DocGenJobSpec, DocGenJobState, DocGenTrigger};
-use crate::utils::apierror::{error_not_found, ApiError};
+use crate::utils::apierror::{ApiError, error_not_found};
 use crate::utils::comma_sep_to_vec;
 
 impl Database {

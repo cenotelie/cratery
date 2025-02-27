@@ -11,14 +11,14 @@ use chrono::Local;
 
 use super::Database;
 use crate::model::auth::{
-    find_field_in_blob, Authentication, AuthenticationPrincipal, OAuthToken, RegistryUserToken, RegistryUserTokenWithSecret,
-    TokenKind, TokenUsage, ROLE_ADMIN,
+    Authentication, AuthenticationPrincipal, OAuthToken, ROLE_ADMIN, RegistryUserToken, RegistryUserTokenWithSecret, TokenKind,
+    TokenUsage, find_field_in_blob,
 };
 use crate::model::cargo::RegistryUser;
 use crate::model::config::Configuration;
 use crate::model::namegen::generate_name;
 use crate::utils::apierror::{
-    error_conflict, error_forbidden, error_invalid_request, error_not_found, error_unauthorized, specialize, ApiError,
+    ApiError, error_conflict, error_forbidden, error_invalid_request, error_not_found, error_unauthorized, specialize,
 };
 use crate::utils::token::{check_hash, generate_token, hash_token};
 

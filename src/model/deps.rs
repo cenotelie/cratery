@@ -9,9 +9,9 @@ use log::error;
 use semver::{Version, VersionReq};
 use serde_derive::{Deserialize, Serialize};
 
+use super::CrateVersion;
 use super::cargo::{DependencyKind, IndexCrateDependency, IndexCrateMetadata};
 use super::osv::SimpleAdvisory;
-use super::CrateVersion;
 use crate::utils::apierror::ApiError;
 use crate::utils::push_if_not_present;
 
@@ -354,11 +354,7 @@ impl DepsGraphCrate {
                 if metadata.yanked {
                     None
                 } else if let Ok(vers) = metadata.vers.parse::<Version>() {
-                    if vers.pre.is_empty() {
-                        Some(vers)
-                    } else {
-                        None
-                    }
+                    if vers.pre.is_empty() { Some(vers) } else { None }
                 } else {
                     None
                 }
@@ -420,11 +416,7 @@ impl DepsGraphCrate {
             for &origin in origins {
                 modified |= push_if_not_present(&mut resolution.origins, origin);
             }
-            if modified {
-                Some(resolution_index)
-            } else {
-                None
-            }
+            if modified { Some(resolution_index) } else { None }
         } else {
             let mut resolution = DepsGraphCrateResolution {
                 version_index,

@@ -10,7 +10,7 @@ use log::info;
 use sqlx::{Executor, SqliteConnection};
 
 use crate::utils::apierror::ApiError;
-use crate::utils::db::{AppTransaction, Migration, MigrationContent, MigrationError, VersionNumber, SCHEMA_METADATA_VERSION};
+use crate::utils::db::{AppTransaction, Migration, MigrationContent, MigrationError, SCHEMA_METADATA_VERSION, VersionNumber};
 
 /// The migrations
 const MIGRATIONS: &[Migration<'static>] = &[

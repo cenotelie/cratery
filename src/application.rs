@@ -9,7 +9,7 @@ use std::ops::Deref;
 use std::sync::Arc;
 
 use log::{error, info};
-use tokio::sync::mpsc::{channel, Receiver, Sender};
+use tokio::sync::mpsc::{Receiver, Sender, channel};
 
 use crate::model::auth::{Authentication, RegistryUserToken, RegistryUserTokenWithSecret};
 use crate::model::cargo::{
@@ -22,15 +22,15 @@ use crate::model::packages::{CrateInfo, CrateInfoTarget};
 use crate::model::stats::{DownloadStats, GlobalStats};
 use crate::model::worker::{WorkerEvent, WorkerPublicData, WorkersManager};
 use crate::model::{AppEvent, CrateVersion, RegistryInformation};
-use crate::services::database::{db_transaction_read, db_transaction_write, Database};
+use crate::services::ServiceProvider;
+use crate::services::database::{Database, db_transaction_read, db_transaction_write};
 use crate::services::deps::DepsChecker;
 use crate::services::docs::DocsGenerator;
 use crate::services::emails::EmailSender;
 use crate::services::index::Index;
 use crate::services::rustsec::RustSecChecker;
 use crate::services::storage::Storage;
-use crate::services::ServiceProvider;
-use crate::utils::apierror::{error_forbidden, error_invalid_request, error_unauthorized, specialize, ApiError};
+use crate::utils::apierror::{ApiError, error_forbidden, error_invalid_request, error_unauthorized, specialize};
 use crate::utils::axum::auth::{AuthData, Token};
 use crate::utils::db::RwSqlitePool;
 
@@ -854,7 +854,7 @@ pub(crate) struct ApplicationWithTransaction<'a> {
     pub(crate) database: Database,
 }
 
-impl<'a> ApplicationWithTransaction<'a> {
+impl ApplicationWithTransaction<'_> {
     /// Attempts the authentication of a user
     async fn authenticate(&self, auth_data: &AuthData) -> Result<Authentication, ApiError> {
         if let Some(token) = &auth_data.token {

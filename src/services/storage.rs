@@ -15,8 +15,8 @@ use tar::Archive;
 
 use crate::model::cargo::CrateMetadata;
 use crate::model::config::{Configuration, StorageConfig};
-use crate::utils::apierror::ApiError;
 use crate::utils::FaillibleFuture;
+use crate::utils::apierror::ApiError;
 
 /// Backing storage implementations
 pub trait Storage {
