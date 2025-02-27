@@ -29,7 +29,7 @@ data-encoding = "2.1"
 flate2 ="1.0"
 http-body = "1"
 mime = "0.3"
-opendal = { version = "0.51", features = ["services-fs", "services-s3"] }
+opendal = { version = "0.52", features = ["services-fs", "services-s3"] }
 quick-xml = "0.37"
 rand = "0.8"
 ring = "0.17"
