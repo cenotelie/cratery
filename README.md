@@ -136,6 +136,12 @@ This is controlled by the following configuration :
 * `REGISTRY_S3_SECRET_KEY`: The secret key to use, set to empty string to search for existing credentials.
 * `REGISTRY_S3_BUCKET`: The S3 bucket to use for storage. It will be created if it does not exist.
 * `REGISTRY_S3_ROOT`: The prefix to use for storing the data in the bucket (e.g. `/cratery/`), if not set or set to empty string, data will be stored in the root of the bucket.
+* `REGISTRY_STORAGE_RETRY_ENABLED`: Whether to retry temporary errors when accessing the storage, defaults to `false`, enable with `true` or `1`.  Retrying can be used for `S3` and `fs` storage.  If enabled, the following parameters can be used to further configure the retry behaviour:
+    * `REGISTRY_STORAGE_RETRY_MAX_TIMES`: Maximum number of retries to perform, defaults to `3`.
+    * `REGISTRY_STORAGE_RETRY_MIN_DELAY_MS`: Minimum delay (in milliseconds) between retries, defaults to `1000`.
+    * `REGISTRY_STORAGE_RETRY_MAX_DELAY_MS`: Maximum delay (in milliseconds) between retries, defaults to `60000`.
+    * `REGISTRY_STORAGE_RETRY_MAX_FACTOR`: Factor to use to increase the delay between retries, defaults to `2.0`.
+    * `REGISTRY_STORAGE_RETRY_JITTER`: Whether to add a random jitter to the delay between retries, defaults to `false`, enable with `true` or `1`.
 
 ### Index
 

@@ -99,13 +99,20 @@ impl ExternalRegistry {
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub enum StorageConfig {
     /// The file system
-    FileSystem,
+    FileSystem {
+        /// Optional parameters for the retry mechanism
+        #[serde(rename = "retryParams")]
+        retry_params: Option<RetryParams>,
+    },
     /// An S3 bucket
     S3 {
         /// The parameters to connect to S3
         params: S3Params,
         /// The name of the s3 bucket to use
         bucket: String,
+        /// Optional parameters for the retry mechanism
+        #[serde(rename = "retryParams")]
+        retry_params: Option<RetryParams>,
     },
 }
 
@@ -113,6 +120,31 @@ impl StorageConfig {
     /// Loads the configuration for a registry from the environment
     fn from_env() -> Result<StorageConfig, MissingEnvVar> {
         let storage_kind = get_var("REGISTRY_STORAGE")?;
+        let retry_params = get_var("REGISTRY_STORAGE_RETRY_ENABLED")
+            .map(|v| {
+                if v.eq_ignore_ascii_case("true") || v == "1" {
+                    Some(RetryParams {
+                        max_times: get_var("REGISTRY_STORAGE_RETRY_MAX_TIMES")
+                            .map(|s| s.parse().expect("invalid REGISTRY_STORAGE_RETRY_MAX_TIMES"))
+                            .unwrap_or(RetryParams::DEFAULT_MAX_TIMES),
+                        min_delay_ms: get_var("REGISTRY_STORAGE_RETRY_MIN_DELAY_MS")
+                            .map(|s| s.parse().expect("invalid REGISTRY_STORAGE_RETRY_MIN_DELAY_MS"))
+                            .unwrap_or(RetryParams::DEFAULT_MIN_DELAY_MS),
+                        max_delay_ms: get_var("REGISTRY_STORAGE_RETRY_MAX_DELAY_MS")
+                            .map(|s| s.parse().expect("invalid REGISTRY_STORAGE_RETRY_MAX_DELAY_MS"))
+                            .unwrap_or(RetryParams::DEFAULT_MAX_DELAY_MS),
+                        factor: get_var("REGISTRY_STORAGE_RETRY_FACTOR")
+                            .map(|s| s.parse().expect("invalid REGISTRY_STORAGE_RETRY_FACTOR"))
+                            .unwrap_or(RetryParams::DEFAULT_FACTOR),
+                        jitter: get_var("REGISTRY_STORAGE_RETRY_JITTER")
+                            .map(|v| v.eq_ignore_ascii_case("true") || v == "1")
+                            .unwrap_or(RetryParams::DEFAULT_JITTER),
+                    })
+                } else {
+                    None
+                }
+            })
+            .unwrap_or(None);
         Ok(match storage_kind.as_str() {
             "s3" | "S3" => StorageConfig::S3 {
                 params: S3Params {
@@ -123,10 +155,47 @@ impl StorageConfig {
                     root: get_var("REGISTRY_S3_ROOT").unwrap_or_default(),
                 },
                 bucket: get_var("REGISTRY_S3_BUCKET")?,
+                retry_params,
             },
-            "" | "fs" | "FS" | "filesystem" | "FileSystem" => StorageConfig::FileSystem,
+            "" | "fs" | "FS" | "filesystem" | "FileSystem" => StorageConfig::FileSystem { retry_params },
             _ => panic!("invalid REGISTRY_STORAGE"),
         })
+    }
+}
+
+/// The parameters for the retry mechanism
+#[derive(Debug, Serialize, Deserialize, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct RetryParams {
+    /// The maximum number of retries
+    pub max_times: usize,
+    /// The minimum delay between retries in milliseconds
+    pub min_delay_ms: u64,
+    /// The maximum delay between retries in milliseconds
+    pub max_delay_ms: u64,
+    /// The factor to use for the exponential backoff
+    pub factor: f32,
+    /// Whether to use jitter
+    pub jitter: bool,
+}
+
+impl RetryParams {
+    const DEFAULT_MAX_TIMES: usize = 3;
+    const DEFAULT_MIN_DELAY_MS: u64 = 1000;
+    const DEFAULT_MAX_DELAY_MS: u64 = 60000;
+    const DEFAULT_FACTOR: f32 = 2.0;
+    const DEFAULT_JITTER: bool = false;
+}
+
+impl ::std::default::Default for RetryParams {
+    fn default() -> Self {
+        Self {
+            max_times: Self::DEFAULT_MAX_TIMES,
+            min_delay_ms: Self::DEFAULT_MIN_DELAY_MS,
+            max_delay_ms: Self::DEFAULT_MAX_DELAY_MS,
+            factor: Self::DEFAULT_FACTOR,
+            jitter: Self::DEFAULT_JITTER,
+        }
     }
 }
 
@@ -493,7 +562,7 @@ impl Default for Configuration {
                     auth_required: true,
                 },
             },
-            storage: StorageConfig::FileSystem,
+            storage: StorageConfig::FileSystem { retry_params: None },
             storage_timeout: 3000,
             oauth_login_uri: String::new(),
             oauth_token_uri: String::new(),
