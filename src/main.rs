@@ -192,7 +192,7 @@ fn setup_log() {
 #[tokio::main]
 async fn main() {
     setup_log();
-    info!("{} commit={} tag={}", CRATE_NAME, GIT_HASH, GIT_TAG);
+    info!("{CRATE_NAME} commit={GIT_HASH} tag={GIT_TAG}");
     let configuration = services::StandardServiceProvider::get_configuration().await.unwrap();
     if configuration.self_role.is_worker() {
         let _ = waiting_sigterm(pin!(worker::main_worker(configuration))).await;

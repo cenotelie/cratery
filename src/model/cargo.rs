@@ -382,9 +382,9 @@ pub struct IndexCrateMetadata {
     /// The current values are:
     ///
     /// * 1: The schema as documented here, not including newer additions.
-    ///      This is honored in Rust version 1.51 and newer.
+    ///   This is honored in Rust version 1.51 and newer.
     /// * 2: The addition of the `features2` field.
-    ///      This is honored in Rust version 1.60 and newer.
+    ///   This is honored in Rust version 1.60 and newer.
     pub v: Option<u32>,
     /// This optional field contains features with new, extended syntax.
     /// Specifically, namespaced features (`dep:`) and weak dependencies

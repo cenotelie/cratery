@@ -134,7 +134,7 @@ async fn migrate_db(transaction: AppTransaction, migrations: &[Migration<'_>]) -
     };
     let start_from = match current_version {
         Some(version) => {
-            info!("Database schema version = {}", version);
+            info!("Database schema version = {version}");
             let version: VersionNumber = version.as_str().try_into()?;
             let mut result = 0;
             for (index, migration) in migrations.iter().enumerate().rev() {

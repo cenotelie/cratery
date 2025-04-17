@@ -26,9 +26,9 @@ pub type ApiResult<T> = Result<(StatusCode, Json<T>), (StatusCode, Json<ApiError
 pub fn response_error_http(http: u16, error: ApiError) -> (StatusCode, Json<ApiError>) {
     if http == 500 {
         // log internal errors
-        error!("{}", error);
+        error!("{error}");
         if let Some(backtrace) = &error.backtrace {
-            error!("{}", backtrace);
+            error!("{backtrace}");
         }
     }
     (StatusCode::from_u16(http).unwrap(), Json(error))
