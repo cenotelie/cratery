@@ -604,7 +604,7 @@ impl Configuration {
     /// Return a `VarError` when an expected environment variable is not present
     pub async fn from_env() -> Result<Self, MissingEnvVar> {
         let home_dir = get_var("REGISTRY_HOME_DIR")
-            .or(get_var("HOME"))
+            .or_else(|_| get_var("HOME"))
             .unwrap_or_else(|_| String::from("/home/cratery"));
         let data_dir = get_var("REGISTRY_DATA_DIR")?;
         let web_public_uri = get_var("REGISTRY_WEB_PUBLIC_URI")?;
