@@ -278,7 +278,7 @@ impl DepsGraphCrateOrigin {
     /// Gets the origin for a sub-dependency of a specified kind with a dependant of the current origin
     #[allow(clippy::match_same_arms)]
     #[must_use]
-    pub fn child_of_kind(self, kind: DependencyKind) -> Option<Self> {
+    pub const fn child_of_kind(self, kind: DependencyKind) -> Option<Self> {
         match (self, kind) {
             (_, DependencyKind::Dev) => None, // drop all other dev-dependencies
             (Self::Direct(DependencyKind::Normal), DependencyKind::Normal) => Some(Self::NormalIndirect),
