@@ -294,7 +294,7 @@ impl Database {
     /// Checks an authentication request with a token
     pub async fn check_token<F, FUT>(&self, login: &str, token_secret: &str, on_usage: &F) -> Result<Authentication, ApiError>
     where
-        F: Fn(TokenUsage) -> FUT,
+        F: Fn(TokenUsage) -> FUT + Sync,
         FUT: Future<Output = ()>,
     {
         if let Some(auth) = self.check_token_global(login, token_secret, &on_usage).await? {
@@ -314,7 +314,7 @@ impl Database {
         on_usage: &F,
     ) -> Result<Option<Authentication>, ApiError>
     where
-        F: Fn(TokenUsage) -> FUT,
+        F: Fn(TokenUsage) -> FUT + Sync,
         FUT: Future<Output = ()>,
     {
         let rows = sqlx::query!(
@@ -355,7 +355,7 @@ impl Database {
         on_usage: &F,
     ) -> Result<Option<Authentication>, ApiError>
     where
-        F: Fn(TokenUsage) -> FUT,
+        F: Fn(TokenUsage) -> FUT + Sync,
         FUT: Future<Output = ()>,
     {
         let row = sqlx::query!("SELECT id, token FROM RegistryGlobalToken WHERE name = $1 LIMIT 1", login)

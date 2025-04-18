@@ -204,7 +204,7 @@ impl DepsGraph {
         get_versions: &F,
     ) -> Result<(), ApiError>
     where
-        F: Fn(Option<String>, String) -> FUT,
+        F: Fn(Option<String>, String) -> FUT + Sync,
         FUT: std::future::Future<Output = Result<Vec<IndexCrateMetadata>, ApiError>>,
     {
         if let Some((crate_index, c)) = self.get_crate(dep.registry.as_deref(), dep.get_name()) {
@@ -235,7 +235,7 @@ impl DepsGraph {
     /// The direct dependencies include normal, dev and build dependencies
     pub async fn close<F, FUT>(&mut self, get_versions: &F) -> Result<(), ApiError>
     where
-        F: Fn(Option<String>, String) -> FUT,
+        F: Fn(Option<String>, String) -> FUT + Sync,
         FUT: std::future::Future<Output = Result<Vec<IndexCrateMetadata>, ApiError>>,
     {
         while let Some((crate_index, resolution_index)) = self.dirty.pop() {
