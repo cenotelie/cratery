@@ -44,7 +44,7 @@ pub enum ExternalRegistryProtocol {
 impl ExternalRegistryProtocol {
     /// Gets the protocol
     #[must_use]
-    pub fn new(sparse: bool) -> Self {
+    pub const fn new(sparse: bool) -> Self {
         if sparse { Self::Sparse } else { Self::Git }
     }
 }
@@ -400,7 +400,7 @@ impl NodeRole {
 
     /// Gets whether this configuration is for a worker node
     #[must_use]
-    pub fn is_worker(&self) -> bool {
+    pub const fn is_worker(&self) -> bool {
         matches!(self, Self::Worker(_))
     }
 }

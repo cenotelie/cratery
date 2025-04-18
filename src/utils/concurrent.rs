@@ -135,7 +135,7 @@ impl<F> Default for MaybeOrNever<F> {
 
 impl<F> MaybeOrNever<F> {
     /// Creates a new future
-    pub fn new(inner: F) -> Self {
+    pub const fn new(inner: F) -> Self {
         Self {
             inner: Some(inner),
             is_terminated: false,
@@ -143,7 +143,7 @@ impl<F> MaybeOrNever<F> {
     }
 
     /// Gets whether there is no future inside
-    pub fn is_never(&self) -> bool {
+    pub const fn is_never(&self) -> bool {
         self.inner.is_none()
     }
 }

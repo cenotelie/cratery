@@ -76,7 +76,7 @@ pub struct YesNoResult {
 impl YesNoResult {
     /// Creates a new instance
     #[must_use]
-    pub fn new() -> Self {
+    pub const fn new() -> Self {
         Self { ok: true }
     }
 }
@@ -93,7 +93,7 @@ pub struct YesNoMsgResult {
 impl YesNoMsgResult {
     /// Creates a new instance
     #[must_use]
-    pub fn new(msg: String) -> Self {
+    pub const fn new(msg: String) -> Self {
         Self { ok: true, msg }
     }
 }
