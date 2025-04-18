@@ -747,7 +747,7 @@ impl Configuration {
     async fn write_auth_config_git_config(&self) -> Result<(), ApiError> {
         let file = File::create(self.get_home_path_for(&[".gitconfig"])).await?;
         let mut writer = BufWriter::new(file);
-        writer.write_all("[credential]\n    helper = store\n".as_bytes()).await?;
+        writer.write_all(b"[credential]\n    helper = store\n").await?;
         writer.flush().await?;
         Ok(())
     }
@@ -792,12 +792,10 @@ impl Configuration {
     async fn write_auth_config_cargo_config(&self) -> Result<(), ApiError> {
         let file = File::create(self.get_home_path_for(&[".cargo", "config.toml"])).await?;
         let mut writer = BufWriter::new(file);
-        writer.write_all("[registry]\n".as_bytes()).await?;
-        writer
-            .write_all("global-credential-providers = [\"cargo:token\"]\n".as_bytes())
-            .await?;
-        writer.write_all("\n".as_bytes()).await?;
-        writer.write_all("[registries]\n".as_bytes()).await?;
+        writer.write_all(b"[registry]\n").await?;
+        writer.write_all(b"global-credential-providers = [\"cargo:token\"]\n").await?;
+        writer.write_all(b"\n").await?;
+        writer.write_all(b"[registries]\n").await?;
         if self.index.allow_protocol_git {
             writer
                 .write_all(format!("{} = {{ index = \"{}\" }}\n", self.self_local_name, self.web_public_uri).as_bytes())
