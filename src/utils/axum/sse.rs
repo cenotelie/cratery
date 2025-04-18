@@ -29,7 +29,7 @@ pub struct Event<T> {
 
 impl<T> Event<T> {
     /// Produces an event from a payload
-    pub fn from_data(data: T) -> Event<T> {
+    pub fn from_data(data: T) -> Self {
         Self {
             event_type: None,
             id: None,
@@ -60,8 +60,8 @@ where
     T: Serialize + Send + Unpin,
 {
     /// Encapsulate the original stream
-    pub fn new(stream: S) -> ServerSentEventStream<S> {
-        ServerSentEventStream(stream)
+    pub fn new(stream: S) -> Self {
+        Self(stream)
     }
 }
 

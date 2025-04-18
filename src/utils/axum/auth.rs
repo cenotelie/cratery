@@ -28,7 +28,7 @@ pub struct Token {
 
 impl Token {
     /// Try to parse a token, expected an HTTP Basic auth scheme
-    fn try_parse(input: &str) -> Option<Token> {
+    fn try_parse(input: &str) -> Option<Self> {
         let parts: Vec<&str> = input.trim().split_ascii_whitespace().collect();
         if parts.len() == 2 && parts[0] == "Basic" {
             let Ok(decoded) = BASE64_STANDARD.decode(parts[1]) else {
@@ -39,7 +39,7 @@ impl Token {
             };
             let parts: Vec<&str> = decoded.split(':').collect();
             if parts.len() == 2 {
-                Some(Token {
+                Some(Self {
                     id: parts[0].to_string(),
                     secret: parts[1].to_string(),
                 })
@@ -120,7 +120,7 @@ where
         } else {
             None
         };
-        Ok(AuthData {
+        Ok(Self {
             cookie_domain: state.get_domain(),
             cookie_id_name: state.get_id_cookie_name(),
             cookie_key,
@@ -160,7 +160,7 @@ impl AuthData {
 
     /// Creates a cookie to be returned on the HTTP response
     pub fn create_cookie(&mut self, name: &str, value: &str, is_private: bool) -> Cookie<'static> {
-        let cookie = AuthData::build_cookie(&self.cookie_domain, Cow::Borrowed(name), Cow::Borrowed(value), false);
+        let cookie = Self::build_cookie(&self.cookie_domain, Cow::Borrowed(name), Cow::Borrowed(value), false);
         if is_private {
             self.make_private_cookie(name, cookie)
         } else {
@@ -170,7 +170,7 @@ impl AuthData {
 
     /// Creates an expired cookie to be return on the HTTP response to unset it
     pub fn create_expired_cookie(&mut self, name: &str, is_private: bool) -> Cookie<'static> {
-        let cookie = AuthData::build_cookie(&self.cookie_domain, Cow::Borrowed(name), Cow::Borrowed(""), true);
+        let cookie = Self::build_cookie(&self.cookie_domain, Cow::Borrowed(name), Cow::Borrowed(""), true);
         if is_private {
             self.make_private_cookie(name, cookie)
         } else {

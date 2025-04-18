@@ -60,7 +60,7 @@ pub struct ApiResponseError {
 
 impl From<ApiError> for ApiResponseErrors {
     fn from(err: ApiError) -> Self {
-        ApiResponseErrors {
+        Self {
             errors: vec![ApiResponseError { detail: err.to_string() }],
         }
     }
@@ -76,8 +76,8 @@ pub struct YesNoResult {
 impl YesNoResult {
     /// Creates a new instance
     #[must_use]
-    pub fn new() -> YesNoResult {
-        YesNoResult { ok: true }
+    pub fn new() -> Self {
+        Self { ok: true }
     }
 }
 
@@ -93,8 +93,8 @@ pub struct YesNoMsgResult {
 impl YesNoMsgResult {
     /// Creates a new instance
     #[must_use]
-    pub fn new(msg: String) -> YesNoMsgResult {
-        YesNoMsgResult { ok: true, msg }
+    pub fn new(msg: String) -> Self {
+        Self { ok: true, msg }
     }
 }
 
@@ -245,9 +245,9 @@ impl FromStr for DependencyKind {
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         match s {
-            "normal" => Ok(DependencyKind::Normal),
-            "dev" => Ok(DependencyKind::Dev),
-            "build" => Ok(DependencyKind::Build),
+            "normal" => Ok(Self::Normal),
+            "dev" => Ok(Self::Dev),
+            "build" => Ok(Self::Build),
             _ => Err(()),
         }
     }
@@ -315,7 +315,7 @@ pub struct CrateUploadData {
 impl CrateUploadData {
     /// Deserialize the content of an input payload
     #[allow(clippy::cast_possible_truncation)]
-    pub fn new(buffer: &[u8]) -> Result<CrateUploadData, ApiError> {
+    pub fn new(buffer: &[u8]) -> Result<Self, ApiError> {
         let mut cursor = Cursor::new(buffer);
         // read the metadata
         let metadata_length = u64::from(cursor.read_u32::<LittleEndian>()?);
@@ -326,7 +326,7 @@ impl CrateUploadData {
         let content_length = cursor.read_u32::<LittleEndian>()? as usize;
         let mut content = vec![0_u8; content_length];
         content.copy_from_slice(&buffer[((4 + metadata_length + 4) as usize)..]);
-        Ok(CrateUploadData { metadata, content })
+        Ok(Self { metadata, content })
     }
 
     /// Builds the metadata to be index for this version

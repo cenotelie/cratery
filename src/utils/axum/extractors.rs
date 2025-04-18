@@ -32,11 +32,11 @@ where
             && let Ok(forwarded) = forwarded.to_str()
             && let Some(Ok(client_ip)) = forwarded.split(',').next().map(str::trim).map(str::parse)
         {
-            return Ok(ClientIp(Some(client_ip)));
+            return Ok(Self(Some(client_ip)));
         }
         match parts.extract::<ConnectInfo<SocketAddr>>().await {
-            Ok(ConnectInfo(addr)) => Ok(ClientIp(Some(addr.ip()))),
-            Err(_) => Ok(ClientIp(None)),
+            Ok(ConnectInfo(addr)) => Ok(Self(Some(addr.ip()))),
+            Err(_) => Ok(Self(None)),
         }
     }
 }
@@ -132,6 +132,6 @@ where
                 }
             }
         }
-        Ok(Cookies(jar))
+        Ok(Self(jar))
     }
 }

@@ -136,7 +136,7 @@ impl<F> Default for MaybeOrNever<F> {
 impl<F> MaybeOrNever<F> {
     /// Creates a new future
     pub fn new(inner: F) -> Self {
-        MaybeOrNever {
+        Self {
             inner: Some(inner),
             is_terminated: false,
         }

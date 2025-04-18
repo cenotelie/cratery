@@ -49,7 +49,7 @@ pub struct WorkerDescriptor {
 impl WorkerDescriptor {
     /// Gets the descriptor for this worker, base of the specified configuration
     #[must_use]
-    pub fn get_my_descriptor(config: &Configuration) -> WorkerDescriptor {
+    pub fn get_my_descriptor(config: &Configuration) -> Self {
         Self {
             identifier: generate_token(32),
             name: if let NodeRole::Worker(worker_config) = &config.self_role {
