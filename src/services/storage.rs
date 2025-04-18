@@ -100,7 +100,7 @@ impl From<&Configuration> for StorageImpl {
             }
         };
 
-        StorageImpl { opendal_operator }
+        Self { opendal_operator }
     }
 }
 
