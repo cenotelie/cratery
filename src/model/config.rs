@@ -72,6 +72,7 @@ impl ExternalRegistry {
     fn from_env(reg_index: usize) -> Result<Option<Self>, MissingEnvVar> {
         if let Ok(name) = get_var(format!("REGISTRY_EXTERNAL_{reg_index}_NAME")) {
             let mut index = get_var(format!("REGISTRY_EXTERNAL_{reg_index}_INDEX"))?;
+            #[expect(clippy::option_if_let_else)]
             let protocol = if let Some(rest) = index.strip_prefix("sparse+") {
                 index = rest.to_string();
                 ExternalRegistryProtocol::Sparse
@@ -617,13 +618,11 @@ impl Configuration {
             .host()
             .unwrap_or_default()
             .to_string();
-        let self_local_name = match get_var("REGISTRY_SELF_LOCAL_NAME") {
-            Ok(value) => value,
-            Err(_) => match web_domain.rfind('.') {
-                Some(index) => web_domain[index..].to_string(),
-                None => web_domain.clone(),
-            },
-        };
+        let self_local_name = get_var("REGISTRY_SELF_LOCAL_NAME").unwrap_or_else(|_| {
+            web_domain
+                .rfind('.')
+                .map_or_else(|| web_domain.clone(), |index| web_domain[index..].to_string())
+        });
         let index = IndexConfig::from_env(&home_dir, &data_dir, &web_public_uri)?;
         let storage = StorageConfig::from_env()?;
         let deps_notify_outdated = get_var("REGISTRY_DEPS_NOTIFY_OUTDATED").map(|v| v == "true").unwrap_or(false);

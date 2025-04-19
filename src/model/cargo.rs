@@ -464,18 +464,16 @@ impl IndexCrateDependency {
     /// Gets whether this dependency is active, for the specified targets and features
     #[must_use]
     pub fn is_active_for(&self, active_targets: &[String], active_features: &[&str]) -> bool {
-        let is_in_targets = match self.target.as_ref() {
-            None => true,
-            Some(target_spec) => {
-                if let Some(rest) = target_spec.strip_prefix("cfg(") {
+        let is_in_targets = self.target.as_ref().is_none_or(|target_spec| {
+            target_spec.strip_prefix("cfg(").map_or_else(
+                || active_targets.contains(target_spec),
+                |rest| {
                     let _cfg_spec = &rest[..rest.len() - 1];
                     // FIXME
                     false
-                } else {
-                    active_targets.contains(target_spec)
-                }
-            }
-        };
+                },
+            )
+        });
         if !is_in_targets {
             // not for an active target
             return false;
