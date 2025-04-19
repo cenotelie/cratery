@@ -107,13 +107,15 @@ impl SimpleAdvisoryRange {
     /// Gets whether the specified version is affected by this range
     #[must_use]
     pub fn affects(&self, version: &Version) -> bool {
-        if let Some(fixed) = self.fixed.as_ref() {
-            version >= &self.introduced && version < fixed
-        } else if let Some(last_affected) = self.last_affected.as_ref() {
-            version >= &self.introduced && version <= last_affected
-        } else {
-            version >= &self.introduced
-        }
+        self.fixed.as_ref().map_or_else(
+            || {
+                self.last_affected.as_ref().map_or_else(
+                    || version >= &self.introduced,
+                    |last_affected| version >= &self.introduced && version <= last_affected,
+                )
+            },
+            |fixed| version >= &self.introduced && version < fixed,
+        )
     }
 }
 

@@ -231,20 +231,21 @@ pub async fn get_webapp_resource(
     }
 
     let resource = state.get_webapp_resource(path).await;
-    match resource {
-        Some(resource) => Ok((
-            StatusCode::OK,
-            [
-                (header::CONTENT_TYPE, HeaderValue::from_str(resource.content_type()).unwrap()),
-                (
-                    header::CACHE_CONTROL,
-                    HeaderValue::from_static("public, max-age=3600, immutable"),
-                ),
-            ],
-            resource.into_data(),
-        )),
-        None => Err(StatusCode::NOT_FOUND),
-    }
+    resource.ok_or(StatusCode::NOT_FOUND).map(wrap_resource_with_header)
+}
+
+fn wrap_resource_with_header(resource: WebappResource) -> (StatusCode, [(HeaderName, HeaderValue); 2], Cow<'static, [u8]>) {
+    (
+        StatusCode::OK,
+        [
+            (header::CONTENT_TYPE, HeaderValue::from_str(resource.content_type()).unwrap()),
+            (
+                header::CACHE_CONTROL,
+                HeaderValue::from_static("public, max-age=3600, immutable"),
+            ),
+        ],
+        resource.into_data(),
+    )
 }
 
 /// Redirects to the login page
