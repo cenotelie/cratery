@@ -13,8 +13,9 @@ use axum::http::Uri;
 use base64::Engine;
 use base64::engine::general_purpose::STANDARD;
 use serde_derive::{Deserialize, Serialize};
-use tokio::fs::File;
-use tokio::io::{AsyncWriteExt, BufWriter};
+use thiserror::Error;
+use tokio::fs::{self, File};
+use tokio::io::{self, AsyncWriteExt, BufWriter};
 use tokio::process::Command;
 
 use super::{CHANNEL_NIGHTLY, CHANNEL_STABLE};
@@ -22,6 +23,41 @@ use crate::model::errors::MissingEnvVar;
 use crate::utils::apierror::{ApiError, error_backend_failure, specialize};
 use crate::utils::comma_sep_to_vec;
 use crate::utils::token::generate_token;
+
+#[derive(Debug, Error)]
+pub enum WriteConfigError {
+    #[error("Failed to compute parent path for '{path}'")]
+    ParentPath { path: PathBuf },
+
+    #[error("Failed to create folder '{path}'")]
+    CreateDir {
+        #[source]
+        source: io::Error,
+        path: PathBuf,
+    },
+
+    #[error("Failed to write '{path}'")]
+    CreateConfigToml {
+        #[source]
+        source: io::Error,
+        path: PathBuf,
+    },
+
+    #[error("Failed to write config file content")]
+    WriteContent(#[from] io::Error),
+}
+
+#[derive(Debug, Error)]
+pub enum WriteAuthConfigError {
+    #[error("Failed to write config.toml")]
+    WriteConfig(#[source] WriteConfigError),
+
+    #[error("Failed to write credential.toml")]
+    WriteCredentials(#[source] WriteConfigError),
+
+    #[error("Hack to allow progressiv work")]
+    ApiError,
+}
 
 /// Gets the value for an environment variable
 pub fn get_var<T: AsRef<str>>(name: T) -> Result<String, MissingEnvVar> {
@@ -733,13 +769,21 @@ impl Configuration {
     /// # Errors
     ///
     /// Return an error when writing fail
-    pub async fn write_auth_config(&self) -> Result<(), ApiError> {
+    pub async fn write_auth_config(&self) -> Result<(), WriteAuthConfigError> {
         if self.index.allow_protocol_git {
-            self.write_auth_config_git_config().await?;
-            self.write_auth_config_git_credentials().await?;
+            self.write_auth_config_git_config()
+                .await
+                .map_err(|_| WriteAuthConfigError::ApiError)?;
+            self.write_auth_config_git_credentials()
+                .await
+                .map_err(|_| WriteAuthConfigError::ApiError)?;
         }
-        self.write_auth_config_cargo_config().await?;
-        self.write_auth_config_cargo_credentials().await?;
+        self.write_auth_config_cargo_config()
+            .await
+            .map_err(WriteAuthConfigError::WriteConfig)?;
+        self.write_auth_config_cargo_credentials()
+            .await
+            .map_err(WriteAuthConfigError::WriteCredentials)?;
         Ok(())
     }
 
@@ -789,9 +833,26 @@ impl Configuration {
     }
 
     /// Write the configuration for authenticating to registries
-    async fn write_auth_config_cargo_config(&self) -> Result<(), ApiError> {
-        let file = File::create(self.get_home_path_for(&[".cargo", "config.toml"])).await?;
-        let mut writer = BufWriter::new(file);
+    async fn write_auth_config_cargo_config(&self) -> Result<(), WriteConfigError> {
+        let path = self.get_home_path_for(&[".cargo", "config.toml"]);
+        let parent_path = path
+            .parent()
+            .ok_or_else(|| WriteConfigError::ParentPath { path: path.clone() })?;
+        fs::create_dir(parent_path)
+            .await
+            .map_err(|source| WriteConfigError::CreateDir {
+                source,
+                path: parent_path.to_path_buf(),
+            })?;
+        let file = File::create(&path)
+            .await
+            .map_err(|source| WriteConfigError::CreateConfigToml { source, path })?;
+        self.write_auth_config_cargo_config_content(BufWriter::new(file))
+            .await
+            .map_err(WriteConfigError::WriteContent)
+    }
+
+    async fn write_auth_config_cargo_config_content(&self, mut writer: BufWriter<File>) -> Result<(), io::Error> {
         writer.write_all("[registry]\n".as_bytes()).await?;
         writer
             .write_all("global-credential-providers = [\"cargo:token\"]\n".as_bytes())
@@ -836,8 +897,11 @@ impl Configuration {
     }
 
     /// Write the configuration for authenticating to registries
-    async fn write_auth_config_cargo_credentials(&self) -> Result<(), ApiError> {
-        let file = File::create(self.get_home_path_for(&[".cargo", "credentials.toml"])).await?;
+    async fn write_auth_config_cargo_credentials(&self) -> Result<(), WriteConfigError> {
+        let path = self.get_home_path_for(&[".cargo", "credentials.toml"]);
+        let file = File::create(&path)
+            .await
+            .map_err(|source| WriteConfigError::CreateConfigToml { source, path })?;
         let mut writer = BufWriter::new(file);
         writer
             .write_all(format!("[registries.{}]\n", self.self_local_name).as_bytes())
