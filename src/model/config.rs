@@ -14,7 +14,7 @@ use base64::Engine;
 use base64::engine::general_purpose::STANDARD;
 use serde_derive::{Deserialize, Serialize};
 use thiserror::Error;
-use tokio::fs::File;
+use tokio::fs::{self, File};
 use tokio::io::{self, AsyncWriteExt, BufWriter};
 use tokio::process::Command;
 
@@ -26,6 +26,16 @@ use crate::utils::token::generate_token;
 
 #[derive(Debug, Error)]
 pub enum WriteConfigError {
+    #[error("Failed to compute parent path for '{path}'")]
+    ParentPath { path: PathBuf },
+
+    #[error("failed to create folder '{path}'")]
+    CreateDir {
+        #[source]
+        source: io::Error,
+        path: PathBuf,
+    },
+
     #[error("failed to write '{path}'")]
     CreateConfigToml {
         #[source]
@@ -831,6 +841,17 @@ impl Configuration {
     /// Write the configuration for authenticating to registries
     async fn write_auth_config_cargo_config(&self) -> Result<(), WriteConfigError> {
         let path = self.get_home_path_for(&[".cargo", "config.toml"]);
+        let parent_path = path
+            .parent()
+            .ok_or_else(|| WriteConfigError::ParentPath { path: path.clone() })?;
+        if !parent_path.exists() {
+            fs::create_dir(parent_path)
+                .await
+                .map_err(|source| WriteConfigError::CreateDir {
+                    source,
+                    path: parent_path.to_path_buf(),
+                })?;
+        }
         let file = File::create(&path)
             .await
             .map_err(|source| WriteConfigError::CreateConfigToml { source, path })?;
