@@ -18,13 +18,13 @@ use crate::model::deps::DepsAnalysis;
 use crate::model::docs::{DocGenEvent, DocGenJob, DocGenJobSpec, DocGenJobState, DocGenTrigger};
 use crate::model::osv::SimpleAdvisory;
 use crate::model::worker::WorkersManager;
-use crate::services::ServiceProvider;
 use crate::services::deps::DepsChecker;
 use crate::services::docs::DocsGenerator;
 use crate::services::emails::EmailSender;
 use crate::services::index::Index;
 use crate::services::rustsec::RustSecChecker;
 use crate::services::storage::Storage;
+use crate::services::{ConfigurationError, ServiceProvider};
 use crate::utils::FaillibleFuture;
 use crate::utils::apierror::ApiError;
 use crate::utils::db::RwSqlitePool;
@@ -39,12 +39,15 @@ fn resolved_default<T: Default + Send>() -> FaillibleFuture<'static, T> {
 
 impl ServiceProvider for MockService {
     /// Gets the configuration
-    async fn get_configuration() -> Result<Configuration, ApiError> {
+    async fn get_configuration() -> Result<Configuration, ConfigurationError> {
         let mut temp_dir = temp_dir();
         temp_dir.push(format!("cratery-test-{}", generate_token(16)));
-        tokio::fs::create_dir_all(&temp_dir).await?;
+        let data_dir = temp_dir.to_str().unwrap().to_string();
+        tokio::fs::create_dir_all(&temp_dir)
+            .await
+            .map_err(|source| ConfigurationError::CreateTempDir { source, path: temp_dir })?;
         Ok(Configuration {
-            data_dir: temp_dir.to_str().unwrap().to_string(),
+            data_dir,
             ..Default::default()
         })
     }
