@@ -186,7 +186,7 @@ fn setup_log() {
 
 /// Main entry point
 #[tokio::main]
-async fn main() {
+async fn main() -> anyhow::Result<()> {
     setup_log();
     info!("{CRATE_NAME} commit={GIT_HASH} tag={GIT_TAG}");
     let configuration = services::StandardServiceProvider::get_configuration().await.unwrap();
@@ -205,4 +205,5 @@ async fn main() {
         let server = pin!(main_serve_app(application, cookie_key,));
         let _ = waiting_sigterm(server).await;
     }
+    Ok(())
 }
