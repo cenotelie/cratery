@@ -418,6 +418,7 @@ dependencies = [
 name = "cratery"
 version = "1.13.0"
 dependencies = [
+ "anyhow",
  "axum",
  "base64",
  "byteorder",
