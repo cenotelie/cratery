@@ -9,11 +9,12 @@ use std::pin::pin;
 use std::str::FromStr;
 use std::sync::Arc;
 
+use anyhow::Context;
 use axum::Router;
 use axum::extract::DefaultBodyLimit;
 use axum::routing::{delete, get, patch, post, put};
 use cookie::Key;
-use log::info;
+use log::{SetLoggerError, info};
 
 use crate::application::Application;
 use crate::routes::AxumState;
@@ -157,7 +158,7 @@ async fn main_serve_app(application: Arc<Application>, cookie_key: Key) -> Resul
     .await
 }
 
-fn setup_log() {
+fn setup_log() -> Result<(), SetLoggerError> {
     let log_date_time_format =
         std::env::var("REGISTRY_LOG_DATE_TIME_FORMAT").unwrap_or_else(|_| String::from("[%Y-%m-%d %H:%M:%S]"));
 
@@ -181,13 +182,12 @@ fn setup_log() {
         .level(log_level)
         .chain(std::io::stdout())
         .apply()
-        .expect("log configuration failed");
 }
 
 /// Main entry point
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
-    setup_log();
+    setup_log().context("Failed to setup logger")?;
     info!("{CRATE_NAME} commit={GIT_HASH} tag={GIT_TAG}");
     let configuration = services::StandardServiceProvider::get_configuration().await.unwrap();
     if configuration.self_role.is_worker() {
