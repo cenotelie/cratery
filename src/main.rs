@@ -189,7 +189,9 @@ fn setup_log() -> Result<(), SetLoggerError> {
 async fn main() -> anyhow::Result<()> {
     setup_log().context("Failed to setup logger")?;
     info!("{CRATE_NAME} commit={GIT_HASH} tag={GIT_TAG}");
-    let configuration = services::StandardServiceProvider::get_configuration().await.unwrap();
+    let configuration = services::StandardServiceProvider::get_configuration()
+        .await
+        .context("Failed to get configuration for Standard Service Provider.")?;
     if configuration.self_role.is_worker() {
         let _ = waiting_sigterm(pin!(worker::main_worker(configuration))).await;
     } else {
