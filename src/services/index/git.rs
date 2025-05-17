@@ -77,7 +77,7 @@ impl GitIndexImpl {
             if !key_filename.exists() {
                 return Err(specialize(
                     error_backend_failure(),
-                    format!("Missing key file: {key_filename:?}"),
+                    format!("Missing key file: {}", key_filename.display()),
                 ));
             }
         }
