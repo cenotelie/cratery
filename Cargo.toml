@@ -53,8 +53,13 @@ tokio-tungstenite = "0.26"
 
 [lints.rust]
 unsafe_code = "forbid"
+unused_imports = "deny"
 
 [lints.clippy]
+complexity = { level = "deny", priority = -1 }
+perf = { level = "deny", priority = -1 }
+style = { level = "deny", priority = -1 }
+suspicious = { level = "deny", priority = -1 }
 pedantic = { level = "warn", priority = -1 }
 # The individually activated lints below come from : nursery, pedantic, restriction or suspicious.
 missing_errors_doc = "allow"
