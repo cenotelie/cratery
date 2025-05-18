@@ -50,3 +50,13 @@ sqlx = { version = "0.8", default-features = false, features = ["runtime-tokio-r
 axum = { version = "0.8", features = ["http2", "ws"] }
 reqwest = { version = "0.12", default-features = false, features = ["stream", "rustls-tls", "rustls-tls-native-roots"] }
 tokio-tungstenite = "0.26"
+
+[lints.rust]
+unsafe_code = "forbid"
+
+[lints.clippy]
+pedantic = { level = "warn", priority = -1 }
+# The individually activated lints below come from : nursery, pedantic, restriction or suspicious.
+missing_errors_doc = "allow"
+missing_panics_doc = "allow"
+module_name_repetitions = "allow"

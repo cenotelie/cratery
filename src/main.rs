@@ -4,10 +4,6 @@
 
 //! Main module
 
-#![forbid(unsafe_code)]
-#![warn(clippy::pedantic)]
-#![allow(clippy::module_name_repetitions, clippy::missing_panics_doc, clippy::missing_errors_doc)]
-
 use std::net::SocketAddr;
 use std::pin::pin;
 use std::str::FromStr;
