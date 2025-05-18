@@ -13,11 +13,12 @@ use std::pin::pin;
 use std::str::FromStr;
 use std::sync::Arc;
 
+use anyhow::Context;
 use axum::Router;
 use axum::extract::DefaultBodyLimit;
 use axum::routing::{delete, get, patch, post, put};
 use cookie::Key;
-use log::info;
+use log::{SetLoggerError, info};
 
 use crate::application::Application;
 use crate::routes::AxumState;
@@ -161,7 +162,7 @@ async fn main_serve_app(application: Arc<Application>, cookie_key: Key) -> Resul
     .await
 }
 
-fn setup_log() {
+fn setup_log() -> Result<(), SetLoggerError> {
     let log_date_time_format =
         std::env::var("REGISTRY_LOG_DATE_TIME_FORMAT").unwrap_or_else(|_| String::from("[%Y-%m-%d %H:%M:%S]"));
 
@@ -185,15 +186,16 @@ fn setup_log() {
         .level(log_level)
         .chain(std::io::stdout())
         .apply()
-        .expect("log configuration failed");
 }
 
 /// Main entry point
 #[tokio::main]
-async fn main() {
-    setup_log();
+async fn main() -> anyhow::Result<()> {
+    setup_log().context("Failed to setup logger")?;
     info!("{CRATE_NAME} commit={GIT_HASH} tag={GIT_TAG}");
-    let configuration = services::StandardServiceProvider::get_configuration().await.unwrap();
+    let configuration = services::StandardServiceProvider::get_configuration()
+        .await
+        .context("Failed to get configuration for Standard Service Provider.")?;
     if configuration.self_role.is_worker() {
         let _ = waiting_sigterm(pin!(worker::main_worker(configuration))).await;
     } else {
@@ -209,4 +211,5 @@ async fn main() {
         let server = pin!(main_serve_app(application, cookie_key,));
         let _ = waiting_sigterm(server).await;
     }
+    Ok(())
 }

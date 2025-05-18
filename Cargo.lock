@@ -392,6 +392,7 @@ dependencies = [
 name = "cratery"
 version = "1.12.0"
 dependencies = [
+ "anyhow",
  "axum",
  "base64",
  "byteorder",
@@ -417,6 +418,7 @@ dependencies = [
  "serde_json",
  "sqlx",
  "tar",
+ "thiserror",
  "tokio",
  "tokio-stream",
  "tokio-tungstenite",
