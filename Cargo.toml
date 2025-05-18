@@ -34,8 +34,8 @@ quick-xml = "0.37"
 rand = "0.8"
 ring = "0.17"
 semver = { version = "1.0", features = ["serde"] }
-urlencoding = "2.1"
 tar = "0.4.41"
+urlencoding = "2.1"
 uuid = { version = "1.2", features = ["v4", "fast-rng"] }
 
 # async support
