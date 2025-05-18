@@ -26,7 +26,7 @@ bytes = "1.7"
 chrono = { version = "0.4.38", features = ["serde"] }
 cookie = { version = "0.18", features = ["secure", "percent-encode"] }
 data-encoding = "2.1"
-flate2 ="1.0"
+flate2 = "1.0"
 http-body = "1"
 mime = "0.3"
 opendal = { version = "0.53", features = ["services-fs", "services-s3"] }
@@ -36,17 +36,32 @@ ring = "0.17"
 semver = { version = "1.0", features = ["serde"] }
 urlencoding = "2.1"
 tar = "0.4.41"
-uuid =  { version = "1.2", features = ["v4", "fast-rng"] }
+uuid = { version = "1.2", features = ["v4", "fast-rng"] }
 
 # async support
 futures = "0.3"
 tokio = { version = "1.38", features = ["full"] }
 tokio-stream = "0.1.15"
-tokio-util = {version = "0.7", features = ["io"]}
+tokio-util = { version = "0.7", features = ["io"] }
 
 # framework for the application
-lettre = { version = "0.11", default-features = false, features = ["builder", "smtp-transport", "rustls-tls", "tokio1", "tokio1-rustls-tls"] }
-sqlx = { version = "0.8", default-features = false, features = ["runtime-tokio-rustls", "sqlite", "macros", "chrono"] }
+lettre = { version = "0.11", default-features = false, features = [
+    "builder",
+    "smtp-transport",
+    "rustls-tls",
+    "tokio1",
+    "tokio1-rustls-tls",
+] }
+sqlx = { version = "0.8", default-features = false, features = [
+    "runtime-tokio-rustls",
+    "sqlite",
+    "macros",
+    "chrono",
+] }
 axum = { version = "0.8", features = ["http2", "ws"] }
-reqwest = { version = "0.12", default-features = false, features = ["stream", "rustls-tls", "rustls-tls-native-roots"] }
+reqwest = { version = "0.12", default-features = false, features = [
+    "stream",
+    "rustls-tls",
+    "rustls-tls-native-roots",
+] }
 tokio-tungstenite = "0.26"
