@@ -838,12 +838,14 @@ impl Configuration {
         let parent_path = path
             .parent()
             .ok_or_else(|| WriteConfigError::ParentPath { path: path.clone() })?;
-        fs::create_dir(parent_path)
-            .await
-            .map_err(|source| WriteConfigError::CreateDir {
-                source,
-                path: parent_path.to_path_buf(),
-            })?;
+        if !parent_path.exists() {
+            fs::create_dir(parent_path)
+                .await
+                .map_err(|source| WriteConfigError::CreateDir {
+                    source,
+                    path: parent_path.to_path_buf(),
+                })?;
+        }
         let file = File::create(&path)
             .await
             .map_err(|source| WriteConfigError::CreateConfigToml { source, path })?;
