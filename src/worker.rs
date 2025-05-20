@@ -12,6 +12,7 @@ use base64::engine::general_purpose::STANDARD;
 use chrono::Local;
 use futures::{FutureExt, Sink, SinkExt, StreamExt, select};
 use log::{error, info, warn};
+use thiserror::Error;
 use tokio::net::TcpStream;
 use tokio::sync::Mutex;
 use tokio::time::MissedTickBehavior;
@@ -28,13 +29,37 @@ use crate::utils::concurrent::{MaybeFutureExt, MaybeOrNever};
 /// The interval between heartbeats, in milliseconds
 const HEARTBEAT_INTERVAL: u64 = 100;
 
-pub async fn main_worker(config: Configuration) {
+/// Define worker error to report.
+#[derive(Debug, Error)]
+pub enum WorkerError {
+    #[error("expected 'worker' role config, found '{0}'")]
+    RoleNotWorker(&'static str),
+
+    //HACK: temporary before convert code to use contextual errors when not reported to client api.
+    #[error("an api error need to be converted")]
+    ApiError { message: String, details: Option<String> },
+}
+
+impl From<ApiError> for WorkerError {
+    fn from(api_error: ApiError) -> Self {
+        Self::ApiError {
+            message: api_error.message,
+            details: api_error.details,
+        }
+    }
+}
+
+pub async fn main_worker(config: Configuration) -> Result<(), WorkerError> {
     let descriptor = WorkerDescriptor::get_my_descriptor(&config);
-    let NodeRole::Worker(worker_config) = &config.self_role else {
-        panic!("expected worker role config");
+    let worker_config = match &config.self_role {
+        NodeRole::Standalone => return Err(WorkerError::RoleNotWorker("Standalone")),
+        NodeRole::Master(_) => return Err(WorkerError::RoleNotWorker("Master")),
+        NodeRole::Worker(node_role_worker) => node_role_worker,
     };
-    let ws = main_worker_connect(worker_config, &descriptor).await.unwrap();
-    main_loop(ws, &descriptor, config).await.unwrap();
+
+    let ws = main_worker_connect(worker_config, &descriptor).await?;
+    main_loop(ws, &descriptor, config).await?;
+    Ok(())
 }
 
 /// Establishes the connection to the server
