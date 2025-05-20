@@ -210,7 +210,8 @@ async fn main() -> anyhow::Result<()> {
         .await
         .context("Failed to get configuration for Standard Service Provider.")?;
     if configuration.self_role.is_worker() {
-        let _ = waiting_sigterm(pin!(worker::main_worker(configuration))).await;
+        let worker = pin!(worker::main_worker(configuration));
+        waiting_sigterm(worker).await.context("an error terminate worker execution")?;
     } else {
         // standalone or master
         let application = Application::launch::<services::StandardServiceProvider>(configuration)
@@ -222,7 +223,7 @@ async fn main() -> anyhow::Result<()> {
                 .as_bytes(),
         );
         let server = pin!(main_serve_app(application, cookie_key,));
-        let _ = waiting_sigterm(server).await;
+        waiting_sigterm(server).await.context("an error terminate server execution")?;
     }
     Ok(())
 }
