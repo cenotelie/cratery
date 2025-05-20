@@ -14,7 +14,9 @@ use axum::Router;
 use axum::extract::DefaultBodyLimit;
 use axum::routing::{delete, get, patch, post, put};
 use cookie::Key;
+use futures::io;
 use log::{SetLoggerError, info};
+use thiserror::Error;
 
 use crate::application::Application;
 use crate::routes::AxumState;
@@ -40,9 +42,23 @@ pub const GIT_HASH: &str = env!("GIT_HASH");
 /// The git tag that was used to build the application
 pub const GIT_TAG: &str = env!("GIT_TAG");
 
+/// Handle define serve root errors
+#[derive(Error, Debug)]
+enum ServeError {
+    #[error("failed to bind {socket_addr}")]
+    BindSocket {
+        #[source]
+        source: io::Error,
+        socket_addr: SocketAddr,
+    },
+
+    #[error("failed to start axum serve")]
+    AxumServe(#[source] io::Error),
+}
+
 /// Main payload for serving the application
 #[expect(clippy::too_many_lines)]
-async fn main_serve_app(application: Arc<Application>, cookie_key: Key) -> Result<(), std::io::Error> {
+async fn main_serve_app(application: Arc<Application>, cookie_key: Key) -> Result<(), ServeError> {
     // web application
     let webapp_resources = webapp::get_resources();
     let body_limit = application.configuration.web_body_limit;
@@ -152,10 +168,11 @@ async fn main_serve_app(application: Arc<Application>, cookie_key: Key) -> Resul
     axum::serve(
         tokio::net::TcpListener::bind(socket_addr)
             .await
-            .unwrap_or_else(|_| panic!("failed to bind {socket_addr}")),
+            .map_err(|source| ServeError::BindSocket { source, socket_addr })?,
         app.into_make_service_with_connect_info::<SocketAddr>(),
     )
     .await
+    .map_err(ServeError::AxumServe)
 }
 
 fn setup_log() -> Result<(), SetLoggerError> {
