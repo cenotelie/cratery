@@ -49,6 +49,10 @@ where
     }
 }
 
+// #[derive(Debug, Error)]
+// #[error(transparent)]
+// pub struct DbWriteError(#[from] sqlx::Error);
+
 /// Executes a piece of work in the context of a transaction
 /// The transaction is committed if the operation succeed,
 /// or rolled back if it fails
