@@ -115,7 +115,7 @@ impl DocsGenerator for DocsGeneratorImpl {
                 database.create_docgen_job(spec, trigger).await
             })
             .await?;
-            self.send_event(DocGenEvent::Queued(Box::new(job.clone()))).await?;
+            self.send_event(DocGenEvent::Queued(Box::new(job.clone()))).await;
             Ok(job)
         })
     }
@@ -132,7 +132,7 @@ impl DocsGenerator for DocsGeneratorImpl {
 impl DocsGeneratorImpl {
     /// Send an event to listeners
     #[expect(clippy::significant_drop_tightening)]
-    async fn send_event(&self, event: DocGenEvent) -> Result<(), ApiError> {
+    async fn send_event(&self, event: DocGenEvent) {
         let mut listeners = self.listeners.lock().await;
         let mut index = if listeners.is_empty() {
             None
@@ -146,7 +146,6 @@ impl DocsGeneratorImpl {
             }
             index = if i == 0 { None } else { Some(i - 1) };
         }
-        Ok(())
     }
 
     /// Update a job
@@ -174,7 +173,7 @@ impl DocsGeneratorImpl {
             last_update: now,
             log: log.map(str::to_string),
         }))
-        .await?;
+        .await;
         Ok(())
     }
 
