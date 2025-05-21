@@ -22,15 +22,13 @@ use crate::utils::shared::{ResourceLock, SharedResource, StillSharedError};
 /// Maximum number of concurrent READ connections
 const DB_MAX_READ_CONNECTIONS: u32 = 16;
 
-///TODO: doc
+/// Define error than can happen during pool creation.
 #[derive(Debug, Error)]
-pub enum PoolCreateError {
-    #[error("Failed to create Sqlite Connect Options with url `{url}`")]
-    ConnectOptionsCreation {
-        #[source]
-        source: sqlx::Error,
-        url: String,
-    },
+#[error("Failed to create Sqlite Connect Options with url `{url}`")]
+pub struct PoolCreateError {
+    #[source]
+    source: sqlx::Error,
+    url: String,
 }
 
 /// A pool of sqlite connection that distinguish read-only and write connections
@@ -52,11 +50,7 @@ impl RwSqlitePool {
             read: SqlitePoolOptions::new()
                 .max_connections(DB_MAX_READ_CONNECTIONS)
                 .connect_lazy_with(
-                    SqliteConnectOptions::from_str(url)
-                        .map_err(|source| PoolCreateError::ConnectOptionsCreation {
-                            source,
-                            url: url.to_string(),
-                        })?
+                    sqlite_connect_from_str(url)?
                         .journal_mode(SqliteJournalMode::Wal)
                         .read_only(true),
                 ),
@@ -72,14 +66,7 @@ impl RwSqlitePool {
                         })
                     }
                 })
-                .connect_lazy_with(
-                    SqliteConnectOptions::from_str(url)
-                        .map_err(|source| PoolCreateError::ConnectOptionsCreation {
-                            source,
-                            url: url.to_string(),
-                        })?
-                        .journal_mode(SqliteJournalMode::Wal),
-                ),
+                .connect_lazy_with(sqlite_connect_from_str(url)?.journal_mode(SqliteJournalMode::Wal)),
             current_write_op,
         })
     }
@@ -109,6 +96,13 @@ impl RwSqlitePool {
             }
         }
     }
+}
+
+fn sqlite_connect_from_str(url: &str) -> Result<SqliteConnectOptions, PoolCreateError> {
+    SqliteConnectOptions::from_str(url).map_err(|source| PoolCreateError {
+        source,
+        url: url.to_string(),
+    })
 }
 
 /// The name of the metadata for the schema version
