@@ -10,10 +10,10 @@ use std::sync::Arc;
 use chrono::Local;
 use tokio::runtime::Builder;
 
-use crate::application::Application;
+use crate::application::{Application, LaunchError};
 use crate::model::auth::ROLE_ADMIN;
 use crate::services::ServiceProvider;
-use crate::utils::apierror::ApiError;
+use crate::utils::apierror::{ApiError, AsStatusCode};
 use crate::utils::axum::auth::{AuthData, Token};
 use crate::utils::token::{generate_token, hash_token};
 
@@ -22,6 +22,9 @@ pub mod security;
 
 pub const ADMIN_UID: i64 = 1;
 pub const ADMIN_NAME: &str = "admin";
+
+// used in `async_test`
+impl AsStatusCode for LaunchError {}
 
 /// Wrapper for async tests
 pub fn async_test<F, FUT>(payload: F) -> Result<(), ApiError>
