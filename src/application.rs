@@ -290,7 +290,7 @@ impl Application {
     pub async fn get_current_user(&self, auth_data: &AuthData) -> Result<RegistryUser, ApiError> {
         self.db_transaction_read(|app| async move {
             let authentication = app.authenticate(auth_data).await?;
-            app.database.get_user_profile(authentication.uid()?).await
+            app.database.get_user_profile(authentication.uid()?).await.map_err(Into::into)
         })
         .await
     }

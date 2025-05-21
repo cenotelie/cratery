@@ -6,11 +6,39 @@
 //! API related to jobs
 
 use chrono::Local;
+use thiserror::Error;
 
 use super::Database;
+use super::users::UserError;
 use crate::model::docs::{DocGenJob, DocGenJobSpec, DocGenJobState, DocGenTrigger};
-use crate::utils::apierror::{ApiError, error_not_found};
+use crate::utils::apierror::{ApiError, AsStatusCode, error_not_found};
 use crate::utils::comma_sep_to_vec;
+
+#[derive(Debug, Error)]
+pub enum DocGenError {
+    #[error("request docgen job for {spec_package}-{spec_version}-{spec_target} with state {state}")]
+    SqlxSelectJob {
+        #[source]
+        source: sqlx::Error,
+        state: i64,
+        spec_package: String,
+        spec_version: String,
+        spec_target: String,
+    },
+
+    #[error("failed to get user profile associated to a DocGenJob")]
+    UserProfile(#[source] UserError),
+
+    #[error("failed to Insert a DocGenJob for {spec_package}-{spec_version}-{spec_target}.")]
+    SqlxInsertJob {
+        source: sqlx::Error,
+        spec_package: String,
+        spec_version: String,
+        spec_target: String,
+    },
+}
+
+impl AsStatusCode for DocGenError {}
 
 impl Database {
     /// Gets the documentation generation jobs
@@ -89,7 +117,7 @@ impl Database {
     }
 
     /// Creates and queue a single documentation job
-    pub async fn create_docgen_job(&self, spec: &DocGenJobSpec, trigger: &DocGenTrigger) -> Result<DocGenJob, ApiError> {
+    pub async fn create_docgen_job(&self, spec: &DocGenJobSpec, trigger: &DocGenTrigger) -> Result<DocGenJob, DocGenError> {
         // look for already existing queued job
         let state_value = DocGenJobState::Queued.value();
         let row = sqlx::query!(
@@ -106,7 +134,14 @@ impl Database {
             spec.target,
         )
         .fetch_optional(&mut *self.transaction.borrow().await)
-        .await?;
+        .await
+        .map_err(|source| DocGenError::SqlxSelectJob {
+            source,
+            state: state_value,
+            spec_package: spec.package.clone(),
+            spec_version: spec.version.clone(),
+            spec_target: spec.target.clone(),
+        })?;
         if let Some(row) = row {
             // there is already a queued job, return this one
             return Ok(DocGenJob {
@@ -124,7 +159,7 @@ impl Database {
                 trigger: DocGenTrigger::from((
                     row.trigger_event,
                     if let Some(uid) = row.trigger_user {
-                        Some(self.get_user_profile(uid).await?)
+                        Some(self.get_user_profile(uid).await.map_err(DocGenError::UserProfile)?)
                     } else {
                         None
                     },
@@ -158,7 +193,13 @@ impl Database {
             trigger_event,
         )
         .fetch_one(&mut *self.transaction.borrow().await)
-        .await?
+        .await
+        .map_err(|source| DocGenError::SqlxInsertJob {
+            source,
+            spec_package: spec.package.clone(),
+            spec_version: spec.version.clone(),
+            spec_target: spec.target.clone(),
+        })?
         .id;
         Ok(DocGenJob {
             id: job_id,

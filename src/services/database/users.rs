@@ -8,6 +8,7 @@
 use std::future::Future;
 
 use chrono::Local;
+use thiserror::Error;
 
 use super::Database;
 use crate::model::auth::{
@@ -18,21 +19,38 @@ use crate::model::cargo::RegistryUser;
 use crate::model::config::Configuration;
 use crate::model::namegen::generate_name;
 use crate::utils::apierror::{
-    ApiError, error_conflict, error_forbidden, error_invalid_request, error_not_found, error_unauthorized, specialize,
+    ApiError, AsStatusCode, error_conflict, error_forbidden, error_invalid_request, error_not_found, error_unauthorized,
+    specialize,
 };
 use crate::utils::token::{check_hash, generate_token, hash_token};
 
+#[derive(Debug, Error)]
+pub enum UserError {
+    #[error("failed to execute sql request to get user profile for `{uid}`")]
+    SqlxGetUserProfile {
+        #[source]
+        source: sqlx::Error,
+        uid: i64,
+    },
+
+    #[error("user with uid `{uid}` not found")]
+    UserNotFound { uid: i64 },
+}
+
+impl AsStatusCode for UserError {}
+
 impl Database {
     /// Retrieves a user profile
-    pub async fn get_user_profile(&self, uid: i64) -> Result<RegistryUser, ApiError> {
+    pub async fn get_user_profile(&self, uid: i64) -> Result<RegistryUser, UserError> {
         let maybe_row = sqlx::query_as!(
             RegistryUser,
             "SELECT id, isActive AS is_active, email, login, name, roles FROM RegistryUser WHERE id = $1",
             uid
         )
         .fetch_optional(&mut *self.transaction.borrow().await)
-        .await?;
-        maybe_row.ok_or_else(error_not_found)
+        .await
+        .map_err(|source| UserError::SqlxGetUserProfile { source, uid })?;
+        maybe_row.ok_or(UserError::UserNotFound { uid })
     }
 
     /// Attempts to login using an OAuth code
