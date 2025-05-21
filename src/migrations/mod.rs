@@ -9,7 +9,6 @@ use std::ops::DerefMut;
 use log::info;
 use sqlx::{Executor, SqliteConnection};
 
-use crate::utils::apierror::ApiError;
 use crate::utils::db::{AppTransaction, Migration, MigrationContent, MigrationError, SCHEMA_METADATA_VERSION, VersionNumber};
 
 /// The migrations
@@ -166,7 +165,7 @@ async fn migrate_db(transaction: AppTransaction, migrations: &[Migration<'_>]) -
 }
 
 /// Migrate to the last version
-pub async fn migrate_to_last(transaction: AppTransaction) -> Result<i32, ApiError> {
+pub async fn migrate_to_last(transaction: AppTransaction) -> Result<i32, MigrationError> {
     migrate_db(transaction, MIGRATIONS).await?;
     Ok(0)
 }
