@@ -17,11 +17,21 @@ use sqlx::sqlite::{SqliteConnectOptions, SqliteJournalMode, SqlitePoolOptions};
 use sqlx::{Pool, Sqlite, SqliteConnection, Transaction};
 use thiserror::Error;
 
-use super::apierror::ApiError;
 use crate::utils::shared::{ResourceLock, SharedResource, StillSharedError};
 
 /// Maximum number of concurrent READ connections
 const DB_MAX_READ_CONNECTIONS: u32 = 16;
+
+///TODO: doc
+#[derive(Debug, Error)]
+pub enum PoolCreateError {
+    #[error("Failed to create Sqlite Connect Options with url `{url}`")]
+    ConnectOptionsCreation {
+        #[source]
+        source: sqlx::Error,
+        url: String,
+    },
+}
 
 /// A pool of sqlite connection that distinguish read-only and write connections
 #[derive(Debug, Clone)]
@@ -36,13 +46,17 @@ pub struct RwSqlitePool {
 
 impl RwSqlitePool {
     /// Creates a new pool
-    pub fn new(url: &str) -> Result<RwSqlitePool, ApiError> {
+    pub fn new(url: &str) -> Result<RwSqlitePool, PoolCreateError> {
         let current_write_op = Arc::new(Mutex::new(None));
         Ok(RwSqlitePool {
             read: SqlitePoolOptions::new()
                 .max_connections(DB_MAX_READ_CONNECTIONS)
                 .connect_lazy_with(
-                    SqliteConnectOptions::from_str(url)?
+                    SqliteConnectOptions::from_str(url)
+                        .map_err(|source| PoolCreateError::ConnectOptionsCreation {
+                            source,
+                            url: url.to_string(),
+                        })?
                         .journal_mode(SqliteJournalMode::Wal)
                         .read_only(true),
                 ),
@@ -58,7 +72,14 @@ impl RwSqlitePool {
                         })
                     }
                 })
-                .connect_lazy_with(SqliteConnectOptions::from_str(url)?.journal_mode(SqliteJournalMode::Wal)),
+                .connect_lazy_with(
+                    SqliteConnectOptions::from_str(url)
+                        .map_err(|source| PoolCreateError::ConnectOptionsCreation {
+                            source,
+                            url: url.to_string(),
+                        })?
+                        .journal_mode(SqliteJournalMode::Wal),
+                ),
             current_write_op,
         })
     }
