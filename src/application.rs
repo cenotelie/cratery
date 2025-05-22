@@ -323,7 +323,10 @@ impl Application {
     /// Attempts to login using an OAuth code
     pub async fn login_with_oauth_code(&self, code: &str) -> Result<RegistryUser, ApiError> {
         self.db_transaction_write("login_with_oauth_code", |app| async move {
-            app.database.login_with_oauth_code(&self.configuration, code).await
+            app.database
+                .login_with_oauth_code(&self.configuration, code)
+                .await
+                .map_err(ApiError::from)
         })
         .await
     }

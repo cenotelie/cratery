@@ -7,6 +7,7 @@
 
 use std::future::Future;
 
+use axum::http::StatusCode;
 use chrono::Local;
 use thiserror::Error;
 
@@ -20,8 +21,7 @@ use crate::model::cargo::RegistryUser;
 use crate::model::config::Configuration;
 use crate::model::namegen::generate_name;
 use crate::utils::apierror::{
-    ApiError, AsStatusCode, error_conflict, error_forbidden, error_invalid_request, error_not_found, error_unauthorized,
-    specialize,
+    ApiError, AsStatusCode, error_conflict, error_forbidden, error_invalid_request, error_not_found, specialize,
 };
 use crate::utils::token::{check_hash, generate_token, hash_token};
 
@@ -40,6 +40,66 @@ pub enum UserError {
 
 impl AsStatusCode for UserError {}
 
+#[derive(Debug, Error)]
+pub enum OAuthLoginError {
+    #[error("failed to retrieve token from '{oauth_token_uri}'")]
+    GetRetrieveToken {
+        source: reqwest::Error,
+        oauth_token_uri: String,
+    },
+
+    #[error("failed to get retrieve token response")]
+    RetrieveTokenResponse { source: reqwest::Error },
+
+    #[error("failed to parse retrieve token response")]
+    ParseRetrieveTokenResponse { source: serde_json::Error, body: String },
+
+    #[error("failed to retried token for authentication: {status} '{body}'")]
+    RetrieveTokenFailed { status: StatusCode, body: String },
+
+    #[error("failed to autentify at '{uri}': {status}")]
+    RetrieveUserProfile { status: StatusCode, uri: String },
+
+    #[error("failed to retrieve user profile from '{oauth_userinfo_uri}'")]
+    GetUserProfile {
+        source: reqwest::Error,
+        oauth_userinfo_uri: String,
+    },
+
+    #[error("failed to get user profile response")]
+    GetUserProfileResponse { source: reqwest::Error },
+
+    #[error("failed to parse get user profile response")]
+    ParseGetUserProfileResponse { source: serde_json::Error, body: String },
+
+    #[error("failed to execute user database request")]
+    UserDatabaseRequest(#[source] sqlx::Error),
+
+    #[error("inactive user")]
+    InactiveUser,
+
+    #[error("no email in returned user info:\n{0}")]
+    EmailMissingInUserInfo(String),
+}
+impl AsStatusCode for OAuthLoginError {
+    fn status_code(&self) -> StatusCode {
+        match self {
+            Self::EmailMissingInUserInfo(_)
+            | Self::RetrieveTokenFailed { .. }
+            | Self::RetrieveUserProfile { .. }
+            | Self::InactiveUser => StatusCode::UNAUTHORIZED,
+
+            Self::GetRetrieveToken { .. }
+            | Self::RetrieveTokenResponse { .. }
+            | Self::ParseRetrieveTokenResponse { .. }
+            | Self::GetUserProfile { .. }
+            | Self::GetUserProfileResponse { .. }
+            | Self::ParseGetUserProfileResponse { .. }
+            | Self::UserDatabaseRequest(_) => StatusCode::INTERNAL_SERVER_ERROR,
+        }
+    }
+}
+
 impl Database {
     /// Retrieves a user profile
     pub async fn get_user_profile(&self, uid: i64) -> Result<RegistryUser, UserError> {
@@ -55,7 +115,12 @@ impl Database {
     }
 
     /// Attempts to login using an OAuth code
-    pub async fn login_with_oauth_code(&self, configuration: &Configuration, code: &str) -> Result<RegistryUser, ApiError> {
+    #[expect(clippy::too_many_lines)]
+    pub async fn login_with_oauth_code(
+        &self,
+        configuration: &Configuration,
+        code: &str,
+    ) -> Result<RegistryUser, OAuthLoginError> {
         let client = reqwest::Client::new();
         // retrieve the token
         let response = client
@@ -69,25 +134,58 @@ impl Database {
             ])
             .header(reqwest::header::ACCEPT, "application/json")
             .send()
-            .await?;
+            .await
+            .map_err(|source| OAuthLoginError::GetRetrieveToken {
+                source,
+                oauth_token_uri: configuration.oauth_token_uri.as_str().into(),
+            })?;
         if !response.status().is_success() {
-            return Err(specialize(error_unauthorized(), String::from("authentication failed")));
+            let status = response.status();
+            let body = response.bytes().await.unwrap();
+            return Err(OAuthLoginError::RetrieveTokenFailed {
+                status,
+                body: String::from_utf8_lossy(&body).into(),
+            });
         }
-        let body = response.bytes().await?;
-        let token = serde_json::from_slice::<OAuthToken>(&body)?;
+        let body = response
+            .bytes()
+            .await
+            .map_err(|source| OAuthLoginError::RetrieveTokenResponse { source })?;
+        let token =
+            serde_json::from_slice::<OAuthToken>(&body).map_err(|source| OAuthLoginError::ParseRetrieveTokenResponse {
+                source,
+                body: String::from_utf8_lossy(&body).into(),
+            })?;
 
         // retrieve the user profile
         let response = client
             .get(&configuration.oauth_userinfo_uri)
             .header("authorization", format!("Bearer {}", token.access_token))
             .send()
-            .await?;
+            .await
+            .map_err(|source| OAuthLoginError::GetUserProfile {
+                source,
+                oauth_userinfo_uri: configuration.oauth_userinfo_uri.as_str().into(),
+            })?;
         if !response.status().is_success() {
-            return Err(specialize(error_unauthorized(), String::from("authentication failed")));
+            let status = response.status();
+            return Err(OAuthLoginError::RetrieveUserProfile {
+                status,
+                uri: configuration.oauth_userinfo_uri.as_str().into(),
+            });
         }
-        let body = response.bytes().await?;
-        let user_info = serde_json::from_slice::<serde_json::Value>(&body)?;
-        let email = find_field_in_blob(&user_info, &configuration.oauth_userinfo_path_email).ok_or_else(error_unauthorized)?;
+        let body = response
+            .bytes()
+            .await
+            .map_err(|source| OAuthLoginError::GetUserProfileResponse { source })?;
+        let user_info = serde_json::from_slice::<serde_json::Value>(&body).map_err(|source| {
+            OAuthLoginError::ParseGetUserProfileResponse {
+                source,
+                body: String::from_utf8_lossy(&body).into(),
+            }
+        })?;
+        let email = find_field_in_blob(&user_info, &configuration.oauth_userinfo_path_email)
+            .ok_or_else(|| OAuthLoginError::EmailMissingInUserInfo(user_info.to_string()))?;
 
         // resolve the user
         let row = sqlx::query!(
@@ -95,10 +193,11 @@ impl Database {
             email
         )
         .fetch_optional(&mut *self.transaction.borrow().await)
-        .await?;
+        .await
+        .map_err(OAuthLoginError::UserDatabaseRequest)?;
         if let Some(row) = row {
             if !row.is_active {
-                return Err(specialize(error_unauthorized(), String::from("inactive user")));
+                return Err(OAuthLoginError::InactiveUser);
             }
             // already exists
             return Ok(RegistryUser {
@@ -113,12 +212,14 @@ impl Database {
         // create the user
         let count = sqlx::query!("SELECT COUNT(id) AS count FROM RegistryUser")
             .fetch_one(&mut *self.transaction.borrow().await)
-            .await?
+            .await
+            .map_err(OAuthLoginError::UserDatabaseRequest)?
             .count;
         let mut login = email[..email.find('@').unwrap()].to_string();
         while sqlx::query!("SELECT COUNT(id) AS count FROM RegistryUser WHERE login = $1", login)
             .fetch_one(&mut *self.transaction.borrow().await)
-            .await?
+            .await
+            .map_err(OAuthLoginError::UserDatabaseRequest)?
             .count
             != 0
         {
@@ -134,7 +235,8 @@ impl Database {
             roles
         )
         .fetch_one(&mut *self.transaction.borrow().await)
-        .await?
+        .await
+        .map_err(OAuthLoginError::UserDatabaseRequest)?
         .id;
         Ok(RegistryUser {
             id,
