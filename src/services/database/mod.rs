@@ -12,9 +12,12 @@ pub mod users;
 
 use std::future::Future;
 
+use axum::http::StatusCode;
+use thiserror::Error;
+
 use crate::application::AuthenticationError;
 use crate::model::auth::ROLE_ADMIN;
-use crate::utils::apierror::{ApiError, error_forbidden, error_not_found, specialize};
+use crate::utils::apierror::{ApiError, AsStatusCode, error_forbidden, error_not_found};
 use crate::utils::db::{AppTransaction, RwSqlitePool};
 
 /// Executes a piece of work in the context of a transaction
@@ -130,7 +133,7 @@ impl Database {
     }
 
     /// Checks the ownership of a package
-    pub async fn check_is_crate_manager(&self, uid: i64, package: &str) -> Result<i64, ApiError> {
+    pub async fn check_is_crate_manager(&self, uid: i64, package: &str) -> Result<i64, IsCrateManagerError> {
         if self.check_is_admin(uid).await.is_ok() {
             return Ok(uid);
         }
@@ -143,10 +146,25 @@ impl Database {
         .await?;
         match row {
             Some(_) => Ok(uid),
-            None => Err(specialize(
-                error_forbidden(),
-                String::from("User is not an owner of this package"),
-            )),
+            None => Err(IsCrateManagerError::NotOwnerOfPackage),
+        }
+    }
+}
+
+#[derive(Debug, Error)]
+pub enum IsCrateManagerError {
+    #[error("failed to execute db request.")]
+    Sqlx(#[from] sqlx::Error),
+
+    #[error("user is not an owner of this package")]
+    NotOwnerOfPackage,
+}
+
+impl AsStatusCode for IsCrateManagerError {
+    fn status_code(&self) -> StatusCode {
+        match self {
+            Self::Sqlx(_) => StatusCode::INTERNAL_SERVER_ERROR,
+            Self::NotOwnerOfPackage => StatusCode::FORBIDDEN,
         }
     }
 }
