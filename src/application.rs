@@ -367,7 +367,10 @@ impl Application {
         self.db_transaction_write("deactivate_user", |app| async move {
             let authentication = app.authenticate(auth_data).await?;
             let principal_uid = app.check_can_admin_registry(&authentication).await?;
-            app.database.deactivate_user(principal_uid, target).await
+            app.database
+                .deactivate_user(principal_uid, target)
+                .await
+                .map_err(ApiError::from)
         })
         .await
     }
@@ -387,7 +390,7 @@ impl Application {
         self.db_transaction_write("delete_user", |app| async move {
             let authentication = app.authenticate(auth_data).await?;
             let principal_uid = app.check_can_admin_registry(&authentication).await?;
-            app.database.delete_user(principal_uid, target).await
+            app.database.delete_user(principal_uid, target).await.map_err(ApiError::from)
         })
         .await
     }

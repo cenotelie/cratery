@@ -20,7 +20,7 @@ use crate::model::auth::{
 use crate::model::cargo::RegistryUser;
 use crate::model::config::Configuration;
 use crate::model::namegen::generate_name;
-use crate::utils::apierror::{ApiError, AsStatusCode, error_forbidden, error_not_found, specialize};
+use crate::utils::apierror::AsStatusCode;
 use crate::utils::token::{check_hash, generate_token, hash_token};
 
 #[derive(Debug, Error)]
@@ -66,18 +66,54 @@ pub enum UpdateUserError {
 
     #[error("user can't update user")]
     Authentication(#[from] AuthenticationError),
+
+    #[error("cannot self deactivate")]
+    SelfDeactivate,
+
+    #[error("failed to execute request for activate user")]
+    ActiveUserSql {
+        #[source]
+        source: sqlx::Error,
+        target: String,
+    },
+
+    #[error("failed to execute request to select user corresponding an email")]
+    SqlSelectUserByEmail(#[source] sqlx::Error),
+
+    #[error("user for `{0}` not found")]
+    UserEmailNotFound(String),
+
+    #[error("cannot delete self")]
+    CannotDeleteSelf,
+
+    #[error("failed to execute request to remove user token")]
+    SqlRemoveUserToken(#[source] sqlx::Error),
+
+    #[error("failed to execute request to remove user as package owner")]
+    SqlRemoveFromPackageOwner(#[source] sqlx::Error),
+
+    #[error("failed to execute request to remove user")]
+    SqlRemoveUser(#[source] sqlx::Error),
 }
 
 impl AsStatusCode for UpdateUserError {
     fn status_code(&self) -> StatusCode {
         match self {
-            Self::SqlLoginAndRoles(_) | Self::CountUserForLogin(_) | Self::UpdateUserSqlx(_) | Self::Authentication(_) => {
-                StatusCode::INTERNAL_SERVER_ERROR
-            }
+            Self::SqlLoginAndRoles(_)
+            | Self::CountUserForLogin(_)
+            | Self::UpdateUserSqlx(_)
+            | Self::Authentication(_)
+            | Self::SqlSelectUserByEmail(_)
+            | Self::ActiveUserSql { .. }
+            | Self::SqlRemoveUserToken(_)
+            | Self::SqlRemoveFromPackageOwner(_)
+            | Self::SqlRemoveUser(_) => StatusCode::INTERNAL_SERVER_ERROR,
 
-            Self::AdminCantRemoveThemselves | Self::OnlyAdminCanChangeRoles => StatusCode::FORBIDDEN,
+            Self::AdminCantRemoveThemselves | Self::OnlyAdminCanChangeRoles | Self::SelfDeactivate | Self::CannotDeleteSelf => {
+                StatusCode::FORBIDDEN
+            }
             Self::LoginCannotBeEmpty => StatusCode::BAD_REQUEST,
-            Self::UserNotFound { .. } => StatusCode::NOT_FOUND,
+            Self::UserNotFound { .. } | Self::UserEmailNotFound(_) => StatusCode::NOT_FOUND,
 
             Self::LoginNotAvailable { .. } => StatusCode::CONFLICT,
         }
@@ -355,15 +391,19 @@ impl Database {
     }
 
     /// Attempts to deactivate a user
-    pub async fn deactivate_user(&self, principal_uid: i64, target: &str) -> Result<(), ApiError> {
+    pub async fn deactivate_user(&self, principal_uid: i64, target: &str) -> Result<(), UpdateUserError> {
         let target_uid = self.check_is_user(target).await?;
         if principal_uid == target_uid {
             // cannot deactivate self
-            return Err(specialize(error_forbidden(), String::from("cannot self deactivate")));
+            return Err(UpdateUserError::SelfDeactivate);
         }
         sqlx::query!("UPDATE RegistryUser SET isActive = FALSE WHERE id = $1", target_uid)
             .execute(&mut *self.transaction.borrow().await)
-            .await?;
+            .await
+            .map_err(|source| UpdateUserError::ActiveUserSql {
+                source,
+                target: target.into(),
+            })?;
         Ok(())
     }
 
@@ -376,24 +416,28 @@ impl Database {
     }
 
     /// Attempts to delete a user
-    pub async fn delete_user(&self, principal_uid: i64, target: &str) -> Result<(), ApiError> {
+    pub async fn delete_user(&self, principal_uid: i64, target: &str) -> Result<(), UpdateUserError> {
         let target_uid = sqlx::query!("SELECT id FROM RegistryUser WHERE email = $1", target)
             .fetch_optional(&mut *self.transaction.borrow().await)
-            .await?
-            .ok_or_else(error_not_found)?
+            .await
+            .map_err(UpdateUserError::SqlSelectUserByEmail)?
+            .ok_or_else(|| UpdateUserError::UserEmailNotFound(target.into()))?
             .id;
         if principal_uid == target_uid {
-            return Err(specialize(error_forbidden(), String::from("cannot delete self")));
+            return Err(UpdateUserError::CannotDeleteSelf);
         }
         sqlx::query!("DELETE FROM RegistryUserToken WHERE user = $1", target_uid)
             .execute(&mut *self.transaction.borrow().await)
-            .await?;
+            .await
+            .map_err(UpdateUserError::SqlRemoveUserToken)?;
         sqlx::query!("DELETE FROM PackageOwner WHERE owner = $1", target_uid)
             .execute(&mut *self.transaction.borrow().await)
-            .await?;
+            .await
+            .map_err(UpdateUserError::SqlRemoveFromPackageOwner)?;
         sqlx::query!("DELETE FROM RegistryUser WHERE id = $1", target_uid)
             .execute(&mut *self.transaction.borrow().await)
-            .await?;
+            .await
+            .map_err(UpdateUserError::SqlRemoveUser)?;
         Ok(())
     }
 
