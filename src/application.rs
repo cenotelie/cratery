@@ -869,7 +869,7 @@ impl Application {
     pub async fn get_crates_stats(&self, auth_data: &AuthData) -> Result<GlobalStats, ApiError> {
         self.db_transaction_read(|app| async move {
             let _authentication = app.authenticate(auth_data).await?;
-            app.database.get_crates_stats().await
+            app.database.get_crates_stats().await.map_err(ApiError::from)
         })
         .await
     }
