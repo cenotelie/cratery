@@ -893,6 +893,9 @@ pub enum AuthenticationError {
     #[error("access is forbidden for user")]
     Forbidden,
 
+    #[error("administration is forbidden for this authentication")]
+    AdministrationIsForbidden,
+
     #[error("failed to check global token")]
     GlobalToken(#[source] sqlx::Error),
 
@@ -919,8 +922,17 @@ impl AsStatusCode for AuthenticationError {
             | Self::CheckUser(_)
             | Self::CheckRoles(_) => StatusCode::INTERNAL_SERVER_ERROR,
             Self::NoUserAuthenticated => StatusCode::BAD_REQUEST,
-            Self::Forbidden => StatusCode::FORBIDDEN,
+            Self::Forbidden | Self::AdministrationIsForbidden => StatusCode::FORBIDDEN,
         }
+    }
+}
+
+#[derive(Debug, Error)]
+#[error("the current user can't administrate registry")]
+struct CanAdminRegistryError(#[from] AuthenticationError);
+impl AsStatusCode for CanAdminRegistryError {
+    fn status_code(&self) -> StatusCode {
+        self.0.status_code()
     }
 }
 
@@ -970,7 +982,7 @@ impl ApplicationWithTransaction<'_> {
     }
 
     /// Checks that the given authentication can perform admin tasks
-    async fn check_can_admin_registry(&self, authentication: &Authentication) -> Result<i64, ApiError> {
+    async fn check_can_admin_registry(&self, authentication: &Authentication) -> Result<i64, CanAdminRegistryError> {
         authentication.check_can_admin()?;
         let principal_uid = authentication.uid()?;
         self.database.check_is_admin(principal_uid).await?;

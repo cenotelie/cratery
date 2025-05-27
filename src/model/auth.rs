@@ -90,14 +90,11 @@ impl Authentication {
     }
 
     /// Checks that this authentication enables admin tasks
-    pub fn check_can_admin(&self) -> Result<(), ApiError> {
+    pub const fn check_can_admin(&self) -> Result<(), AuthenticationError> {
         if self.can_admin {
             Ok(())
         } else {
-            Err(specialize(
-                error_forbidden(),
-                String::from("administration is forbidden for this authentication"),
-            ))
+            Err(AuthenticationError::AdministrationIsForbidden)
         }
     }
 }

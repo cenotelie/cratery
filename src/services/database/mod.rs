@@ -17,7 +17,7 @@ use thiserror::Error;
 
 use crate::application::AuthenticationError;
 use crate::model::auth::ROLE_ADMIN;
-use crate::utils::apierror::{ApiError, AsStatusCode, error_forbidden, error_not_found};
+use crate::utils::apierror::{ApiError, AsStatusCode, error_not_found};
 use crate::utils::db::{AppTransaction, RwSqlitePool};
 
 /// Executes a piece of work in the context of a transaction
@@ -115,9 +115,13 @@ impl Database {
     }
 
     /// Checks that a user is an admin
-    pub async fn check_is_admin(&self, uid: i64) -> Result<(), ApiError> {
+    pub async fn check_is_admin(&self, uid: i64) -> Result<(), AuthenticationError> {
         let is_admin = self.get_is_admin(uid).await?;
-        if is_admin { Ok(()) } else { Err(error_forbidden()) }
+        if is_admin {
+            Ok(())
+        } else {
+            Err(AuthenticationError::AdministrationIsForbidden)
+        }
     }
 
     /// Checks that a package exists
