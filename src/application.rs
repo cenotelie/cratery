@@ -526,6 +526,7 @@ impl Application {
                 app.database
                     .get_crate_info(package, self.service_index.get_crate_data(package).await?)
                     .await
+                    .map_err(ApiError::from)
             })
             .await?;
         let metadata = self
@@ -598,7 +599,10 @@ impl Application {
         self.db_transaction_write("yank_crate_version", |app| async move {
             let authentication = app.authenticate(auth_data).await?;
             app.check_can_manage_crate(&authentication, package).await?;
-            app.database.yank_crate_version(package, version).await
+            app.database
+                .yank_crate_version(package, version)
+                .await
+                .map_err(ApiError::from)
         })
         .await
     }
@@ -613,7 +617,10 @@ impl Application {
         self.db_transaction_write("unyank_crate_version", |app| async move {
             let authentication = app.authenticate(auth_data).await?;
             app.check_can_manage_crate(&authentication, package).await?;
-            app.database.unyank_crate_version(package, version).await
+            app.database
+                .unyank_crate_version(package, version)
+                .await
+                .map_err(ApiError::from)
         })
         .await
     }
@@ -695,7 +702,7 @@ impl Application {
     pub async fn get_crates_outdated_heads(&self, auth_data: &AuthData) -> Result<Vec<CrateVersion>, ApiError> {
         self.db_transaction_read(|app| async move {
             let _authentication = app.authenticate(auth_data).await?;
-            app.database.get_crates_outdated_heads().await
+            app.database.get_crates_outdated_heads().await.map_err(ApiError::from)
         })
         .await
     }
@@ -704,7 +711,7 @@ impl Application {
     pub async fn get_crate_dl_stats(&self, auth_data: &AuthData, package: &str) -> Result<DownloadStats, ApiError> {
         self.db_transaction_read(|app| async move {
             let _authentication = app.authenticate(auth_data).await?;
-            app.database.get_crate_dl_stats(package).await
+            app.database.get_crate_dl_stats(package).await.map_err(ApiError::from)
         })
         .await
     }
@@ -716,7 +723,7 @@ impl Application {
             if !public_read {
                 let _authentication = app.authenticate(auth_data).await?;
             }
-            app.database.get_crate_owners(package).await
+            app.database.get_crate_owners(package).await.map_err(ApiError::from)
         })
         .await
     }
@@ -731,7 +738,10 @@ impl Application {
         self.db_transaction_write("add_crate_owners", |app| async move {
             let authentication = app.authenticate(auth_data).await?;
             app.check_can_manage_crate(&authentication, package).await?;
-            app.database.add_crate_owners(package, new_users).await
+            app.database
+                .add_crate_owners(package, new_users)
+                .await
+                .map_err(ApiError::from)
         })
         .await
     }
@@ -746,7 +756,10 @@ impl Application {
         self.db_transaction_write("remove_crate_owners", |app| async move {
             let authentication = app.authenticate(auth_data).await?;
             app.check_can_manage_crate(&authentication, package).await?;
-            app.database.remove_crate_owners(package, old_users).await
+            app.database
+                .remove_crate_owners(package, old_users)
+                .await
+                .map_err(ApiError::from)
         })
         .await
     }
@@ -755,7 +768,7 @@ impl Application {
     pub async fn get_crate_targets(&self, auth_data: &AuthData, package: &str) -> Result<Vec<CrateInfoTarget>, ApiError> {
         self.db_transaction_read(|app| async move {
             let _authentication = app.authenticate(auth_data).await?;
-            app.database.get_crate_targets(package).await
+            app.database.get_crate_targets(package).await.map_err(ApiError::from)
         })
         .await
     }
@@ -874,7 +887,10 @@ impl Application {
             if !public_read {
                 let _authentication = app.authenticate(auth_data).await?;
             }
-            app.database.search_crates(query, per_page, deprecated).await
+            app.database
+                .search_crates(query, per_page, deprecated)
+                .await
+                .map_err(ApiError::from)
         })
         .await
     }
@@ -890,7 +906,7 @@ impl Application {
             .db_transaction_read(|app| async move {
                 let _authentication = app.authenticate(auth_data).await?;
                 app.database.check_crate_exists(package, version).await?;
-                app.database.get_crate_targets(package).await
+                app.database.get_crate_targets(package).await.map_err(ApiError::from)
             })
             .await?;
         let targets = targets.into_iter().map(|info| info.target).collect::<Vec<_>>();

@@ -17,7 +17,8 @@ use thiserror::Error;
 
 use crate::application::AuthenticationError;
 use crate::model::auth::ROLE_ADMIN;
-use crate::utils::apierror::{ApiError, AsStatusCode, error_not_found};
+use crate::services::database::packages::CratesError;
+use crate::utils::apierror::AsStatusCode;
 use crate::utils::db::{AppTransaction, RwSqlitePool};
 
 /// Executes a piece of work in the context of a transaction
@@ -125,7 +126,7 @@ impl Database {
     }
 
     /// Checks that a package exists
-    pub async fn check_crate_exists(&self, package: &str, version: &str) -> Result<(), ApiError> {
+    pub async fn check_crate_exists(&self, package: &str, version: &str) -> Result<(), CratesError> {
         let _row = sqlx::query!(
             "SELECT id FROM PackageVersion WHERE package = $1 AND version = $2 LIMIT 1",
             package,
@@ -133,7 +134,10 @@ impl Database {
         )
         .fetch_optional(&mut *self.transaction.borrow().await)
         .await?
-        .ok_or_else(error_not_found)?;
+        .ok_or_else(|| CratesError::PackageVersionNotFound {
+            package: package.into(),
+            version: version.into(),
+        })?;
         Ok(())
     }
 
