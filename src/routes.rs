@@ -941,18 +941,13 @@ pub async fn api_v1_set_crate_deprecation(
 }
 
 /// Sets whether a crate can have versions completely removed
-pub async fn api_v1_set_crate_can_can_remove(
+pub async fn api_v1_set_crate_can_remove(
     auth_data: AuthData,
     State(state): State<Arc<AxumState>>,
     Path(PathInfoCrate { package }): Path<PathInfoCrate>,
     input: Json<bool>,
 ) -> ApiResult<()> {
-    response(
-        state
-            .application
-            .set_crate_can_can_remove(&auth_data, &package, input.0)
-            .await,
-    )
+    response(state.application.set_crate_can_remove(&auth_data, &package, input.0).await)
 }
 
 pub async fn index_serve_inner(

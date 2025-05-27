@@ -789,16 +789,11 @@ impl Application {
     }
 
     /// Sets whether a crate can have versions completely removed
-    pub async fn set_crate_can_can_remove(
-        &self,
-        auth_data: &AuthData,
-        package: &str,
-        can_remove: bool,
-    ) -> Result<(), ApiError> {
-        self.db_transaction_write("set_crate_can_can_remove", |app| async move {
+    pub async fn set_crate_can_remove(&self, auth_data: &AuthData, package: &str, can_remove: bool) -> Result<(), ApiError> {
+        self.db_transaction_write("set_crate_can_remove", |app| async move {
             let authentication = app.authenticate(auth_data).await?;
             app.check_can_manage_crate(&authentication, package).await?;
-            app.database.set_crate_can_can_remove(package, can_remove).await
+            app.database.set_crate_can_remove(package, can_remove).await
         })
         .await
     }
