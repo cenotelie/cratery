@@ -26,7 +26,7 @@ use crate::model::worker::{WorkerEvent, WorkerPublicData, WorkersManager};
 use crate::model::{AppEvent, CrateVersion, RegistryInformation};
 use crate::services::ServiceProvider;
 use crate::services::database::packages::DepsError;
-use crate::services::database::{Database, db_transaction_read, db_transaction_write};
+use crate::services::database::{Database, IsCrateManagerError, db_transaction_read, db_transaction_write};
 use crate::services::deps::DepsChecker;
 use crate::services::docs::DocsGenerator;
 use crate::services::emails::EmailSender;
@@ -955,6 +955,23 @@ impl AsStatusCode for CanAdminRegistryError {
     }
 }
 
+#[derive(Debug, Error)]
+enum CanManageCrateError {
+    #[error(transparent)]
+    Authentication(#[from] AuthenticationError),
+
+    #[error(transparent)]
+    CrateManager(#[from] IsCrateManagerError),
+}
+impl AsStatusCode for CanManageCrateError {
+    fn status_code(&self) -> StatusCode {
+        match self {
+            Self::Authentication(authentication_error) => authentication_error.status_code(),
+            Self::CrateManager(is_crate_manager_error) => is_crate_manager_error.status_code(),
+        }
+    }
+}
+
 /// The application, running with a transaction
 pub(crate) struct ApplicationWithTransaction<'a> {
     /// The application with its services
@@ -1009,7 +1026,7 @@ impl ApplicationWithTransaction<'_> {
     }
 
     /// Checks that the given authentication can manage a given crate
-    async fn check_can_manage_crate(&self, authentication: &Authentication, package: &str) -> Result<i64, ApiError> {
+    async fn check_can_manage_crate(&self, authentication: &Authentication, package: &str) -> Result<i64, CanManageCrateError> {
         authentication.check_can_write()?;
         let principal_uid = authentication.uid()?;
         self.database.check_is_crate_manager(principal_uid, package).await?;
