@@ -5,12 +5,31 @@
 //! Service for persisting information in the database
 //! API related to administration of the registry itself
 
+use axum::http::StatusCode;
 use chrono::Local;
+use thiserror::Error;
 
 use super::Database;
 use crate::model::auth::{RegistryUserToken, RegistryUserTokenWithSecret};
-use crate::utils::apierror::{ApiError, error_invalid_request, specialize};
+use crate::utils::apierror::{ApiError, AsStatusCode};
 use crate::utils::token::{generate_token, hash_token};
+
+#[derive(Debug, Error)]
+pub enum TokensError {
+    #[error("error from the db request execution")]
+    Sqlx(#[from] sqlx::Error),
+
+    #[error("a token with the same name already exists")]
+    TokenNameExist,
+}
+impl AsStatusCode for TokensError {
+    fn status_code(&self) -> StatusCode {
+        match self {
+            Self::Sqlx(_) => StatusCode::INTERNAL_SERVER_ERROR,
+            Self::TokenNameExist => StatusCode::BAD_REQUEST,
+        }
+    }
+}
 
 impl Database {
     /// Gets the global tokens for the registry, usually for CI purposes
@@ -31,15 +50,12 @@ impl Database {
     }
 
     /// Creates a global token for the registry
-    pub async fn create_global_token(&self, name: &str) -> Result<RegistryUserTokenWithSecret, ApiError> {
+    pub async fn create_global_token(&self, name: &str) -> Result<RegistryUserTokenWithSecret, TokensError> {
         let row = sqlx::query!("SELECT id FROM RegistryGlobalToken WHERE name = $1 LIMIT 1", name)
             .fetch_optional(&mut *self.transaction.borrow().await)
             .await?;
         if row.is_some() {
-            return Err(specialize(
-                error_invalid_request(),
-                String::from("a token with the same name already exists"),
-            ));
+            return Err(TokensError::TokenNameExist);
         }
         let token_secret = generate_token(64);
         let token_hash = hash_token(&token_secret);
@@ -64,7 +80,7 @@ impl Database {
     }
 
     /// Revokes a global token for the registry
-    pub async fn revoke_global_token(&self, token_id: i64) -> Result<(), ApiError> {
+    pub async fn revoke_global_token(&self, token_id: i64) -> Result<(), sqlx::Error> {
         sqlx::query!("DELETE FROM RegistryGlobalToken WHERE id = $1", token_id)
             .execute(&mut *self.transaction.borrow().await)
             .await?;

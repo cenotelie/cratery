@@ -439,7 +439,7 @@ impl Application {
         self.db_transaction_write("create_global_token", |app| async move {
             let authentication = app.authenticate(auth_data).await?;
             app.check_can_admin_registry(&authentication).await?;
-            app.database.create_global_token(name).await
+            app.database.create_global_token(name).await.map_err(ApiError::from)
         })
         .await
     }
@@ -449,7 +449,7 @@ impl Application {
         self.db_transaction_write("revoke_global_token", |app| async move {
             let authentication = app.authenticate(auth_data).await?;
             app.check_can_admin_registry(&authentication).await?;
-            app.database.revoke_global_token(token_id).await
+            app.database.revoke_global_token(token_id).await.map_err(ApiError::from)
         })
         .await
     }
