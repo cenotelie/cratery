@@ -794,7 +794,10 @@ impl Application {
     pub async fn get_crate_required_capabilities(&self, auth_data: &AuthData, package: &str) -> Result<Vec<String>, ApiError> {
         self.db_transaction_read(|app| async move {
             let _authentication = app.authenticate(auth_data).await?;
-            app.database.get_crate_required_capabilities(package).await
+            app.database
+                .get_crate_required_capabilities(package)
+                .await
+                .map_err(ApiError::from)
         })
         .await
     }
@@ -821,7 +824,10 @@ impl Application {
         self.db_transaction_write("set_crate_deprecation", |app| async move {
             let authentication = app.authenticate(auth_data).await?;
             app.check_can_manage_crate(&authentication, package).await?;
-            app.database.set_crate_deprecation(package, deprecated).await
+            app.database
+                .set_crate_deprecation(package, deprecated)
+                .await
+                .map_err(ApiError::from)
         })
         .await
     }
@@ -831,7 +837,10 @@ impl Application {
         self.db_transaction_write("set_crate_can_remove", |app| async move {
             let authentication = app.authenticate(auth_data).await?;
             app.check_can_manage_crate(&authentication, package).await?;
-            app.database.set_crate_can_remove(package, can_remove).await
+            app.database
+                .set_crate_can_remove(package, can_remove)
+                .await
+                .map_err(ApiError::from)
         })
         .await
     }

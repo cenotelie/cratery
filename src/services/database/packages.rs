@@ -46,6 +46,23 @@ impl AsStatusCode for DepsError {
     }
 }
 
+#[derive(Debug, Error)]
+pub enum CratesError {
+    #[error("package (crate) not found : {package}")]
+    PackageNotFound { package: String },
+
+    #[error(transparent)]
+    Sqlx(#[from] sqlx::Error),
+}
+impl AsStatusCode for CratesError {
+    fn status_code(&self) -> StatusCode {
+        match self {
+            Self::PackageNotFound { .. } => StatusCode::NOT_FOUND,
+            Self::Sqlx(_) => StatusCode::INTERNAL_SERVER_ERROR,
+        }
+    }
+}
+
 impl Database {
     /// Search for crates
     pub async fn search_crates(
@@ -863,16 +880,16 @@ impl Database {
     }
 
     /// Gets the required capabilities for a crate
-    pub async fn get_crate_required_capabilities(&self, package: &str) -> Result<Vec<String>, ApiError> {
+    pub async fn get_crate_required_capabilities(&self, package: &str) -> Result<Vec<String>, CratesError> {
         let row = sqlx::query!("SELECT capabilities FROM Package WHERE name = $1 LIMIT 1", package)
             .fetch_optional(&mut *self.transaction.borrow().await)
             .await?
-            .ok_or_else(error_not_found)?;
+            .ok_or_else(|| CratesError::PackageNotFound { package: package.into() })?;
         Ok(comma_sep_to_vec(&row.capabilities))
     }
 
     /// Sets the required capabilities for a crate
-    pub async fn set_crate_required_capabilities(&self, package: &str, capabilities: &[String]) -> Result<(), ApiError> {
+    pub async fn set_crate_required_capabilities(&self, package: &str, capabilities: &[String]) -> Result<(), CratesError> {
         let _ = self.get_crate_required_capabilities(package).await?;
         let capabilities = capabilities.join(",");
         sqlx::query!("UPDATE Package SET capabilities = $2 WHERE name = $1", package, capabilities)
@@ -882,7 +899,7 @@ impl Database {
     }
 
     /// Sets the deprecation status on a crate
-    pub async fn set_crate_deprecation(&self, package: &str, deprecated: bool) -> Result<(), ApiError> {
+    pub async fn set_crate_deprecation(&self, package: &str, deprecated: bool) -> Result<(), sqlx::Error> {
         sqlx::query!("UPDATE Package SET isDeprecated = $2 WHERE name = $1", package, deprecated)
             .execute(&mut *self.transaction.borrow().await)
             .await?;
@@ -890,7 +907,7 @@ impl Database {
     }
 
     /// Sets whether a crate can have versions completely removed
-    pub async fn set_crate_can_remove(&self, package: &str, can_remove: bool) -> Result<(), ApiError> {
+    pub async fn set_crate_can_remove(&self, package: &str, can_remove: bool) -> Result<(), sqlx::Error> {
         sqlx::query!("UPDATE Package SET canRemove = $2 WHERE name = $1", package, can_remove)
             .execute(&mut *self.transaction.borrow().await)
             .await?;
