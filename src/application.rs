@@ -336,7 +336,7 @@ impl Application {
         self.db_transaction_read(|app| async move {
             let authentication = app.authenticate(auth_data).await?;
             app.check_can_admin_registry(&authentication).await?;
-            app.database.get_users().await
+            app.database.get_users().await.map_err(ApiError::from)
         })
         .await
     }
@@ -377,7 +377,7 @@ impl Application {
         self.db_transaction_write("reactivate_user", |app| async move {
             let authentication = app.authenticate(auth_data).await?;
             app.check_can_admin_registry(&authentication).await?;
-            app.database.reactivate_user(target).await
+            app.database.reactivate_user(target).await.map_err(ApiError::from)
         })
         .await
     }
@@ -397,7 +397,7 @@ impl Application {
         self.db_transaction_read(|app| async move {
             let authentication = app.authenticate(auth_data).await?;
             authentication.check_can_admin()?;
-            app.database.get_tokens(authentication.uid()?).await
+            app.database.get_tokens(authentication.uid()?).await.map_err(ApiError::from)
         })
         .await
     }
@@ -416,6 +416,7 @@ impl Application {
             app.database
                 .create_token(authentication.uid()?, name, can_write, can_admin)
                 .await
+                .map_err(ApiError::from)
         })
         .await
     }
@@ -425,7 +426,10 @@ impl Application {
         self.db_transaction_write("revoke_token", |app| async move {
             let authentication = app.authenticate(auth_data).await?;
             authentication.check_can_admin()?;
-            app.database.revoke_token(authentication.uid()?, token_id).await
+            app.database
+                .revoke_token(authentication.uid()?, token_id)
+                .await
+                .map_err(ApiError::from)
         })
         .await
     }

@@ -293,7 +293,7 @@ impl Database {
     }
 
     /// Gets the known users
-    pub async fn get_users(&self) -> Result<Vec<RegistryUser>, ApiError> {
+    pub async fn get_users(&self) -> Result<Vec<RegistryUser>, sqlx::Error> {
         let rows = sqlx::query_as!(
             RegistryUser,
             "SELECT id, isActive AS is_active, email, login, name, roles FROM RegistryUser ORDER BY login",
@@ -368,7 +368,7 @@ impl Database {
     }
 
     /// Attempts to re-activate a user
-    pub async fn reactivate_user(&self, target: &str) -> Result<(), ApiError> {
+    pub async fn reactivate_user(&self, target: &str) -> Result<(), sqlx::Error> {
         sqlx::query!("UPDATE RegistryUser SET isActive = TRUE WHERE email = $1", target)
             .execute(&mut *self.transaction.borrow().await)
             .await?;
@@ -398,7 +398,7 @@ impl Database {
     }
 
     /// Gets the tokens for a user
-    pub async fn get_tokens(&self, uid: i64) -> Result<Vec<RegistryUserToken>, ApiError> {
+    pub async fn get_tokens(&self, uid: i64) -> Result<Vec<RegistryUserToken>, sqlx::Error> {
         let rows = sqlx::query!(
             "SELECT id, name, lastUsed AS last_used, canWrite AS can_write, canAdmin AS can_admin FROM RegistryUserToken WHERE user = $1 ORDER BY id",
             uid
@@ -424,7 +424,7 @@ impl Database {
         name: &str,
         can_write: bool,
         can_admin: bool,
-    ) -> Result<RegistryUserTokenWithSecret, ApiError> {
+    ) -> Result<RegistryUserTokenWithSecret, sqlx::Error> {
         let token_secret = generate_token(64);
         let token_hash = hash_token(&token_secret);
         let now = Local::now().naive_local();
@@ -451,7 +451,7 @@ impl Database {
     }
 
     /// Revoke a previous token
-    pub async fn revoke_token(&self, uid: i64, token_id: i64) -> Result<(), ApiError> {
+    pub async fn revoke_token(&self, uid: i64, token_id: i64) -> Result<(), sqlx::Error> {
         sqlx::query!("DELETE FROM RegistryUserToken WHERE user = $1 AND id = $2", uid, token_id)
             .execute(&mut *self.transaction.borrow().await)
             .await?;
