@@ -216,7 +216,7 @@ impl Database {
     }
 
     /// Updates an existing job
-    pub async fn update_docgen_job(&self, job_id: i64, state: DocGenJobState) -> Result<(), ApiError> {
+    pub async fn update_docgen_job(&self, job_id: i64, state: DocGenJobState) -> Result<(), sqlx::Error> {
         let now = Local::now().naive_local();
         let state_value = state.value();
         if state == DocGenJobState::Working {
