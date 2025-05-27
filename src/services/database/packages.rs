@@ -8,10 +8,13 @@
 use std::collections::HashMap;
 use std::collections::hash_map::Entry;
 
+use axum::http::StatusCode;
 use byteorder::ByteOrder;
 use chrono::{Datelike, Duration, Local, NaiveDateTime};
 use futures::StreamExt;
 use semver::Version;
+use smol_str::SmolStr;
+use thiserror::Error;
 
 use super::Database;
 use crate::model::CrateVersion;
@@ -23,8 +26,25 @@ use crate::model::deps::{DepsAnalysisJobSpec, DepsAnalysisState};
 use crate::model::docs::DocGenJobSpec;
 use crate::model::packages::{CrateInfo, CrateInfoTarget, CrateInfoVersion, CrateInfoVersionDocs};
 use crate::model::stats::{DownloadStats, SERIES_LENGTH};
-use crate::utils::apierror::{ApiError, error_invalid_request, error_not_found, specialize};
+use crate::utils::apierror::{ApiError, AsStatusCode, error_invalid_request, error_not_found, specialize};
 use crate::utils::comma_sep_to_vec;
+
+#[derive(Debug, Error)]
+pub enum DepsError {
+    #[error("package deps not found : {package} v{version}")]
+    PackageNotFound { package: String, version: SmolStr },
+
+    #[error(transparent)]
+    Sqlx(#[from] sqlx::Error),
+}
+impl AsStatusCode for DepsError {
+    fn status_code(&self) -> StatusCode {
+        match self {
+            Self::PackageNotFound { .. } => StatusCode::NOT_FOUND,
+            Self::Sqlx(_) => StatusCode::INTERNAL_SERVER_ERROR,
+        }
+    }
+}
 
 impl Database {
     /// Search for crates
@@ -355,7 +375,7 @@ impl Database {
     }
 
     /// Gets the packages that need documentation generation
-    pub async fn get_undocumented_crates(&self, default_target: &str) -> Result<Vec<DocGenJobSpec>, ApiError> {
+    pub async fn get_undocumented_crates(&self, default_target: &str) -> Result<Vec<DocGenJobSpec>, sqlx::Error> {
         struct PackageData {
             targets: Vec<CrateInfoTarget>,
             capabilities: Vec<String>,
@@ -625,7 +645,7 @@ impl Database {
         version: &str,
         has_outdated: bool,
         has_cves: bool,
-    ) -> Result<(bool, bool), ApiError> {
+    ) -> Result<(bool, bool), DepsError> {
         let now = Local::now().naive_local();
         let row = sqlx::query!(
             "SELECT depsHasOutdated AS deps_has_outdated, depsHasCVEs AS deps_has_cves
@@ -637,7 +657,10 @@ impl Database {
         )
         .fetch_optional(&mut *self.transaction.borrow().await)
         .await?
-        .ok_or_else(error_not_found)?;
+        .ok_or_else(|| DepsError::PackageNotFound {
+            package: package.to_string(),
+            version: version.into(),
+        })?;
         let deps_has_outdated = row.deps_has_outdated;
         let deps_has_cves = row.deps_has_cves;
         sqlx::query!(
@@ -654,7 +677,7 @@ impl Database {
     }
 
     /// Increments the counter of downloads for a crate version
-    pub async fn increment_crate_version_dl_count(&self, package: &str, version: &str) -> Result<(), ApiError> {
+    pub async fn increment_crate_version_dl_count(&self, package: &str, version: &str) -> Result<(), DepsError> {
         let row = sqlx::query!(
             "SELECT downloads FROM PackageVersion WHERE package = $1 AND version = $2 LIMIT 1",
             package,
@@ -662,7 +685,10 @@ impl Database {
         )
         .fetch_optional(&mut *self.transaction.borrow().await)
         .await?
-        .ok_or_else(error_not_found)?;
+        .ok_or_else(|| DepsError::PackageNotFound {
+            package: package.to_string(),
+            version: version.into(),
+        })?;
         let mut downloads = row.downloads.unwrap_or_else(|| vec![0; size_of::<u32>() * SERIES_LENGTH]);
         let day_index = (Local::now().naive_local().ordinal0() as usize % SERIES_LENGTH) * size_of::<u32>();
         let count = byteorder::NativeEndian::read_u32(&downloads[day_index..]);

@@ -8,7 +8,9 @@ use std::future::Future;
 use std::ops::Deref;
 use std::sync::Arc;
 
+use axum::http::StatusCode;
 use log::{error, info};
+use thiserror::Error;
 use tokio::sync::mpsc::{Receiver, Sender, channel};
 
 use crate::model::auth::{Authentication, RegistryUserToken, RegistryUserTokenWithSecret};
@@ -23,6 +25,7 @@ use crate::model::stats::{DownloadStats, GlobalStats};
 use crate::model::worker::{WorkerEvent, WorkerPublicData, WorkersManager};
 use crate::model::{AppEvent, CrateVersion, RegistryInformation};
 use crate::services::ServiceProvider;
+use crate::services::database::packages::DepsError;
 use crate::services::database::{Database, db_transaction_read, db_transaction_write};
 use crate::services::deps::DepsChecker;
 use crate::services::docs::DocsGenerator;
@@ -30,7 +33,7 @@ use crate::services::emails::EmailSender;
 use crate::services::index::Index;
 use crate::services::rustsec::RustSecChecker;
 use crate::services::storage::Storage;
-use crate::utils::apierror::{ApiError, error_forbidden, error_invalid_request, error_unauthorized, specialize};
+use crate::utils::apierror::{ApiError, AsStatusCode, error_forbidden, error_invalid_request, error_unauthorized, specialize};
 use crate::utils::axum::auth::{AuthData, Token};
 use crate::utils::db::RwSqlitePool;
 
@@ -186,14 +189,36 @@ impl Application {
 
     /// Handles a set of events
     async fn events_handler_handle(&self, events: &[AppEvent]) -> Result<(), ApiError> {
+        #[derive(Debug, Error)]
+        enum EventHandlerError {
+            #[error("failed to update token last usage")]
+            UpdateTokenUsage(#[source] sqlx::Error),
+            #[error("failed to increment crate version download count")]
+            CrateDownload(#[source] DepsError),
+        }
+        impl AsStatusCode for EventHandlerError {
+            fn status_code(&self) -> StatusCode {
+                match self {
+                    Self::UpdateTokenUsage(_) => StatusCode::INTERNAL_SERVER_ERROR,
+                    Self::CrateDownload(deps_error) => deps_error.status_code(),
+                }
+            }
+        }
+
         self.db_transaction_write("events_handler_handle", |app| async move {
             for event in events {
                 match event {
                     AppEvent::TokenUse(usage) => {
-                        app.database.update_token_last_usage(usage).await?;
+                        app.database
+                            .update_token_last_usage(usage)
+                            .await
+                            .map_err(EventHandlerError::UpdateTokenUsage)?;
                     }
                     AppEvent::CrateDownload(CrateVersion { package: name, version }) => {
-                        app.database.increment_crate_version_dl_count(name, version).await?;
+                        app.database
+                            .increment_crate_version_dl_count(name, version)
+                            .await
+                            .map_err(EventHandlerError::CrateDownload)?;
                     }
                 }
             }
@@ -587,6 +612,7 @@ impl Application {
             app.database
                 .get_undocumented_crates(&self.configuration.self_toolchain_host)
                 .await
+                .map_err(ApiError::from)
         })
         .await
     }

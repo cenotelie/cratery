@@ -395,7 +395,7 @@ impl Database {
     }
 
     /// Updates the last usage of a token
-    pub async fn update_token_last_usage(&self, event: &TokenUsage) -> Result<(), ApiError> {
+    pub async fn update_token_last_usage(&self, event: &TokenUsage) -> Result<(), sqlx::Error> {
         if event.kind == TokenKind::User {
             sqlx::query!(
                 "UPDATE RegistryUserToken SET lastUsed = $2 WHERE id = $1",
