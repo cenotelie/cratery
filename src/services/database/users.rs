@@ -20,9 +20,7 @@ use crate::model::auth::{
 use crate::model::cargo::RegistryUser;
 use crate::model::config::Configuration;
 use crate::model::namegen::generate_name;
-use crate::utils::apierror::{
-    ApiError, AsStatusCode, error_conflict, error_forbidden, error_invalid_request, error_not_found, specialize,
-};
+use crate::utils::apierror::{ApiError, AsStatusCode, error_forbidden, error_not_found, specialize};
 use crate::utils::token::{check_hash, generate_token, hash_token};
 
 #[derive(Debug, Error)]
@@ -39,6 +37,52 @@ pub enum UserError {
 }
 
 impl AsStatusCode for UserError {}
+
+#[derive(Debug, Error)]
+pub enum UpdateUserError {
+    #[error("failed to execute request for get login and roles on DB")]
+    SqlLoginAndRoles(#[source] sqlx::Error),
+
+    #[error("user with id `{uid}`not found")]
+    UserNotFound { uid: i64 },
+
+    #[error("only admins can change roles")]
+    OnlyAdminCanChangeRoles,
+
+    #[error("admins cannot remove themselves")]
+    AdminCantRemoveThemselves,
+
+    #[error("login cannot be empty")]
+    LoginCannotBeEmpty,
+
+    #[error("failed to execute request for count RegistryUser for login")]
+    CountUserForLogin(#[source] sqlx::Error),
+
+    #[error("the specified login `{login}` is not found in db")]
+    LoginNotAvailable { login: String },
+
+    #[error("failed to execute db request to update user")]
+    UpdateUserSqlx(#[source] sqlx::Error),
+
+    #[error("user can't update user")]
+    Authentication(#[from] AuthenticationError),
+}
+
+impl AsStatusCode for UpdateUserError {
+    fn status_code(&self) -> StatusCode {
+        match self {
+            Self::SqlLoginAndRoles(_) | Self::CountUserForLogin(_) | Self::UpdateUserSqlx(_) | Self::Authentication(_) => {
+                StatusCode::INTERNAL_SERVER_ERROR
+            }
+
+            Self::AdminCantRemoveThemselves | Self::OnlyAdminCanChangeRoles => StatusCode::FORBIDDEN,
+            Self::LoginCannotBeEmpty => StatusCode::BAD_REQUEST,
+            Self::UserNotFound { .. } => StatusCode::NOT_FOUND,
+
+            Self::LoginNotAvailable { .. } => StatusCode::CONFLICT,
+        }
+    }
+}
 
 #[derive(Debug, Error)]
 pub enum OAuthLoginError {
@@ -265,35 +309,36 @@ impl Database {
         principal_uid: i64,
         target: &RegistryUser,
         can_admin: bool,
-    ) -> Result<RegistryUser, ApiError> {
+    ) -> Result<RegistryUser, UpdateUserError> {
         let row = sqlx::query!("SELECT login, roles FROM RegistryUser WHERE id = $1 LIMIT 1", target.id)
             .fetch_optional(&mut *self.transaction.borrow().await)
-            .await?
-            .ok_or_else(error_not_found)?;
+            .await
+            .map_err(UpdateUserError::SqlLoginAndRoles)?
+            .ok_or_else(|| UpdateUserError::UserNotFound { uid: target.id })?;
         let old_roles = row.roles;
         if !can_admin && target.roles != old_roles {
             // not admin and changing roles
-            return Err(specialize(error_forbidden(), String::from("only admins can change roles")));
+            return Err(UpdateUserError::OnlyAdminCanChangeRoles);
         }
         if can_admin && target.id == principal_uid && target.roles.split(',').all(|role| role.trim() != ROLE_ADMIN) {
             // admin and removing admin role from self
-            return Err(specialize(error_forbidden(), String::from("admins cannot remove themselves")));
+            return Err(UpdateUserError::AdminCantRemoveThemselves);
         }
         if target.login.is_empty() {
-            return Err(specialize(error_invalid_request(), String::from("login cannot be empty")));
+            return Err(UpdateUserError::LoginCannotBeEmpty);
         }
         if row.login != target.login {
             // check that the new login is available
             if sqlx::query!("SELECT COUNT(id) AS count FROM RegistryUser WHERE login = $1", target.login)
                 .fetch_one(&mut *self.transaction.borrow().await)
-                .await?
+                .await
+                .map_err(UpdateUserError::CountUserForLogin)?
                 .count
                 != 0
             {
-                return Err(specialize(
-                    error_conflict(),
-                    String::from("the specified login is not available"),
-                ));
+                return Err(UpdateUserError::LoginNotAvailable {
+                    login: target.login.clone(),
+                });
             }
         }
         sqlx::query!(
@@ -304,7 +349,8 @@ impl Database {
             target.roles
         )
         .execute(&mut *self.transaction.borrow().await)
-        .await?;
+        .await
+        .map_err(UpdateUserError::UpdateUserSqlx)?;
         Ok(target.clone())
     }
 

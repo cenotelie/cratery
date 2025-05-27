@@ -354,7 +354,10 @@ impl Application {
                 app.check_can_admin_registry(&authentication).await?;
                 true
             };
-            app.database.update_user(principal_uid, target, can_admin).await
+            app.database
+                .update_user(principal_uid, target, can_admin)
+                .await
+                .map_err(ApiError::from)
         })
         .await
     }
