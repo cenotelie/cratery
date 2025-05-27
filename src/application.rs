@@ -896,6 +896,9 @@ pub enum AuthenticationError {
     #[error("administration is forbidden for this authentication")]
     AdministrationIsForbidden,
 
+    #[error("writing is forbidden for this authentication")]
+    WriteIsForbidden,
+
     #[error("failed to check global token")]
     GlobalToken(#[source] sqlx::Error),
 
@@ -922,7 +925,7 @@ impl AsStatusCode for AuthenticationError {
             | Self::CheckUser(_)
             | Self::CheckRoles(_) => StatusCode::INTERNAL_SERVER_ERROR,
             Self::NoUserAuthenticated => StatusCode::BAD_REQUEST,
-            Self::Forbidden | Self::AdministrationIsForbidden => StatusCode::FORBIDDEN,
+            Self::Forbidden | Self::AdministrationIsForbidden | Self::WriteIsForbidden => StatusCode::FORBIDDEN,
         }
     }
 }

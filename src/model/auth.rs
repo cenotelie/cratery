@@ -7,10 +7,7 @@
 use chrono::NaiveDateTime;
 use serde_derive::{Deserialize, Serialize};
 
-use crate::{
-    application::AuthenticationError,
-    utils::apierror::{ApiError, error_forbidden, specialize},
-};
+use crate::application::AuthenticationError;
 
 /// The admin role
 pub const ROLE_ADMIN: &str = "admin";
@@ -78,14 +75,11 @@ impl Authentication {
     }
 
     /// Checks that this authentication enables writing
-    pub fn check_can_write(&self) -> Result<(), ApiError> {
+    pub const fn check_can_write(&self) -> Result<(), AuthenticationError> {
         if self.can_write {
             Ok(())
         } else {
-            Err(specialize(
-                error_forbidden(),
-                String::from("writing is forbidden for this authentication"),
-            ))
+            Err(AuthenticationError::WriteIsForbidden)
         }
     }
 
