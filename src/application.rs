@@ -435,7 +435,7 @@ impl Application {
         self.db_transaction_read(|app| async move {
             let authentication = app.authenticate(auth_data).await?;
             app.check_can_admin_registry(&authentication).await?;
-            app.database.get_global_tokens().await
+            app.database.get_global_tokens().await.map_err(ApiError::from)
         })
         .await
     }

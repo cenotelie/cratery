@@ -11,7 +11,7 @@ use thiserror::Error;
 
 use super::Database;
 use crate::model::auth::{RegistryUserToken, RegistryUserTokenWithSecret};
-use crate::utils::apierror::{ApiError, AsStatusCode};
+use crate::utils::apierror::AsStatusCode;
 use crate::utils::token::{generate_token, hash_token};
 
 #[derive(Debug, Error)]
@@ -33,7 +33,7 @@ impl AsStatusCode for TokensError {
 
 impl Database {
     /// Gets the global tokens for the registry, usually for CI purposes
-    pub async fn get_global_tokens(&self) -> Result<Vec<RegistryUserToken>, ApiError> {
+    pub async fn get_global_tokens(&self) -> Result<Vec<RegistryUserToken>, sqlx::Error> {
         let rows = sqlx::query!("SELECT id, name, lastUsed AS last_used FROM RegistryGlobalToken ORDER BY id",)
             .fetch_all(&mut *self.transaction.borrow().await)
             .await?;
