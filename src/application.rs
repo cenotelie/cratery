@@ -890,6 +890,9 @@ pub enum AuthenticationError {
     #[error("user is not authenticated.")]
     Unauthorized,
 
+    #[error("access is forbidden for user")]
+    Forbidden,
+
     #[error("failed to check global token")]
     GlobalToken(#[source] sqlx::Error),
 
@@ -899,6 +902,9 @@ pub enum AuthenticationError {
     #[error("failed to check user token")]
     CheckUser(#[source] sqlx::Error),
 
+    #[error("failed to check user roles")]
+    CheckRoles(#[source] sqlx::Error),
+
     #[error("expected a user to be authenticated")]
     NoUserAuthenticated,
 }
@@ -907,10 +913,13 @@ impl AsStatusCode for AuthenticationError {
     fn status_code(&self) -> StatusCode {
         match self {
             Self::Unauthorized | Self::CookieMissing => StatusCode::UNAUTHORIZED,
-            Self::CookieDeserialization(_) | Self::GlobalToken(_) | Self::UserToken(_) | Self::CheckUser(_) => {
-                StatusCode::INTERNAL_SERVER_ERROR
-            }
+            Self::CookieDeserialization(_)
+            | Self::GlobalToken(_)
+            | Self::UserToken(_)
+            | Self::CheckUser(_)
+            | Self::CheckRoles(_) => StatusCode::INTERNAL_SERVER_ERROR,
             Self::NoUserAuthenticated => StatusCode::BAD_REQUEST,
+            Self::Forbidden => StatusCode::FORBIDDEN,
         }
     }
 }

@@ -104,11 +104,12 @@ impl Database {
     }
 
     /// Checks that a user is an admin
-    pub async fn get_is_admin(&self, uid: i64) -> Result<bool, ApiError> {
+    pub async fn get_is_admin(&self, uid: i64) -> Result<bool, AuthenticationError> {
         let roles = sqlx::query!("SELECT roles FROM RegistryUser WHERE id = $1", uid)
             .fetch_optional(&mut *self.transaction.borrow().await)
-            .await?
-            .ok_or_else(error_forbidden)?
+            .await
+            .map_err(AuthenticationError::CheckRoles)?
+            .ok_or(AuthenticationError::Forbidden)?
             .roles;
         Ok(roles.split(',').any(|role| role.trim() == ROLE_ADMIN))
     }
