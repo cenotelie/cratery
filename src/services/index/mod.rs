@@ -6,10 +6,10 @@
 
 mod git;
 
+pub use git::GitIndexError;
+
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
-
-pub use git::GitIndexError;
 
 use crate::model::cargo::IndexCrateMetadata;
 use crate::model::config::Configuration;
