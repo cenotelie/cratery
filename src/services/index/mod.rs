@@ -9,10 +9,11 @@ mod git;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
+pub use git::GitIndexError;
+
 use crate::model::cargo::IndexCrateMetadata;
 use crate::model::config::Configuration;
 use crate::utils::FaillibleFuture;
-use crate::utils::apierror::ApiError;
 
 /// Index implementations
 pub trait Index {
@@ -63,7 +64,7 @@ pub fn build_package_file_path(mut root: PathBuf, name: &str) -> PathBuf {
 }
 
 /// Gets the index service
-pub async fn get_service(config: &Configuration, expect_empty: bool) -> Result<Arc<dyn Index + Send + Sync>, ApiError> {
+pub async fn get_service(config: &Configuration, expect_empty: bool) -> Result<Arc<dyn Index + Send + Sync>, GitIndexError> {
     let index = git::GitIndex::new(config.get_index_git_config(), expect_empty).await?;
     Ok(Arc::new(index))
 }

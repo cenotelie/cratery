@@ -21,12 +21,11 @@ use crate::model::worker::WorkersManager;
 use crate::services::deps::DepsChecker;
 use crate::services::docs::DocsGenerator;
 use crate::services::emails::EmailSender;
-use crate::services::index::Index;
+use crate::services::index::{GitIndexError, Index};
 use crate::services::rustsec::RustSecChecker;
 use crate::services::storage::Storage;
 use crate::services::{ConfigurationError, ServiceProvider};
 use crate::utils::FaillibleFuture;
-use crate::utils::apierror::ApiError;
 use crate::utils::db::RwSqlitePool;
 use crate::utils::token::generate_token;
 
@@ -56,7 +55,7 @@ impl ServiceProvider for MockService {
         Arc::new(Self)
     }
 
-    async fn get_index(_config: &Configuration, _expect_empty: bool) -> Result<Arc<dyn Index + Send + Sync>, ApiError> {
+    async fn get_index(_config: &Configuration, _expect_empty: bool) -> Result<Arc<dyn Index + Send + Sync>, GitIndexError> {
         Ok(Arc::new(Self))
     }
 

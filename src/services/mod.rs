@@ -6,12 +6,13 @@
 
 use std::{io, path::PathBuf, sync::Arc};
 
+use index::GitIndexError;
 use thiserror::Error;
 
 use crate::model::config::{Configuration, WriteAuthConfigError};
 use crate::model::errors::MissingEnvVar;
 use crate::model::worker::WorkersManager;
-use crate::utils::apierror::{ApiError, AsStatusCode};
+use crate::utils::apierror::AsStatusCode;
 use crate::utils::db::RwSqlitePool;
 
 pub mod database;
@@ -49,7 +50,10 @@ pub trait ServiceProvider {
     fn get_storage(config: &Configuration) -> Arc<dyn storage::Storage + Send + Sync>;
 
     /// Gets the index service
-    async fn get_index(config: &Configuration, expect_empty: bool) -> Result<Arc<dyn index::Index + Send + Sync>, ApiError>;
+    async fn get_index(
+        config: &Configuration,
+        expect_empty: bool,
+    ) -> Result<Arc<dyn index::Index + Send + Sync>, GitIndexError>;
 
     /// Gets the rustsec service
     fn get_rustsec(config: &Configuration) -> Arc<dyn rustsec::RustSecChecker + Send + Sync>;
@@ -95,7 +99,10 @@ impl ServiceProvider for StandardServiceProvider {
     }
 
     /// Gets the index service
-    async fn get_index(config: &Configuration, expect_empty: bool) -> Result<Arc<dyn index::Index + Send + Sync>, ApiError> {
+    async fn get_index(
+        config: &Configuration,
+        expect_empty: bool,
+    ) -> Result<Arc<dyn index::Index + Send + Sync>, GitIndexError> {
         index::get_service(config, expect_empty).await
     }
 
