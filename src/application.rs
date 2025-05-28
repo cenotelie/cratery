@@ -29,7 +29,7 @@ use crate::services::database::{Database, db_transaction_read, db_transaction_wr
 use crate::services::deps::DepsChecker;
 use crate::services::docs::DocsGenerator;
 use crate::services::emails::EmailSender;
-use crate::services::index::Index;
+use crate::services::index::{GitIndexError, Index};
 use crate::services::rustsec::RustSecChecker;
 use crate::services::storage::Storage;
 use crate::utils::apierror::{ApiError, UnApiError, error_forbidden, error_invalid_request, error_unauthorized, specialize};
@@ -50,9 +50,8 @@ pub enum LaunchError {
     #[error("failed to read Db")]
     DbRead(#[source] sqlx::Error),
 
-    ///TODO: convert to not use `ApiError` in parent
     #[error("failed to get `index service`")]
-    GetIndex(#[source] UnApiError),
+    GetIndex(#[source] GitIndexError),
 
     ///TODO: convert to not use `ApiError` in parent
     #[error("failed to get JobSpecs for undocumented packages")]
@@ -122,7 +121,7 @@ impl Application {
         let service_storage = P::get_storage(&configuration.deref().clone());
         let service_index = P::get_index(&configuration, db_is_empty)
             .await
-            .map_err(|source| LaunchError::GetIndex(source.into()))?;
+            .map_err(LaunchError::GetIndex)?;
         let service_rustsec = P::get_rustsec(&configuration);
         let service_deps_checker = P::get_deps_checker(configuration.clone(), service_index.clone(), service_rustsec.clone());
         let service_email_sender = P::get_email_sender(configuration.clone());
