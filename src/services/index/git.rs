@@ -308,10 +308,7 @@ impl GitIndexImpl {
         let location = PathBuf::from(&self.config.location);
         execute_at_location(&location, "git-upload-pack", &["--stateless-rpc", ".git"], input)
             .await
-            .map_err(|_| {
-                todo!();
-                //ApiError::from(source)
-            })
+            .map_err(ApiError::from)
     }
 
     /// Publish a new version for a crate
