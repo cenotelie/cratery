@@ -4,13 +4,15 @@
 
 //! Utility APIs for async programming
 
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::process::Stdio;
 use std::time::{Duration, Instant};
 
-use apierror::{ApiError, error_backend_failure, specialize};
+use apierror::ApiError;
+use compact_str::CompactString;
 use futures::future::BoxFuture;
-use tokio::io::AsyncWriteExt;
+use thiserror::Error;
+use tokio::io::{self, AsyncWriteExt};
 use tokio::process::Command;
 
 pub mod apierror;
@@ -21,6 +23,38 @@ pub mod hashes;
 pub mod shared;
 pub mod sigterm;
 pub mod token;
+
+#[derive(Debug, Error)]
+pub enum CommandError {
+    #[error("Failed to spawn `{cmd}` cmd at '{location}'")]
+    Spawn {
+        #[source]
+        source: io::Error,
+        cmd: CompactString,
+        location: PathBuf,
+    },
+
+    #[error("Failed to write to stdin for `{cmd}`")]
+    StdinWrite {
+        #[source]
+        source: io::Error,
+        cmd: CompactString,
+    },
+
+    #[error("Failed to wait output of `{cmd}`")]
+    WaitOutput {
+        #[source]
+        source: io::Error,
+        cmd: CompactString,
+    },
+
+    #[error("Failed during execution of `{cmd}`:\n-- stdout\n{stdout}\n\n-- stderr\n{stderr}")]
+    Execute {
+        cmd: CompactString,
+        stdout: String,
+        stderr: String,
+    },
+}
 
 /// Pushes an element in a vector if it is not present yet
 /// Returns `true` if the vector was modified
@@ -45,28 +79,48 @@ pub fn stale_instant() -> Instant {
 }
 
 /// Execute a git command
-pub async fn execute_git(location: &Path, args: &[&str]) -> Result<(), ApiError> {
+pub async fn execute_git(location: &Path, args: &[&str]) -> Result<(), CommandError> {
     execute_at_location(location, "git", args, &[]).await.map(|_| ())
 }
 
 /// Execute a command at a location
-pub async fn execute_at_location(location: &Path, command: &str, args: &[&str], input: &[u8]) -> Result<Vec<u8>, ApiError> {
+pub async fn execute_at_location(location: &Path, command: &str, args: &[&str], input: &[u8]) -> Result<Vec<u8>, CommandError> {
     let mut child = Command::new(command)
         .current_dir(location)
         .args(args)
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
-        .spawn()?;
-    child.stdin.as_mut().unwrap().write_all(input).await?;
-    let output = child.wait_with_output().await?;
+        .spawn()
+        .map_err(|source| CommandError::Spawn {
+            source,
+            cmd: command.into(),
+            location: location.to_path_buf(),
+        })?;
+    child
+        .stdin
+        .as_mut()
+        .unwrap()
+        .write_all(input)
+        .await
+        .map_err(|source| CommandError::StdinWrite {
+            source,
+            cmd: command.into(),
+        })?;
+    let output = child.wait_with_output().await.map_err(|source| CommandError::WaitOutput {
+        source,
+        cmd: command.into(),
+    })?;
     if output.status.success() {
         Ok(output.stdout)
     } else {
         let stdout = String::from_utf8_lossy(&output.stdout);
         let stderr = String::from_utf8_lossy(&output.stderr);
-        let error = format!("-- stdout\n{stdout}\n\n-- stderr\n{stderr}");
-        Err(specialize(error_backend_failure(), error))
+        Err(CommandError::Execute {
+            cmd: command.into(),
+            stdout: stdout.into_owned(),
+            stderr: stderr.into_owned(),
+        })
     }
 }
 
