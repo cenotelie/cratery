@@ -7,6 +7,7 @@
 use std::sync::Arc;
 use std::time::Duration;
 
+use axum::http::uri::InvalidUri;
 use base64::Engine;
 use base64::engine::general_purpose::STANDARD;
 use chrono::Local;
@@ -19,11 +20,11 @@ use tokio::time::MissedTickBehavior;
 use tokio_tungstenite::tungstenite::{ClientRequestBuilder, Message};
 use tokio_tungstenite::{MaybeTlsStream, WebSocketStream};
 
-use crate::model::config::{Configuration, ExternalRegistry, NodeRole, NodeRoleWorker};
+use crate::model::config::{Configuration, ExternalRegistry, NodeRole, NodeRoleWorker, WriteAuthConfigError};
 use crate::model::docs::{DocGenJobState, DocGenJobUpdate};
 use crate::model::worker::{JobSpecification, JobUpdate, WorkerDescriptor};
 use crate::services::{ServiceProvider, StandardServiceProvider};
-use crate::utils::apierror::{ApiError, error_backend_failure, specialize};
+use crate::utils::apierror::ApiError;
 use crate::utils::concurrent::{MaybeFutureExt, MaybeOrNever};
 
 /// The interval between heartbeats, in milliseconds
@@ -35,18 +36,35 @@ pub enum WorkerError {
     #[error("expected 'worker' role config, found '{0}'")]
     RoleNotWorker(&'static str),
 
-    //HACK: temporary before convert code to use contextual errors when not reported to client api.
-    #[error("an api error need to be converted")]
-    ApiError { message: String, details: Option<String> },
-}
+    #[error("failed to parse uri for connecting")]
+    UriParsing(#[source] InvalidUri),
 
-impl From<ApiError> for WorkerError {
-    fn from(api_error: ApiError) -> Self {
-        Self::ApiError {
-            message: api_error.message,
-            details: api_error.details,
-        }
-    }
+    #[error("error from controller when connecting: {0}")]
+    Connecting(u16),
+
+    #[error("failed to serialise worker descriptor")]
+    WorkerDescriptionSerializing(#[source] serde_json::Error),
+
+    #[error("failed to send Worker descriptor")]
+    SendWorkerDesc(#[source] tokio_tungstenite::tungstenite::Error),
+
+    #[error("failed to receive response to Worker Descriptor")]
+    ReceiveData(#[source] tokio_tungstenite::tungstenite::Error),
+
+    #[error("expected configuration from server, nothing was received")]
+    ConfReceiving,
+
+    #[error("failed to deserialize ExternalRegistry data")]
+    DeserializeExternalRegistry(#[source] serde_json::Error),
+
+    #[error("failed to write auth config")]
+    WriteAuthConfig(#[source] WriteAuthConfigError),
+
+    #[error("error receiving message")]
+    MsgReceive(#[source] tokio_tungstenite::tungstenite::Error),
+
+    #[error("error sending message")]
+    MsgSend(#[source] tokio_tungstenite::tungstenite::Error),
 }
 
 pub async fn main_worker(config: Configuration) -> Result<(), WorkerError> {
@@ -66,23 +84,22 @@ pub async fn main_worker(config: Configuration) -> Result<(), WorkerError> {
 async fn main_worker_connect(
     config: &NodeRoleWorker,
     descriptor: &WorkerDescriptor,
-) -> Result<WebSocketStream<MaybeTlsStream<TcpStream>>, ApiError> {
+) -> Result<WebSocketStream<MaybeTlsStream<TcpStream>>, WorkerError> {
     info!("connecting to server ...");
     loop {
-        let request = ClientRequestBuilder::new(format!("{}/api/v1/admin/workers/connect", config.master_uri).parse()?)
-            .with_header(
-                "Authorization",
-                format!(
-                    "Basic {}",
-                    STANDARD.encode(format!("{}:{}", descriptor.identifier, config.worker_token))
-                ),
-            );
+        let uri = format!("{}/api/v1/admin/workers/connect", config.master_uri)
+            .parse()
+            .map_err(WorkerError::UriParsing)?;
+        let request = ClientRequestBuilder::new(uri).with_header(
+            "Authorization",
+            format!(
+                "Basic {}",
+                STANDARD.encode(format!("{}:{}", descriptor.identifier, config.worker_token))
+            ),
+        );
         if let Ok((ws, response)) = tokio_tungstenite::connect_async(request).await {
             if response.status().as_u16() != 101 {
-                return Err(specialize(
-                    error_backend_failure(),
-                    format!("Error from controller when connecting: {}", response.status().as_u16()),
-                ));
+                return Err(WorkerError::Connecting(response.status().as_u16()));
             }
             return Ok(ws);
         }
@@ -93,24 +110,27 @@ async fn main_loop(
     ws: WebSocketStream<MaybeTlsStream<TcpStream>>,
     descriptor: &WorkerDescriptor,
     mut config: Configuration,
-) -> Result<(), ApiError> {
+) -> Result<(), WorkerError> {
     let (mut sender, mut receiver) = ws.split();
     // handshake: send the worker's descriptor
-    sender.send(Message::Text(serde_json::to_string(descriptor)?.into())).await?;
+    let worker_desc = serde_json::to_string(descriptor).map_err(WorkerError::WorkerDescriptionSerializing)?;
+    sender
+        .send(Message::Text(worker_desc.into()))
+        .await
+        .map_err(WorkerError::SendWorkerDesc)?;
     // handshake: get the connection data to the master
     let message = receiver
         .next()
         .await
-        .ok_or_else(|| specialize(error_backend_failure(), String::from("expected configuration from server")))??;
+        .ok_or(WorkerError::ConfReceiving)?
+        .map_err(WorkerError::ReceiveData)?;
     let Message::Text(message) = message else {
-        return Err(specialize(
-            error_backend_failure(),
-            String::from("expected configuration from server"),
-        ));
+        return Err(WorkerError::ConfReceiving);
     };
-    let external_config = serde_json::from_str::<ExternalRegistry>(message.as_str())?;
+    let external_config =
+        serde_json::from_str::<ExternalRegistry>(message.as_str()).map_err(WorkerError::DeserializeExternalRegistry)?;
     config.set_self_from_external(external_config);
-    config.write_auth_config().await?;
+    config.write_auth_config().await.map_err(WorkerError::WriteAuthConfig)?;
     let config = &config;
 
     info!("connected as {}-{}, waiting for jobs", descriptor.name, descriptor.identifier);
@@ -144,11 +164,11 @@ async fn main_loop(
         select! {
             message = receiver_next => {
                 if let Some(message) = message {
-                    let message = message?;
+                    let message = message.map_err(WorkerError::MsgReceive)?;
                     match message {
                         Message::Ping(_) | Message::Pong(_) | Message::Frame(_) => { /* do nothing */ }
                         Message::Close(_) => {
-                            sender.lock().await.send(Message::Close(None)).await?;
+                            sender.lock().await.send(Message::Close(None)).await.map_err(WorkerError::MsgSend)?;
                             return Ok(());
                         }
                         Message::Binary(bytes) => {
