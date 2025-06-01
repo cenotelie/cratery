@@ -27,6 +27,7 @@ base64 = "0.22"
 byteorder = "1.5"
 bytes = "1.10"
 chrono = { version = "0.4", features = ["serde"] }
+compact_str = { version = "0.9", default-features = false }
 cookie = { version = "0.18", features = ["percent-encode", "secure"] }
 data-encoding = "2.9"
 flate2 = "1.1"
