@@ -216,7 +216,7 @@ async fn main() -> anyhow::Result<()> {
         // standalone or master
         let application = Application::launch::<services::StandardServiceProvider>(configuration)
             .await
-            .unwrap();
+            .context("failed to launch application")?;
         let cookie_key = Key::from(
             std::env::var("REGISTRY_WEB_COOKIE_SECRET")
                 .expect("REGISTRY_WEB_COOKIE_SECRET must be set")
