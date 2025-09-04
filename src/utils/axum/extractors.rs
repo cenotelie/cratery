@@ -28,12 +28,11 @@ where
     type Rejection = ();
 
     async fn from_request_parts(parts: &mut Parts, _state: &S) -> Result<Self, Self::Rejection> {
-        if let Some(forwarded) = parts.headers.get("x-forwarded-for") {
-            if let Ok(forwarded) = forwarded.to_str() {
-                if let Some(Ok(client_ip)) = forwarded.split(',').next().map(str::trim).map(str::parse) {
-                    return Ok(ClientIp(Some(client_ip)));
-                }
-            }
+        if let Some(forwarded) = parts.headers.get("x-forwarded-for")
+            && let Ok(forwarded) = forwarded.to_str()
+            && let Some(Ok(client_ip)) = forwarded.split(',').next().map(str::trim).map(str::parse)
+        {
+            return Ok(ClientIp(Some(client_ip)));
         }
         match parts.extract::<ConnectInfo<SocketAddr>>().await {
             Ok(ConnectInfo(addr)) => Ok(ClientIp(Some(addr.ip()))),

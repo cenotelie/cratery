@@ -467,12 +467,12 @@ impl DepsGraphCrate {
     /// Gets the full list of activated features for a resolution of this crate
     fn get_active_features<'a>(resolution: &'a DepsGraphCrateResolution, version: &'a DepsGraphCrateVersion) -> Vec<&'a str> {
         let mut active_features = Vec::new();
-        if resolution.default_features {
-            if let Some(children) = version.metadata.get_feature("default") {
-                active_features.push("default");
-                for f in children {
-                    push_if_not_present(&mut active_features, f.as_str());
-                }
+        if resolution.default_features
+            && let Some(children) = version.metadata.get_feature("default")
+        {
+            active_features.push("default");
+            for f in children {
+                push_if_not_present(&mut active_features, f.as_str());
             }
         }
         for feature in &resolution.features {
