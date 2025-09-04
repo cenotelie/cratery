@@ -1,0 +1,14 @@
+include = ["*.toml"]
+
+[formatting]
+indent_string = "    "
+reorder_keys = false
+align_comments = false
+reorder_arrays = true
+
+[[rule]]
+include = ["Cargo.toml"]
+keys = ["dependencies"]
+
+[rule.formatting]
+reorder_keys = true
