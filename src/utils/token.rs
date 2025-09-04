@@ -7,8 +7,8 @@
 use base64::Engine;
 use base64::engine::general_purpose::STANDARD;
 use data_encoding::HEXLOWER;
-use rand::distributions::Standard;
-use rand::{Rng, thread_rng};
+use rand::Rng;
+use rand::distr::StandardUniform;
 use ring::digest::{Context, SHA256};
 
 use super::apierror::{ApiError, error_unauthorized};
@@ -17,8 +17,11 @@ use super::apierror::{ApiError, error_unauthorized};
 #[must_use]
 pub fn generate_token(length: usize) -> String {
     let bytes_count = length * 3 / 4;
-    let rng = thread_rng();
-    let bytes = rng.sample_iter::<u8, _>(Standard).take(bytes_count).collect::<Vec<_>>();
+    let rng = rand::rng();
+    let bytes = rng
+        .sample_iter::<u8, _>(StandardUniform)
+        .take(bytes_count)
+        .collect::<Vec<_>>();
     STANDARD.encode(&bytes)
 }
 
