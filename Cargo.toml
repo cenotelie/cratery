@@ -40,8 +40,8 @@ uuid = { version = "1.18", features = ["v4", "fast-rng"] }
 
 # async support
 futures = "0.3"
-tokio = { version = "1.38", features = ["full"] }
-tokio-stream = "0.1.15"
+tokio = { version = "1.47", features = ["full"] }
+tokio-stream = "0.1"
 tokio-util = { version = "0.7", features = ["io"] }
 
 # framework for the application
@@ -64,7 +64,7 @@ reqwest = { version = "0.12", default-features = false, features = [
     "rustls-tls",
     "rustls-tls-native-roots",
 ] }
-tokio-tungstenite = "0.26"
+tokio-tungstenite = "0.27"
 
 [lints.rust]
 unsafe_code = "forbid"
