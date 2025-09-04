@@ -8,6 +8,7 @@ use std::collections::HashMap;
 use std::fmt::Write;
 use std::io::{BufRead, BufReader};
 use std::path::{Path, PathBuf};
+use std::slice;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
@@ -320,7 +321,7 @@ impl DepsCheckerImpl {
     ) -> Result<DepsGraph, ApiError> {
         let mut graph = if targets.is_empty() {
             // use the host as default target
-            DepsGraph::new(&[self.configuration.self_toolchain_host.clone()])
+            DepsGraph::new(slice::from_ref(&self.configuration.self_toolchain_host))
         } else {
             DepsGraph::new(targets)
         };
