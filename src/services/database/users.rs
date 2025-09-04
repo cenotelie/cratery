@@ -270,7 +270,7 @@ impl Database {
             can_write,
             can_admin
         )
-        .fetch_one(&mut *self.transaction.borrow().await)
+            .fetch_one(&mut *self.transaction.borrow().await)
         .await?
         .id;
         Ok(RegistryUserTokenWithSecret {

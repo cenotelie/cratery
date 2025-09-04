@@ -40,7 +40,10 @@ uuid = { version = "1.24", features = ["fast-rng", "v4"] }
 
 # async support
 futures = "0.3"
-tokio = { version = "1", features = ["full"] }
+tokio = { version = "1", default-features = false, features = [
+    "process",
+    "signal",
+] }
 tokio-stream = "0.1"
 tokio-util = { version = "0.7", features = ["io"] }
 
