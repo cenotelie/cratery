@@ -21,22 +21,22 @@ serde_json = "1.0"
 
 # basic dependencies
 base64 = "0.22"
-byteorder = "1.4"
-bytes = "1.7"
-chrono = { version = "0.4.38", features = ["serde"] }
+byteorder = "1.5"
+bytes = "1.10"
+chrono = { version = "0.4", features = ["serde"] }
 cookie = { version = "0.18", features = ["secure", "percent-encode"] }
-data-encoding = "2.1"
-flate2 = "1.0"
+data-encoding = "2.9"
+flate2 = "1.1"
 http-body = "1"
 mime = "0.3"
-opendal = { version = "0.53", features = ["services-fs", "services-s3"] }
-quick-xml = "0.37"
+opendal = { version = "0.54", features = ["services-fs", "services-s3"] }
+quick-xml = "0.38"
 rand = "0.9"
 ring = "0.17"
 semver = { version = "1.0", features = ["serde"] }
-tar = "0.4.41"
+tar = "0.4"
 urlencoding = "2.1"
-uuid = { version = "1.2", features = ["v4", "fast-rng"] }
+uuid = { version = "1.18", features = ["v4", "fast-rng"] }
 
 # async support
 futures = "0.3"
