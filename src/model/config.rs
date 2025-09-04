@@ -538,7 +538,7 @@ impl Default for Configuration {
         Self {
             log_level: String::from("INFO"),
             log_datetime_format: String::from("[%Y-%m-%d %H:%M:%S]"),
-            web_listenon_ip: IpAddr::V4(Ipv4Addr::new(0, 0, 0, 0)),
+            web_listenon_ip: IpAddr::V4(Ipv4Addr::UNSPECIFIED),
             web_listenon_port: 80,
             web_public_uri: String::from("http://localhost"),
             web_domain: String::from("localhost"),
@@ -641,7 +641,7 @@ impl Configuration {
             log_datetime_format: get_var("REGISTRY_LOG_DATE_TIME_FORMAT")
                 .unwrap_or_else(|_| String::from("[%Y-%m-%d %H:%M:%S]")),
             web_listenon_ip: get_var("REGISTRY_WEB_LISTENON_IP").map_or_else(
-                |_| IpAddr::V4(Ipv4Addr::new(0, 0, 0, 0)),
+                |_| IpAddr::V4(Ipv4Addr::UNSPECIFIED),
                 |s| IpAddr::from_str(&s).expect("invalid REGISTRY_WEB_LISTENON_IP"),
             ),
             web_listenon_port: get_var("REGISTRY_WEB_LISTENON_PORT")
