@@ -77,22 +77,33 @@ impl WorkerDescriptor {
     /// Gets whether this worker matches the selector
     #[must_use]
     pub fn matches(&self, selector: &WorkerSelector) -> bool {
-        if let Some(host) = &selector.toolchain_host {
-            if &self.toolchain_host != host {
-                return false;
-            }
-        }
-        if let Some(target) = &selector.toolchain_installed_target {
-            if !self.toolchain_installed_targets.contains(target) {
-                return false;
-            }
-        }
-        if let Some(target) = &selector.toolchain_available_target {
-            if !self.toolchain_installed_targets.contains(target) && !self.toolchain_installable_targets.contains(target) {
-                return false;
-            }
-        }
-        selector.capabilities.iter().all(|cap| self.capabilities.contains(cap))
+        self.match_host(selector)
+            && self.match_installed_target(selector)
+            && self.match_available_target(selector)
+            && selector.capabilities.iter().all(|cap| self.capabilities.contains(cap))
+    }
+
+    #[must_use]
+    fn match_host(&self, selector: &WorkerSelector) -> bool {
+        selector
+            .toolchain_host
+            .as_ref()
+            .is_none_or(|host| &self.toolchain_host == host)
+    }
+
+    #[must_use]
+    fn match_installed_target(&self, selector: &WorkerSelector) -> bool {
+        selector
+            .toolchain_installed_target
+            .as_ref()
+            .is_none_or(|target| self.toolchain_installed_targets.contains(target))
+    }
+
+    #[must_use]
+    fn match_available_target(&self, selector: &WorkerSelector) -> bool {
+        selector.toolchain_available_target.as_ref().is_none_or(|target| {
+            self.toolchain_installed_targets.contains(target) || self.toolchain_installable_targets.contains(target)
+        })
     }
 }
 
