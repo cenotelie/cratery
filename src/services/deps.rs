@@ -55,25 +55,42 @@ pub fn create_deps_worker(
     let deps_check_period = configuration.deps_check_period;
 
     let _handle = tokio::spawn(async move {
-        // every minute
-        let mut interval = tokio::time::interval(Duration::from_secs(deps_check_period));
-        loop {
-            let _instant = interval.tick().await;
-            if let Err(e) = deps_worker_job(
-                &configuration,
-                service_deps_checker.clone(),
-                service_email_sender.clone(),
-                &pool,
-            )
-            .await
-            {
-                error!("{e}");
-                if let Some(backtrace) = &e.backtrace {
-                    error!("{backtrace}");
-                }
+        run_deps_worker_job(
+            configuration,
+            service_deps_checker,
+            service_email_sender,
+            pool,
+            deps_check_period,
+        )
+        .await
+    });
+}
+
+async fn run_deps_worker_job(
+    configuration: Arc<Configuration>,
+    service_deps_checker: Arc<dyn DepsChecker + Send + Sync + 'static>,
+    service_email_sender: Arc<dyn EmailSender + Send + Sync + 'static>,
+    pool: RwSqlitePool,
+    deps_check_period: u64,
+) -> ! {
+    // every minute
+    let mut interval = tokio::time::interval(Duration::from_secs(deps_check_period));
+    loop {
+        let _instant = interval.tick().await;
+        if let Err(e) = deps_worker_job(
+            &configuration,
+            service_deps_checker.clone(),
+            service_email_sender.clone(),
+            &pool,
+        )
+        .await
+        {
+            error!("{e}");
+            if let Some(backtrace) = &e.backtrace {
+                error!("{backtrace}");
             }
         }
-    });
+    }
 }
 
 /// A job for the worker
