@@ -8,7 +8,7 @@ reorder_arrays = true
 
 [[rule]]
 include = ["Cargo.toml"]
-keys = ["dependencies"]
+keys = ["dependencies", "lints"]
 
 [rule.formatting]
 reorder_keys = true
