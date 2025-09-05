@@ -35,3 +35,12 @@ jobs:
       - uses: gwen-lg/taplo-action@v1
         with:
           format: true
+
+  detect-unused-dependencies:
+    name: Cargo Machete
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Machete
+        uses: bnjbvr/cargo-machete@main
