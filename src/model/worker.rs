@@ -596,3 +596,106 @@ pub enum WorkerEvent {
     /// A worker became available
     WorkerAvailable { worker_id: String },
 }
+
+#[cfg(test)]
+mod tests {
+    use crate::model::worker::WorkerSelector;
+
+    use super::WorkerDescriptor;
+
+    #[test]
+    fn worker_host_match() {
+        let selector = WorkerSelector::new_native_target("stable-x86_64-unknown-linux-gnu".into());
+        let workder_desk = WorkerDescriptor {
+            identifier: String::default(),
+            name: String::default(),
+            toolchain_version_stable: semver::Version::new(1, 89, 0),
+            toolchain_version_nightly: semver::Version::new(1, 91, 0),
+            toolchain_host: "stable-x86_64-unknown-linux-gnu".into(),
+            toolchain_installed_targets: Vec::new(),
+            toolchain_installable_targets: Vec::new(),
+            capabilities: Vec::new(),
+        };
+        assert!(workder_desk.matches(&selector));
+    }
+
+    #[test]
+    fn worker_host_not_match() {
+        let selector = WorkerSelector::new_native_target("stable-x86_64-unknown-linux-gnu".into());
+        let workder_desk = WorkerDescriptor {
+            identifier: String::default(),
+            name: String::default(),
+            toolchain_version_stable: semver::Version::new(1, 89, 0),
+            toolchain_version_nightly: semver::Version::new(1, 91, 0),
+            toolchain_host: "1.89-x86_64-unknown-linux-gnu".into(),
+            toolchain_installed_targets: Vec::new(),
+            toolchain_installable_targets: Vec::new(),
+            capabilities: Vec::new(),
+        };
+        assert!(!workder_desk.matches(&selector));
+    }
+
+    #[test]
+    fn worker_target_installed_match() {
+        let selector = WorkerSelector::new_available_target("x86_64-unknown-linux-gnu".into());
+        let workder_desk = WorkerDescriptor {
+            identifier: String::default(),
+            name: String::default(),
+            toolchain_version_stable: semver::Version::new(1, 89, 0),
+            toolchain_version_nightly: semver::Version::new(1, 91, 0),
+            toolchain_host: "1.89-x86_64-unknown-linux-gnu".into(),
+            toolchain_installed_targets: vec!["x86_64-unknown-linux-gnu".to_string()],
+            toolchain_installable_targets: Vec::new(),
+            capabilities: Vec::new(),
+        };
+        assert!(workder_desk.matches(&selector));
+    }
+
+    #[test]
+    fn worker_target_installed_not_match() {
+        let selector = WorkerSelector::new_available_target("x86_64-unknown-linux-gnu".into());
+        let workder_desk = WorkerDescriptor {
+            identifier: String::default(),
+            name: String::default(),
+            toolchain_version_stable: semver::Version::new(1, 89, 0),
+            toolchain_version_nightly: semver::Version::new(1, 91, 0),
+            toolchain_host: "1.89-x86_64-unknown-linux-gnu".into(),
+            toolchain_installed_targets: vec!["wasm32-unknown-unknown".to_string()],
+            toolchain_installable_targets: Vec::new(),
+            capabilities: Vec::new(),
+        };
+        assert!(!workder_desk.matches(&selector));
+    }
+
+    #[test]
+    fn work_target_installable_match() {
+        let selector = WorkerSelector::new_available_target("aarch64-unknown-linux-musl".into());
+        let workder_desk = WorkerDescriptor {
+            identifier: String::default(),
+            name: String::default(),
+            toolchain_version_stable: semver::Version::new(1, 89, 0),
+            toolchain_version_nightly: semver::Version::new(1, 91, 0),
+            toolchain_host: String::new(),
+            toolchain_installed_targets: Vec::new(),
+            toolchain_installable_targets: vec!["aarch64-unknown-linux-musl".to_string(), "wasm32-unknown-unknown".to_string()],
+            capabilities: Vec::new(),
+        };
+        assert!(workder_desk.matches(&selector));
+    }
+
+    #[test]
+    fn work_target_installable_not_match() {
+        let selector = WorkerSelector::new_available_target("aarch64-linux-android".into());
+        let workder_desk = WorkerDescriptor {
+            identifier: String::default(),
+            name: String::default(),
+            toolchain_version_stable: semver::Version::new(1, 89, 0),
+            toolchain_version_nightly: semver::Version::new(1, 91, 0),
+            toolchain_host: String::new(),
+            toolchain_installed_targets: Vec::new(),
+            toolchain_installable_targets: vec!["aarch64-unknown-linux-musl".to_string(), "wasm32-unknown-unknown".to_string()],
+            capabilities: Vec::new(),
+        };
+        assert!(!workder_desk.matches(&selector));
+    }
+}
