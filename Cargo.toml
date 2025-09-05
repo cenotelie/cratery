@@ -81,6 +81,7 @@ suspicious = { level = "warn", priority = -1 }
 # The individually activated lints below come from : nursery, restriction.
 allow_attributes = "warn"
 future_not_send = "deny"
+infinite_loop = "warn"
 missing_const_for_fn = "warn"
 missing_errors_doc = "allow"
 missing_panics_doc = "allow"

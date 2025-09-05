@@ -186,7 +186,7 @@ impl DocsGeneratorImpl {
     }
 
     /// Implementation of the worker
-    async fn worker(&self) {
+    async fn worker(&self) -> ! {
         // check every 10 seconds
         let mut interval = interval(Duration::from_secs(10));
         loop {
