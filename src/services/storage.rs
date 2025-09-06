@@ -45,7 +45,7 @@ pub trait Storage {
 /// Gets the backing storage for the documentation
 #[must_use]
 pub fn get_service(config: &Configuration) -> Arc<dyn Storage + Send + Sync> {
-    Arc::new(StorageImpl::from(config))
+    Arc::new(StorageImpl::try_from(config).unwrap())
 }
 
 /// Backing storage
@@ -65,13 +65,15 @@ fn retry_layer_from_params(retry_params: &RetryParams) -> RetryLayer {
     layer
 }
 
-impl From<&Configuration> for StorageImpl {
-    fn from(config: &Configuration) -> Self {
+impl TryFrom<&Configuration> for StorageImpl {
+    type Error = opendal::Error;
+
+    fn try_from(config: &Configuration) -> Result<Self, Self::Error> {
         let opendal_operator = match &config.storage {
             StorageConfig::FileSystem { retry_params } => {
                 let builder = opendal::services::Fs::default().root(&config.data_dir);
 
-                let op = opendal::Operator::new(builder).unwrap().layer(LoggingLayer::default());
+                let op = opendal::Operator::new(builder)?.layer(LoggingLayer::default());
                 if let Some(retry_params) = retry_params {
                     op.layer(retry_layer_from_params(retry_params)).finish()
                 } else {
@@ -91,7 +93,7 @@ impl From<&Configuration> for StorageImpl {
                     .access_key_id(&params.access_key)
                     .secret_access_key(&params.secret_key);
 
-                let op = opendal::Operator::new(builder).unwrap().layer(LoggingLayer::default());
+                let op = opendal::Operator::new(builder)?.layer(LoggingLayer::default());
                 if let Some(retry_params) = retry_params {
                     op.layer(retry_layer_from_params(retry_params)).finish()
                 } else {
@@ -100,7 +102,7 @@ impl From<&Configuration> for StorageImpl {
             }
         };
 
-        Self { opendal_operator }
+        Ok(Self { opendal_operator })
     }
 }
 
