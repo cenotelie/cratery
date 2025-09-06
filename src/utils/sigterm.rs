@@ -4,7 +4,6 @@
 
 //! Utility to wait for the SIGTERM signal
 
-use std::future::Future;
 use std::pin::pin;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -18,11 +17,14 @@ use tokio::signal::unix::{SignalKind, signal};
 /// # Panics
 ///
 /// Raise a panic when the terminate signal cannot be obtained.
-pub async fn waiting_sigterm<Fut, R>(future: Fut) -> Either<R, Fut>
+pub async fn waiting_sigterm<Fut, R>(future: Fut) -> R
 where
     Fut: Future<Output = R> + Unpin,
 {
-    waiting_sigterm_flag(future, Arc::new(AtomicBool::new(false)), 0).await
+    match waiting_sigterm_flag(future, Arc::new(AtomicBool::new(false)), 0).await {
+        Either::Left(left) => left,
+        Either::Right(right) => right.await,
+    }
 }
 
 /// Executes the specified future and listen for SIGTERM to terminate early

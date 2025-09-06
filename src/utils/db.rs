@@ -15,12 +15,23 @@ use log::error;
 use serde_derive::{Deserialize, Serialize};
 use sqlx::sqlite::{SqliteConnectOptions, SqliteJournalMode, SqlitePoolOptions};
 use sqlx::{Pool, Sqlite, SqliteConnection, Transaction};
+use thiserror::Error;
 
-use super::apierror::ApiError;
 use crate::utils::shared::{ResourceLock, SharedResource, StillSharedError};
 
 /// Maximum number of concurrent READ connections
 const DB_MAX_READ_CONNECTIONS: u32 = 16;
+
+///TODO: doc
+#[derive(Debug, Error)]
+pub enum PoolCreateError {
+    #[error("Failed to create Sqlite Connect Options with url `{url}`")]
+    ConnectOptionsCreation {
+        #[source]
+        source: sqlx::Error,
+        url: String,
+    },
+}
 
 /// A pool of sqlite connection that distinguish read-only and write connections
 #[derive(Debug, Clone)]
@@ -35,13 +46,17 @@ pub struct RwSqlitePool {
 
 impl RwSqlitePool {
     /// Creates a new pool
-    pub fn new(url: &str) -> Result<RwSqlitePool, ApiError> {
+    pub fn new(url: &str) -> Result<RwSqlitePool, PoolCreateError> {
         let current_write_op = Arc::new(Mutex::new(None));
         Ok(RwSqlitePool {
             read: SqlitePoolOptions::new()
                 .max_connections(DB_MAX_READ_CONNECTIONS)
                 .connect_lazy_with(
-                    SqliteConnectOptions::from_str(url)?
+                    SqliteConnectOptions::from_str(url)
+                        .map_err(|source| PoolCreateError::ConnectOptionsCreation {
+                            source,
+                            url: url.to_string(),
+                        })?
                         .journal_mode(SqliteJournalMode::Wal)
                         .read_only(true),
                 ),
@@ -57,7 +72,14 @@ impl RwSqlitePool {
                         })
                     }
                 })
-                .connect_lazy_with(SqliteConnectOptions::from_str(url)?.journal_mode(SqliteJournalMode::Wal)),
+                .connect_lazy_with(
+                    SqliteConnectOptions::from_str(url)
+                        .map_err(|source| PoolCreateError::ConnectOptionsCreation {
+                            source,
+                            url: url.to_string(),
+                        })?
+                        .journal_mode(SqliteJournalMode::Wal),
+                ),
             current_write_op,
         })
     }
@@ -203,50 +225,15 @@ impl Ord for VersionNumber {
 }
 
 /// An error during a migration
-#[derive(Debug)]
+#[derive(Debug, Error)]
 pub enum MigrationError {
     /// Error when the version number is invalid
-    InvalidVersion(InvalidVersionNumber),
+    #[error(transparent)]
+    InvalidVersion(#[from] InvalidVersionNumber),
     /// An SQL error
-    Sql(sqlx::Error),
+    #[error(transparent)]
+    Sql(#[from] sqlx::Error),
     /// The transaction was still shared when a migration is terminated
+    #[error("the transaction was still shared when a it terminated")]
     SharedTransaction(StillSharedError),
-}
-
-impl Display for MigrationError {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        match self {
-            MigrationError::InvalidVersion(inner) => inner.fmt(f),
-            MigrationError::Sql(inner) => inner.fmt(f),
-            MigrationError::SharedTransaction(_) => write!(f, "the transaction was still shared when a it terminated"),
-        }
-    }
-}
-
-impl std::error::Error for MigrationError {
-    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
-        match self {
-            MigrationError::InvalidVersion(inner) => Some(inner),
-            MigrationError::Sql(inner) => Some(inner),
-            MigrationError::SharedTransaction(inner) => Some(inner),
-        }
-    }
-}
-
-impl From<InvalidVersionNumber> for MigrationError {
-    fn from(err: InvalidVersionNumber) -> MigrationError {
-        MigrationError::InvalidVersion(err)
-    }
-}
-
-impl From<sqlx::Error> for MigrationError {
-    fn from(err: sqlx::Error) -> MigrationError {
-        MigrationError::Sql(err)
-    }
-}
-
-impl From<StillSharedError> for MigrationError {
-    fn from(err: StillSharedError) -> Self {
-        MigrationError::SharedTransaction(err)
-    }
 }
