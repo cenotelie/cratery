@@ -14,7 +14,7 @@ use futures::{FutureExt, Stream, StreamExt};
 /// Takes an iterator of futures and executes them concurrently, with at most n concurrent futures.
 /// This is similar to the `futures::future::join_all` function, except that instead of executing them all,
 /// we at most have n in concurrent execution.
-#[allow(clippy::missing_panics_doc)]
+#[expect(clippy::missing_panics_doc)]
 pub async fn n_at_a_time<I, F, T, TEST>(futures: I, n: usize, must_stop: TEST) -> Vec<T>
 where
     I: IntoIterator<Item = F>,

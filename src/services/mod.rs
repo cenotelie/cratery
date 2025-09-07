@@ -20,7 +20,7 @@ pub mod rustsec;
 pub mod storage;
 
 /// Factory responsible for building services
-#[allow(async_fn_in_trait)]
+#[expect(async_fn_in_trait)]
 pub trait ServiceProvider {
     /// Gets the configuration
     async fn get_configuration() -> Result<Configuration, ApiError>;

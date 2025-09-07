@@ -276,7 +276,7 @@ pub enum DepsGraphCrateOrigin {
 
 impl DepsGraphCrateOrigin {
     /// Gets the origin for a sub-dependency of a specified kind with a dependant of the current origin
-    #[allow(clippy::match_same_arms)]
+    #[expect(clippy::match_same_arms)]
     #[must_use]
     pub const fn child_of_kind(self, kind: DependencyKind) -> Option<Self> {
         match (self, kind) {
