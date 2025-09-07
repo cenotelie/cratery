@@ -431,6 +431,7 @@ impl WorkersManager {
     }
 
     /// Remove a worker
+    #[expect(clippy::significant_drop_tightening)]
     pub fn remove_worker(&self, worker_id: &str) {
         info!("=== removing worker {worker_id}");
         let found = {
@@ -494,6 +495,7 @@ impl WorkersManager {
             });
             if let Some(index) = index {
                 let item = inner.queue.remove(index);
+                drop(inner);
                 item.waker.wake();
             }
         }
@@ -546,6 +548,7 @@ impl WorkersManager {
     }
 
     /// Send an event to listeners
+    #[expect(clippy::significant_drop_tightening)]
     async fn do_send_event(&self, event: WorkerEvent) -> Result<(), ApiError> {
         let mut listeners = self.listeners.lock().await;
         let mut index = if listeners.is_empty() {

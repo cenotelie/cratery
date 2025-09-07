@@ -131,6 +131,7 @@ impl DocsGenerator for DocsGeneratorImpl {
 
 impl DocsGeneratorImpl {
     /// Send an event to listeners
+    #[expect(clippy::significant_drop_tightening)]
     async fn send_event(&self, event: DocGenEvent) -> Result<(), ApiError> {
         let mut listeners = self.listeners.lock().await;
         let mut index = if listeners.is_empty() {
