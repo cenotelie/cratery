@@ -17,7 +17,6 @@ use http_body::Frame;
 use serde::Serialize;
 
 /// A Server-Sent Event
-#[allow(clippy::struct_field_names, dead_code)]
 pub struct Event<T> {
     /// The event type, to be serialized in the `event` field
     pub event_type: Option<String>,

@@ -314,7 +314,6 @@ pub struct CrateUploadData {
 
 impl CrateUploadData {
     /// Deserialize the content of an input payload
-    #[allow(clippy::cast_possible_truncation)]
     pub fn new(buffer: &[u8]) -> Result<Self, ApiError> {
         let mut cursor = Cursor::new(buffer);
         // read the metadata

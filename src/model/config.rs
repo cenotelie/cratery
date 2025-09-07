@@ -407,7 +407,7 @@ impl NodeRole {
 
 /// A configuration for the registry
 #[derive(Debug, Serialize, Deserialize, Clone)]
-#[allow(clippy::struct_excessive_bools)]
+#[expect(clippy::struct_excessive_bools)]
 pub struct Configuration {
     /// The log level to use
     #[serde(rename = "logLevel")]
