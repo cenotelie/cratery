@@ -317,14 +317,14 @@ impl CrateUploadData {
     pub fn new(buffer: &[u8]) -> Result<Self, ApiError> {
         let mut cursor = Cursor::new(buffer);
         // read the metadata
-        let metadata_length = u64::from(cursor.read_u32::<LittleEndian>()?);
-        let metadata_buffer = &buffer[4..((4 + metadata_length) as usize)];
+        let metadata_length = cursor.read_u32::<LittleEndian>()? as usize;
+        let metadata_buffer = &buffer[4..(4 + metadata_length)];
         let metadata = serde_json::from_slice(metadata_buffer)?;
         // read the content
-        cursor.set_position(4 + metadata_length);
+        cursor.set_position(4 + metadata_length as u64);
         let content_length = cursor.read_u32::<LittleEndian>()? as usize;
         let mut content = vec![0_u8; content_length];
-        content.copy_from_slice(&buffer[((4 + metadata_length + 4) as usize)..]);
+        content.copy_from_slice(&buffer[(4 + metadata_length + 4)..]);
         Ok(Self { metadata, content })
     }
 
