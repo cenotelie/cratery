@@ -2,7 +2,7 @@ name: CI
 
 on:
   push:
-    branches: [ "main" ]
+    branches: ["main"]
   pull_request:
 
 env:
@@ -12,17 +12,17 @@ jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@v4
-    - uses: EmbarkStudios/cargo-deny-action@v2
-      with:
+      - uses: actions/checkout@v4
+      - uses: EmbarkStudios/cargo-deny-action@v2
+        with:
           log-level: warn
           command: check
-    - uses: Swatinem/rust-cache@v2
-    - name: Check fmt
-      run: cargo fmt --check
-    - name: Check spelling
-      uses: crate-ci/typos@master
-    - name: Lint
-      run: cargo clippy --locked
-    - name: Run tests
-      run: cargo test --locked
+      - uses: Swatinem/rust-cache@v2
+      - name: Check fmt
+        run: cargo fmt --check
+      - name: Check spelling
+        uses: crate-ci/typos@master
+      - name: Lint
+        run: cargo clippy --locked
+      - name: Run tests
+        run: cargo test --locked
