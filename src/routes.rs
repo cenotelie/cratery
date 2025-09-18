@@ -995,6 +995,9 @@ pub async fn index_serve_check_auth(
     application: &Application,
     auth_data: &AuthData,
 ) -> Result<(), (StatusCode, [(HeaderName, HeaderValue); 2], Json<ApiError>)> {
+    if application.configuration.self_public_read {
+        return Ok(());
+    }
     application
         .authenticate(auth_data)
         .await

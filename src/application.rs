@@ -519,8 +519,11 @@ impl Application {
 
     /// Downloads the content for a crate
     pub async fn get_crate_content(&self, auth_data: &AuthData, package: &str, version: &str) -> Result<Vec<u8>, ApiError> {
+        let public_read = self.configuration.self_public_read;
         self.db_transaction_read(|app| async move {
-            let _authentication = app.authenticate(auth_data).await?;
+            if !public_read {
+                let _authentication = app.authenticate(auth_data).await?;
+            }
             app.database.check_crate_exists(package, version).await?;
             Ok::<_, ApiError>(())
         })
@@ -669,8 +672,11 @@ impl Application {
 
     /// Gets the list of owners for a package
     pub async fn get_crate_owners(&self, auth_data: &AuthData, package: &str) -> Result<OwnersQueryResult, ApiError> {
+        let public_read = self.configuration.self_public_read;
         self.db_transaction_read(|app| async move {
-            let _authentication = app.authenticate(auth_data).await?;
+            if !public_read {
+                let _authentication = app.authenticate(auth_data).await?;
+            }
             app.database.get_crate_owners(package).await
         })
         .await
@@ -815,8 +821,11 @@ impl Application {
         per_page: Option<usize>,
         deprecated: Option<bool>,
     ) -> Result<SearchResults, ApiError> {
+        let public_read = self.configuration.self_public_read;
         self.db_transaction_read(|app| async move {
-            let _authentication = app.authenticate(auth_data).await?;
+            if !public_read {
+                let _authentication = app.authenticate(auth_data).await?;
+            }
             app.database.search_crates(query, per_page, deprecated).await
         })
         .await
