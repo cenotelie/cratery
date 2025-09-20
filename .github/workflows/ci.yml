@@ -20,12 +20,17 @@ jobs:
       - uses: Swatinem/rust-cache@v2
       - name: Check fmt
         run: cargo fmt --check
-      - name: Check spelling
-        uses: crate-ci/typos@master
       - name: Lint
         run: cargo clippy --locked
       - name: Run tests
         run: cargo test --locked
+
+  typos:
+    name: Check spelling with typos
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: crate-ci/typos@master
 
   taplo:
     name: Toml format check
