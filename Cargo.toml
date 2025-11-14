@@ -8,6 +8,8 @@ documentation = "https://github.com/cenotelie/cratery"
 homepage = "https://github.com/cenotelie/cratery"
 repository = "https://github.com/cenotelie/cratery"
 license = "MIT"
+keywords = ["cargo", "crates", "private", "registry", "service"]
+categories = ["development-tools"]
 
 [dependencies]
 # logging
@@ -69,6 +71,7 @@ unsafe_code = "forbid"
 unused_imports = "deny"
 
 [lints.clippy]
+cargo = { level = "warn", priority = -1 }
 complexity = { level = "deny", priority = -1 }
 pedantic = { level = "warn", priority = -1 }
 perf = { level = "deny", priority = -1 }
@@ -79,6 +82,7 @@ future_not_send = "deny"
 missing_errors_doc = "allow"
 missing_panics_doc = "allow"
 module_name_repetitions = "allow"
+multiple_crate_versions = "allow"
 or_fun_call = "deny"
 string_lit_as_bytes = "warn"
 uninlined_format_args = "deny"
