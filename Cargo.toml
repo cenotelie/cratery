@@ -2,12 +2,12 @@
 name = "cratery"
 version = "1.13.0"
 authors = ["Laurent Wouters <lwouters@cenotelie.fr>"]
-description = "Cratery -- a private cargo registry"
-repository = "https://github.com/cenotelie/cratery"
-homepage = "https://github.com/cenotelie/cratery"
-documentation = "https://github.com/cenotelie/cratery"
-license = "MIT"
 edition = "2024"
+description = "Cratery -- a private cargo registry"
+documentation = "https://github.com/cenotelie/cratery"
+homepage = "https://github.com/cenotelie/cratery"
+repository = "https://github.com/cenotelie/cratery"
+license = "MIT"
 
 [dependencies]
 # logging
