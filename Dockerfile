@@ -1,47 +1,63 @@
-ARG BUILD_FLAGS=
+ARG RUST_VERSION=1.91.1
 ARG BUILD_TARGET=debug
+ARG BUILD_FLAGS=""
+
+FROM rust:${RUST_VERSION}-slim AS buildrust
+WORKDIR /app
+
+RUN <<EOF
+apt-get update
+apt-get install --no-install-recommends -y pkg-config libsqlite3-0 git
+EOF
+
+RUN --mount=type=bind,source=src/,target=./src \
+    --mount=type=bind,source=build.rs/,target=./build.rs \
+    --mount=type=bind,source=Cargo.toml/,target=./Cargo.toml \
+    --mount=type=bind,source=Cargo.lock/,target=./Cargo.lock \
+    --mount=type=cache,target=/app/target/ \
+    --mount=type=cache,target=/usr/local/cargo/registry/ \
+    <<EOF
+set -e
+cargo build --release --locked
+cp ./target/release/cratery /bin/cratery
+EOF
 
 
-## Base image with Rust toolchain and dependencies
-FROM buildpack-deps:24.04-curl AS base
-LABEL maintainer="Laurent Wouters <lwouters@cenotelie.fr>" vendor="Cénotélie Opérations SAS"  description="Cratery -- a private cargo registry"
-# add packages
-RUN apt-get update && apt-get install -y --no-install-recommends \
-		build-essential \
-		pkg-config \
-		libsqlite3-0 \
-		libsqlite3-dev \
-		musl-tools \
-		git \
-		ssh
+FROM rust:${RUST_VERSION}-slim AS final
 
-# add custom user
-RUN groupmod -n cratery ubuntu && usermod -l cratery -d /home/cratery ubuntu && mv /home/ubuntu /home/cratery
-ENV HOME=/home/cratery
+RUN <<EOF
+apt-get update
+apt-get install --no-install-recommends -y ssh git libsqlite3-0
+EOF
+
+# Create a non-privileged user that the app will run under.
+# See https://docs.docker.com/develop/develop-images/dockerfile_best-practices/#user
+ARG UID=10000
+RUN adduser \
+    --disabled-password \
+    --gecos "" \
+    --shell "/sbin/nologin" \
+    --uid "${UID}" \
+    cratery
+
+# Copy the executable from the "build" stage.
+COPY --from=buildrust /bin/cratery /bin/
+
+# Create directories the shall be used
+RUN mkdir /data && chown -R cratery:cratery /data
+
 USER cratery
-# Add support for Rust
-ENV PATH="/home/cratery/.cargo/bin:${PATH}"
-RUN curl https://sh.rustup.rs -sSf | sh -s -- -y \
-	&& rustup toolchain install nightly \
-	&& rustup default nightly \
-	&& rm -rf /home/cratery/.cargo/registry \
-	&& mkdir /home/cratery/.cargo/registry
+WORKDIR /home/cratery
+
+RUN <<EOF
+set -e
+rustup toolchain install nightly
+rustup default nightly
+mkdir -p /home/cratery/.cargo/registry
 # add ssh host key for github.com
-RUN mkdir /home/cratery/.ssh && ssh-keyscan -t rsa github.com >> /home/cratery/.ssh/known_hosts
-RUN chmod -R go-rwx /home/cratery/.ssh
+set -e
+mkdir /home/cratery/.ssh && ssh-keyscan -t rsa github.com >> /home/cratery/.ssh/known_hosts
+chmod -R go-rwx /home/cratery/.ssh
+EOF
 
-
-
-## Builder to build the application
-FROM base AS builder
-ARG BUILD_FLAGS
-COPY --chown=cratery . /home/cratery/src
-RUN cd /home/cratery/src && cargo +stable build ${BUILD_FLAGS}
-
-
-
-## Final target from the base with the application's binary
-FROM base
-ARG BUILD_TARGET
-COPY --from=builder /home/cratery/src/target/${BUILD_TARGET}/cratery /
-ENTRYPOINT ["/cratery"]
+ENTRYPOINT ["/bin/cratery"]
