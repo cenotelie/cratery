@@ -55,7 +55,7 @@ pub enum WriteAuthConfigError {
     #[error("failed to write credential.toml")]
     WriteCredentials(#[source] WriteConfigError),
 
-    #[error("hack to allow progressiv work")]
+    #[error("hack to allow progressiv work")] //TODO
     ApiError,
 }
 
