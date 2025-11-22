@@ -9,6 +9,8 @@ use std::ops::Deref;
 use std::sync::Arc;
 
 use log::{error, info};
+use thiserror::Error;
+use tokio::io;
 use tokio::sync::mpsc::{Receiver, Sender, channel};
 
 use crate::model::auth::{Authentication, RegistryUserToken, RegistryUserTokenWithSecret};
@@ -27,13 +29,42 @@ use crate::services::database::{Database, db_transaction_read, db_transaction_wr
 use crate::services::deps::DepsChecker;
 use crate::services::docs::DocsGenerator;
 use crate::services::emails::EmailSender;
-use crate::services::index::Index;
+use crate::services::index::{GitIndexError, Index};
 use crate::services::rustsec::RustSecChecker;
 use crate::services::storage::Storage;
-use crate::utils::apierror::{ApiError, error_forbidden, error_invalid_request, error_unauthorized, specialize};
+use crate::utils::apierror::{ApiError, UnApiError, error_forbidden, error_invalid_request, error_unauthorized, specialize};
 use crate::utils::axum::auth::{AuthData, Token};
-use crate::utils::db::RwSqlitePool;
+use crate::utils::db::{MigrationError, PoolCreateError, RwSqlitePool};
 
+#[derive(Debug, Error)]
+pub enum LaunchError {
+    #[error("failed to create new db `{db_filename}` with default content")]
+    CreateNewDb {
+        #[source]
+        source: io::Error,
+        db_filename: String,
+    },
+
+    #[error("failed to initialize connection to DB")]
+    CreateSqlitePool(#[source] PoolCreateError),
+
+    #[error("failed to migrate database")]
+    DbMigrationWrite(#[source] MigrationError),
+
+    #[error("failed to read Db")]
+    DbRead(#[source] sqlx::Error),
+
+    #[error("failed to get `index service`")]
+    GetIndex(#[source] GitIndexError),
+
+    ///TODO: convert to not use `ApiError` in parent
+    #[error("failed to get JobSpecs for undocumented packages")]
+    JobSpecs(#[source] UnApiError),
+
+    ///TODO: convert to not use `ApiError` in parent
+    #[error("failed to launch doc generator for undocumented packages")]
+    DocGenerator(#[source] UnApiError),
+}
 /// The state of this application for axum
 pub struct Application {
     /// The configuration
@@ -65,7 +96,7 @@ const DB_EMPTY: &[u8] = include_bytes!("empty.db");
 
 impl Application {
     /// Creates a new application
-    pub async fn launch<P: ServiceProvider>(configuration: Configuration) -> Result<Arc<Self>, ApiError> {
+    pub async fn launch<P: ServiceProvider>(configuration: Configuration) -> Result<Arc<Self>, LaunchError> {
         // load configuration
         let configuration = Arc::new(configuration);
 
@@ -74,21 +105,27 @@ impl Application {
         if tokio::fs::metadata(&db_filename).await.is_err() {
             // write the file
             info!("db file is inaccessible => attempt to create an empty one");
-            tokio::fs::write(&db_filename, DB_EMPTY).await?;
+            tokio::fs::write(&db_filename, DB_EMPTY)
+                .await
+                .map_err(|source| LaunchError::CreateNewDb { source, db_filename })?;
         }
-        let service_db_pool = RwSqlitePool::new(&configuration.get_database_url())?;
+        let service_db_pool = RwSqlitePool::new(&configuration.get_database_url()).map_err(LaunchError::CreateSqlitePool)?;
         // migrate the database, if appropriate
         db_transaction_write(&service_db_pool, "migrate_to_last", |database| async move {
             crate::migrations::migrate_to_last(database.transaction).await
         })
-        .await?;
+        .await
+        .map_err(LaunchError::DbMigrationWrite)?;
 
         let worker_nodes = WorkersManager::default();
 
-        let db_is_empty =
-            db_transaction_read(&service_db_pool, |database| async move { database.get_is_empty().await }).await?;
+        let db_is_empty = db_transaction_read(&service_db_pool, |database| async move { database.get_is_empty().await })
+            .await
+            .map_err(LaunchError::DbRead)?;
         let service_storage = P::get_storage(&configuration.deref().clone());
-        let service_index = P::get_index(&configuration, db_is_empty).await?;
+        let service_index = P::get_index(&configuration, db_is_empty)
+            .await
+            .map_err(LaunchError::GetIndex)?;
         let service_rustsec = P::get_rustsec(&configuration);
         let service_deps_checker = P::get_deps_checker(configuration.clone(), service_index.clone(), service_rustsec.clone());
         let service_email_sender = P::get_email_sender(configuration.clone());
@@ -115,9 +152,13 @@ impl Application {
                 Ok::<_, ApiError>(jobs)
             },
         )
-        .await?;
+        .await
+        .map_err(|source| LaunchError::JobSpecs(source.into()))?;
         for spec in &job_specs {
-            service_docs_generator.queue(spec, &DocGenTrigger::MissingOnLaunch).await?;
+            service_docs_generator
+                .queue(spec, &DocGenTrigger::MissingOnLaunch)
+                .await
+                .map_err(|source| LaunchError::DocGenerator(source.into()))?;
         }
 
         // deps worker
