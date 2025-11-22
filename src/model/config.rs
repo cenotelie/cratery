@@ -44,7 +44,7 @@ pub enum ExternalRegistryProtocol {
 impl ExternalRegistryProtocol {
     /// Gets the protocol
     #[must_use]
-    pub fn new(sparse: bool) -> Self {
+    pub const fn new(sparse: bool) -> Self {
         if sparse { Self::Sparse } else { Self::Git }
     }
 }
@@ -69,9 +69,10 @@ pub struct ExternalRegistry {
 
 impl ExternalRegistry {
     /// Loads the configuration for a registry from the environment
-    fn from_env(reg_index: usize) -> Result<Option<ExternalRegistry>, MissingEnvVar> {
+    fn from_env(reg_index: usize) -> Result<Option<Self>, MissingEnvVar> {
         if let Ok(name) = get_var(format!("REGISTRY_EXTERNAL_{reg_index}_NAME")) {
             let mut index = get_var(format!("REGISTRY_EXTERNAL_{reg_index}_INDEX"))?;
+            #[expect(clippy::option_if_let_else)]
             let protocol = if let Some(rest) = index.strip_prefix("sparse+") {
                 index = rest.to_string();
                 ExternalRegistryProtocol::Sparse
@@ -81,7 +82,7 @@ impl ExternalRegistry {
             let docs_root = get_var(format!("REGISTRY_EXTERNAL_{reg_index}_DOCS"))?;
             let login = get_var(format!("REGISTRY_EXTERNAL_{reg_index}_LOGIN"))?;
             let token = get_var(format!("REGISTRY_EXTERNAL_{reg_index}_TOKEN"))?;
-            Ok(Some(ExternalRegistry {
+            Ok(Some(Self {
                 name,
                 index,
                 protocol,
@@ -118,7 +119,7 @@ pub enum StorageConfig {
 
 impl StorageConfig {
     /// Loads the configuration for a registry from the environment
-    fn from_env() -> Result<StorageConfig, MissingEnvVar> {
+    fn from_env() -> Result<Self, MissingEnvVar> {
         let storage_kind = get_var("REGISTRY_STORAGE")?;
         let retry_params = get_var("REGISTRY_STORAGE_RETRY_ENABLED")
             .map(|v| {
@@ -146,7 +147,7 @@ impl StorageConfig {
             })
             .unwrap_or(None);
         Ok(match storage_kind.as_str() {
-            "s3" | "S3" => StorageConfig::S3 {
+            "s3" | "S3" => Self::S3 {
                 params: S3Params {
                     endpoint: get_var("REGISTRY_S3_URI")?,
                     region: get_var("REGISTRY_S3_REGION")?,
@@ -157,7 +158,7 @@ impl StorageConfig {
                 bucket: get_var("REGISTRY_S3_BUCKET")?,
                 retry_params,
             },
-            "" | "fs" | "FS" | "filesystem" | "FileSystem" => StorageConfig::FileSystem { retry_params },
+            "" | "fs" | "FS" | "filesystem" | "FileSystem" => Self::FileSystem { retry_params },
             _ => panic!("invalid REGISTRY_STORAGE"),
         })
     }
@@ -251,8 +252,8 @@ pub struct IndexConfig {
 
 impl IndexConfig {
     /// Loads the configuration for a registry from the environment
-    fn from_env(home_dir: &str, data_dir: &str, web_public_uri: &str) -> Result<IndexConfig, MissingEnvVar> {
-        Ok(IndexConfig {
+    fn from_env(home_dir: &str, data_dir: &str, web_public_uri: &str) -> Result<Self, MissingEnvVar> {
+        Ok(Self {
             home_dir: home_dir.to_string(),
             location: format!("{data_dir}/index"),
             allow_protocol_git: get_var("REGISTRY_INDEX_PROTOCOL_GIT").map(|v| v == "true").unwrap_or(false),
@@ -400,14 +401,14 @@ impl NodeRole {
 
     /// Gets whether this configuration is for a worker node
     #[must_use]
-    pub fn is_worker(&self) -> bool {
+    pub const fn is_worker(&self) -> bool {
         matches!(self, Self::Worker(_))
     }
 }
 
 /// A configuration for the registry
 #[derive(Debug, Serialize, Deserialize, Clone)]
-#[allow(clippy::struct_excessive_bools)]
+#[expect(clippy::struct_excessive_bools)]
 pub struct Configuration {
     /// The log level to use
     #[serde(rename = "logLevel")]
@@ -617,13 +618,11 @@ impl Configuration {
             .host()
             .unwrap_or_default()
             .to_string();
-        let self_local_name = match get_var("REGISTRY_SELF_LOCAL_NAME") {
-            Ok(value) => value,
-            Err(_) => match web_domain.rfind('.') {
-                Some(index) => web_domain[index..].to_string(),
-                None => web_domain.clone(),
-            },
-        };
+        let self_local_name = get_var("REGISTRY_SELF_LOCAL_NAME").unwrap_or_else(|_| {
+            web_domain
+                .rfind('.')
+                .map_or_else(|| web_domain.clone(), |index| web_domain[index..].to_string())
+        });
         let index = IndexConfig::from_env(&home_dir, &data_dir, &web_public_uri)?;
         let storage = StorageConfig::from_env()?;
         let deps_notify_outdated = get_var("REGISTRY_DEPS_NOTIFY_OUTDATED").map(|v| v == "true").unwrap_or(false);

@@ -50,15 +50,15 @@ impl ServiceProvider for MockService {
     }
 
     fn get_storage(_config: &Configuration) -> Arc<dyn Storage + Send + Sync> {
-        Arc::new(MockService)
+        Arc::new(Self)
     }
 
     async fn get_index(_config: &Configuration, _expect_empty: bool) -> Result<Arc<dyn Index + Send + Sync>, ApiError> {
-        Ok(Arc::new(MockService))
+        Ok(Arc::new(Self))
     }
 
     fn get_rustsec(_config: &Configuration) -> Arc<dyn RustSecChecker + Send + Sync> {
-        Arc::new(MockService)
+        Arc::new(Self)
     }
 
     fn get_deps_checker(
@@ -66,11 +66,11 @@ impl ServiceProvider for MockService {
         _service_index: Arc<dyn Index + Send + Sync>,
         _service_rustsec: Arc<dyn RustSecChecker + Send + Sync>,
     ) -> Arc<dyn DepsChecker + Send + Sync> {
-        Arc::new(MockService)
+        Arc::new(Self)
     }
 
     fn get_email_sender(_config: Arc<Configuration>) -> Arc<dyn EmailSender + Send + Sync> {
-        Arc::new(MockService)
+        Arc::new(Self)
     }
 
     fn get_docs_generator(
@@ -79,7 +79,7 @@ impl ServiceProvider for MockService {
         _service_storage: Arc<dyn Storage + Send + Sync>,
         _worker_nodes: WorkersManager,
     ) -> Arc<dyn DocsGenerator + Send + Sync> {
-        Arc::new(MockService)
+        Arc::new(Self)
     }
 }
 

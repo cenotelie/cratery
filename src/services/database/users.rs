@@ -121,7 +121,7 @@ impl Database {
             id,
             is_active: true,
             email: email.to_string(),
-            name: login.to_string(),
+            name: login.clone(),
             login,
             roles: roles.to_string(),
         })

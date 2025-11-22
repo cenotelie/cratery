@@ -60,7 +60,7 @@ pub struct ApiResponseError {
 
 impl From<ApiError> for ApiResponseErrors {
     fn from(err: ApiError) -> Self {
-        ApiResponseErrors {
+        Self {
             errors: vec![ApiResponseError { detail: err.to_string() }],
         }
     }
@@ -76,8 +76,8 @@ pub struct YesNoResult {
 impl YesNoResult {
     /// Creates a new instance
     #[must_use]
-    pub fn new() -> YesNoResult {
-        YesNoResult { ok: true }
+    pub const fn new() -> Self {
+        Self { ok: true }
     }
 }
 
@@ -93,8 +93,8 @@ pub struct YesNoMsgResult {
 impl YesNoMsgResult {
     /// Creates a new instance
     #[must_use]
-    pub fn new(msg: String) -> YesNoMsgResult {
-        YesNoMsgResult { ok: true, msg }
+    pub const fn new(msg: String) -> Self {
+        Self { ok: true, msg }
     }
 }
 
@@ -245,9 +245,9 @@ impl FromStr for DependencyKind {
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         match s {
-            "normal" => Ok(DependencyKind::Normal),
-            "dev" => Ok(DependencyKind::Dev),
-            "build" => Ok(DependencyKind::Build),
+            "normal" => Ok(Self::Normal),
+            "dev" => Ok(Self::Dev),
+            "build" => Ok(Self::Build),
             _ => Err(()),
         }
     }
@@ -314,19 +314,18 @@ pub struct CrateUploadData {
 
 impl CrateUploadData {
     /// Deserialize the content of an input payload
-    #[allow(clippy::cast_possible_truncation)]
-    pub fn new(buffer: &[u8]) -> Result<CrateUploadData, ApiError> {
+    pub fn new(buffer: &[u8]) -> Result<Self, ApiError> {
         let mut cursor = Cursor::new(buffer);
         // read the metadata
-        let metadata_length = u64::from(cursor.read_u32::<LittleEndian>()?);
-        let metadata_buffer = &buffer[4..((4 + metadata_length) as usize)];
+        let metadata_length = cursor.read_u32::<LittleEndian>()? as usize;
+        let metadata_buffer = &buffer[4..(4 + metadata_length)];
         let metadata = serde_json::from_slice(metadata_buffer)?;
         // read the content
-        cursor.set_position(4 + metadata_length);
+        cursor.set_position(4 + metadata_length as u64);
         let content_length = cursor.read_u32::<LittleEndian>()? as usize;
         let mut content = vec![0_u8; content_length];
-        content.copy_from_slice(&buffer[((4 + metadata_length + 4) as usize)..]);
-        Ok(CrateUploadData { metadata, content })
+        content.copy_from_slice(&buffer[(4 + metadata_length + 4)..]);
+        Ok(Self { metadata, content })
     }
 
     /// Builds the metadata to be index for this version
@@ -465,18 +464,16 @@ impl IndexCrateDependency {
     /// Gets whether this dependency is active, for the specified targets and features
     #[must_use]
     pub fn is_active_for(&self, active_targets: &[String], active_features: &[&str]) -> bool {
-        let is_in_targets = match self.target.as_ref() {
-            None => true,
-            Some(target_spec) => {
-                if let Some(rest) = target_spec.strip_prefix("cfg(") {
+        let is_in_targets = self.target.as_ref().is_none_or(|target_spec| {
+            target_spec.strip_prefix("cfg(").map_or_else(
+                || active_targets.contains(target_spec),
+                |rest| {
                     let _cfg_spec = &rest[..rest.len() - 1];
                     // FIXME
                     false
-                } else {
-                    active_targets.contains(target_spec)
-                }
-            }
-        };
+                },
+            )
+        });
         if !is_in_targets {
             // not for an active target
             return false;

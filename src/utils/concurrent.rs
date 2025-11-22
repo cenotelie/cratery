@@ -12,9 +12,10 @@ use futures::future::{Either, FusedFuture, select, select_all};
 use futures::{FutureExt, Stream, StreamExt};
 
 /// Takes an iterator of futures and executes them concurrently, with at most n concurrent futures.
+///
 /// This is similar to the `futures::future::join_all` function, except that instead of executing them all,
 /// we at most have n in concurrent execution.
-#[allow(clippy::missing_panics_doc)]
+#[expect(clippy::missing_panics_doc)]
 pub async fn n_at_a_time<I, F, T, TEST>(futures: I, n: usize, must_stop: TEST) -> Vec<T>
 where
     I: IntoIterator<Item = F>,
@@ -55,6 +56,7 @@ where
 }
 
 /// Takes a stream of futures and executes them concurrently, with at most n concurrent futures.
+///
 /// This is similar to the `futures::future::join_all` function, except that instead of executing them all,
 /// we at most have n in concurrent execution.
 pub async fn n_at_a_time_stream<S, F, T, TEST>(stream: S, n: usize, must_stop: TEST) -> Vec<T>
@@ -135,15 +137,15 @@ impl<F> Default for MaybeOrNever<F> {
 
 impl<F> MaybeOrNever<F> {
     /// Creates a new future
-    pub fn new(inner: F) -> Self {
-        MaybeOrNever {
+    pub const fn new(inner: F) -> Self {
+        Self {
             inner: Some(inner),
             is_terminated: false,
         }
     }
 
     /// Gets whether there is no future inside
-    pub fn is_never(&self) -> bool {
+    pub const fn is_never(&self) -> bool {
         self.inner.is_none()
     }
 }

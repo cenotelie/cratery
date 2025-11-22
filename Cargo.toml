@@ -2,12 +2,14 @@
 name = "cratery"
 version = "1.13.0"
 authors = ["Laurent Wouters <lwouters@cenotelie.fr>"]
-description = "Cratery -- a private cargo registry"
-repository = "https://github.com/cenotelie/cratery"
-homepage = "https://github.com/cenotelie/cratery"
-documentation = "https://github.com/cenotelie/cratery"
-license = "MIT"
 edition = "2024"
+description = "Cratery -- a private cargo registry"
+documentation = "https://github.com/cenotelie/cratery"
+homepage = "https://github.com/cenotelie/cratery"
+repository = "https://github.com/cenotelie/cratery"
+license = "MIT"
+keywords = ["cargo", "crates", "private", "registry", "service"]
+categories = ["development-tools"]
 
 [dependencies]
 # logging
@@ -66,19 +68,35 @@ tokio-tungstenite = "0.27"
 
 [lints.rust]
 unsafe_code = "forbid"
-unused_imports = "deny"
+unused_imports = "warn"
 
 [lints.clippy]
-complexity = { level = "deny", priority = -1 }
+cargo = { level = "warn", priority = -1 }
+complexity = { level = "warn", priority = -1 }
+correctness = { level = "deny", priority = -1 }
 pedantic = { level = "warn", priority = -1 }
-perf = { level = "deny", priority = -1 }
-style = { level = "deny", priority = -1 }
-suspicious = { level = "deny", priority = -1 }
-# The individually activated lints below come from : nursery, pedantic, restriction or suspicious.
+perf = { level = "warn", priority = -1 }
+style = { level = "warn", priority = -1 }
+suspicious = { level = "warn", priority = -1 }
+# The individually activated lints below come from : nursery, restriction.
+allow_attributes = "warn"
+cast_possible_truncation = "warn"
+collection_is_never_read = "warn"
+derive_partial_eq_without_eq = "warn"
+fallible_impl_from = "warn"
 future_not_send = "deny"
+infinite_loop = "warn"
+missing_const_for_fn = "warn"
 missing_errors_doc = "allow"
 missing_panics_doc = "allow"
 module_name_repetitions = "allow"
+multiple_crate_versions = "allow"
+needless_collect = "deny"
+needless_pass_by_ref_mut = "deny"
+option_if_let_else = "warn"
 or_fun_call = "deny"
+significant_drop_tightening = "warn"
 string_lit_as_bytes = "warn"
-uninlined_format_args = "deny"
+too_long_first_doc_paragraph = "warn"
+type_repetition_in_bounds = "deny"
+use_self = "warn"

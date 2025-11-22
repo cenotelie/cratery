@@ -40,7 +40,7 @@ pub const GIT_HASH: &str = env!("GIT_HASH");
 pub const GIT_TAG: &str = env!("GIT_TAG");
 
 /// Main payload for serving the application
-#[allow(clippy::too_many_lines)]
+#[expect(clippy::too_many_lines)]
 async fn main_serve_app(application: Arc<Application>, cookie_key: Key) -> Result<(), std::io::Error> {
     // web application
     let webapp_resources = webapp::get_resources();

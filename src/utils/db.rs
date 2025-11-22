@@ -35,9 +35,9 @@ pub struct RwSqlitePool {
 
 impl RwSqlitePool {
     /// Creates a new pool
-    pub fn new(url: &str) -> Result<RwSqlitePool, ApiError> {
+    pub fn new(url: &str) -> Result<Self, ApiError> {
         let current_write_op = Arc::new(Mutex::new(None));
-        Ok(RwSqlitePool {
+        Ok(Self {
             read: SqlitePoolOptions::new()
                 .max_connections(DB_MAX_READ_CONNECTIONS)
                 .connect_lazy_with(
@@ -178,7 +178,7 @@ impl TryFrom<&str> for VersionNumber {
         if numbers.len() != 3 {
             return Err(InvalidVersionNumber(value.to_string()));
         }
-        Ok(VersionNumber(numbers[0], numbers[1], numbers[2]))
+        Ok(Self(numbers[0], numbers[1], numbers[2]))
     }
 }
 
@@ -216,9 +216,9 @@ pub enum MigrationError {
 impl Display for MigrationError {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         match self {
-            MigrationError::InvalidVersion(inner) => inner.fmt(f),
-            MigrationError::Sql(inner) => inner.fmt(f),
-            MigrationError::SharedTransaction(_) => write!(f, "the transaction was still shared when a it terminated"),
+            Self::InvalidVersion(inner) => inner.fmt(f),
+            Self::Sql(inner) => inner.fmt(f),
+            Self::SharedTransaction(_) => write!(f, "the transaction was still shared when a it terminated"),
         }
     }
 }
@@ -226,27 +226,27 @@ impl Display for MigrationError {
 impl std::error::Error for MigrationError {
     fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
         match self {
-            MigrationError::InvalidVersion(inner) => Some(inner),
-            MigrationError::Sql(inner) => Some(inner),
-            MigrationError::SharedTransaction(inner) => Some(inner),
+            Self::InvalidVersion(inner) => Some(inner),
+            Self::Sql(inner) => Some(inner),
+            Self::SharedTransaction(inner) => Some(inner),
         }
     }
 }
 
 impl From<InvalidVersionNumber> for MigrationError {
-    fn from(err: InvalidVersionNumber) -> MigrationError {
-        MigrationError::InvalidVersion(err)
+    fn from(err: InvalidVersionNumber) -> Self {
+        Self::InvalidVersion(err)
     }
 }
 
 impl From<sqlx::Error> for MigrationError {
-    fn from(err: sqlx::Error) -> MigrationError {
-        MigrationError::Sql(err)
+    fn from(err: sqlx::Error) -> Self {
+        Self::Sql(err)
     }
 }
 
 impl From<StillSharedError> for MigrationError {
     fn from(err: StillSharedError) -> Self {
-        MigrationError::SharedTransaction(err)
+        Self::SharedTransaction(err)
     }
 }

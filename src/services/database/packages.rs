@@ -171,7 +171,6 @@ impl Database {
     }
 
     /// Publish a crate
-    #[allow(clippy::similar_names)]
     pub async fn publish_crate_version(&self, uid: i64, package: &CrateUploadData) -> Result<CrateUploadResult, ApiError> {
         let warnings = package.metadata.validate()?;
         let lowercase = package.metadata.name.to_ascii_lowercase();
