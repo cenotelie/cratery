@@ -12,8 +12,9 @@ pub mod users;
 
 use std::future::Future;
 
+use crate::application::AuthenticationError;
 use crate::model::auth::ROLE_ADMIN;
-use crate::utils::apierror::{ApiError, error_forbidden, error_not_found, error_unauthorized, specialize};
+use crate::utils::apierror::{ApiError, error_forbidden, error_not_found, specialize};
 use crate::utils::db::{AppTransaction, RwSqlitePool};
 
 /// Executes a piece of work in the context of a transaction
@@ -90,11 +91,12 @@ pub struct Database {
 
 impl Database {
     /// Checks the security for an operation and returns the identifier of the target user (login)
-    pub async fn check_is_user(&self, email: &str) -> Result<i64, ApiError> {
+    pub async fn check_is_user(&self, email: &str) -> Result<i64, AuthenticationError> {
         let maybe_row = sqlx::query!("SELECT id FROM RegistryUser WHERE isActive = TRUE AND email = $1", email)
             .fetch_optional(&mut *self.transaction.borrow().await)
-            .await?;
-        let row = maybe_row.ok_or_else(error_unauthorized)?;
+            .await
+            .map_err(AuthenticationError::CheckUser)?;
+        let row = maybe_row.ok_or(AuthenticationError::Unauthorized)?;
         Ok(row.id)
     }
 

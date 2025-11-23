@@ -33,7 +33,7 @@ use crate::services::emails::EmailSender;
 use crate::services::index::Index;
 use crate::services::rustsec::RustSecChecker;
 use crate::services::storage::Storage;
-use crate::utils::apierror::{ApiError, AsStatusCode, error_forbidden, error_invalid_request, error_unauthorized, specialize};
+use crate::utils::apierror::{ApiError, AsStatusCode, error_forbidden, error_invalid_request, specialize};
 use crate::utils::axum::auth::{AuthData, Token};
 use crate::utils::db::RwSqlitePool;
 
@@ -876,6 +876,42 @@ impl Application {
     }
 }
 
+#[derive(Debug, Error)]
+pub enum AuthenticationError {
+    #[error("missing cookie")]
+    CookieMissing,
+
+    #[error("failed to deserialize cookie")]
+    CookieDeserialization(serde_json::Error),
+
+    #[error("user is not authenticated.")]
+    Unauthorized,
+
+    #[error("failed to check global token")]
+    GlobalToken(#[source] sqlx::Error),
+
+    #[error("failed to check user token")]
+    UserToken(#[source] sqlx::Error),
+
+    #[error("failed to check user token")]
+    CheckUser(#[source] sqlx::Error),
+
+    #[error("expected a user to be authenticated")]
+    NoUserAuthenticated,
+}
+
+impl AsStatusCode for AuthenticationError {
+    fn status_code(&self) -> StatusCode {
+        match self {
+            Self::Unauthorized | Self::CookieMissing => StatusCode::UNAUTHORIZED,
+            Self::CookieDeserialization(_) | Self::GlobalToken(_) | Self::UserToken(_) | Self::CheckUser(_) => {
+                StatusCode::INTERNAL_SERVER_ERROR
+            }
+            Self::NoUserAuthenticated => StatusCode::BAD_REQUEST,
+        }
+    }
+}
+
 /// The application, running with a transaction
 pub(crate) struct ApplicationWithTransaction<'a> {
     /// The application with its services
@@ -888,16 +924,20 @@ impl ApplicationWithTransaction<'_> {
     /// Attempts the authentication of a user
     async fn authenticate(&self, auth_data: &AuthData) -> Result<Authentication, ApiError> {
         if let Some(token) = &auth_data.token {
-            self.authenticate_token(token).await
+            self.authenticate_token(token).await.map_err(ApiError::from)
         } else {
-            let authentication = auth_data.try_authenticate_cookie()?.ok_or_else(error_unauthorized)?;
-            self.database.check_is_user(authentication.email()?).await?;
+            let authentication = auth_data
+                .try_authenticate_cookie()
+                .map_err(AuthenticationError::CookieDeserialization)?
+                .ok_or_else(|| AuthenticationError::CookieMissing)?;
+            let email = authentication.email().map_err(ApiError::from)?;
+            self.database.check_is_user(email).await?;
             Ok(authentication)
         }
     }
 
     /// Tries to authenticate using a token
-    async fn authenticate_token(&self, token: &Token) -> Result<Authentication, ApiError> {
+    async fn authenticate_token(&self, token: &Token) -> Result<Authentication, AuthenticationError> {
         if token.id == self.application.configuration.self_service_login
             && token.secret == self.application.configuration.self_service_token
         {
