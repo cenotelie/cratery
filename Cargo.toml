@@ -80,7 +80,6 @@ style = { level = "warn", priority = -1 }
 suspicious = { level = "warn", priority = -1 }
 # The individually activated lints below come from : nursery, restriction.
 allow_attributes = "warn"
-cast_possible_truncation = "warn"
 collection_is_never_read = "warn"
 derive_partial_eq_without_eq = "warn"
 fallible_impl_from = "warn"
