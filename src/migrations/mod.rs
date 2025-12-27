@@ -89,7 +89,7 @@ async fn get_schema_metadata(connection: &mut SqliteConnection, name_input: &str
 /// # Panics
 ///
 /// Panics when the SQL queries cannot be built
-#[allow(clippy::explicit_deref_methods)]
+#[expect(clippy::explicit_deref_methods)]
 async fn set_schema_metadata(mut connection: &mut SqliteConnection, n: &str, v: &str) -> Result<(), sqlx::Error> {
     let row = sqlx::query!("SELECT value FROM SchemaMetadata WHERE name = $1 LIMIT 1", n)
         .fetch_optional(connection.deref_mut())

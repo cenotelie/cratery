@@ -25,7 +25,7 @@ pub struct ApiError {
 
 impl ApiError {
     /// Creates a new error
-    #[allow(clippy::needless_pass_by_value)]
+    #[expect(clippy::needless_pass_by_value)]
     #[must_use]
     pub fn new<M: ToString>(http: u16, message: M, details: Option<String>) -> Self {
         Self {

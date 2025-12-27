@@ -45,12 +45,12 @@ pub struct Application {
     /// Service to index the metadata of crates
     service_index: Arc<dyn Index + Send + Sync>,
     /// The `RustSec` checker service
-    #[allow(dead_code)]
+    #[expect(dead_code)]
     service_rustsec: Arc<dyn RustSecChecker + Send + Sync>,
     /// Service to check the dependencies of a crate
     service_deps_checker: Arc<dyn DepsChecker + Send + Sync>,
     /// The service to send emails
-    #[allow(dead_code)]
+    #[expect(dead_code)]
     service_email_sender: Arc<dyn EmailSender + Send + Sync>,
     /// The service to generator documentation
     service_docs_generator: Arc<dyn DocsGenerator + Send + Sync>,
