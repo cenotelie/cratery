@@ -8,6 +8,7 @@ use std::backtrace::Backtrace;
 use std::fmt::{Display, Formatter};
 
 use serde_derive::{Deserialize, Serialize};
+use thiserror::Error;
 
 /// Describes an API error
 #[derive(Serialize, Deserialize, Debug)]
@@ -25,7 +26,7 @@ pub struct ApiError {
 
 impl ApiError {
     /// Creates a new error
-    #[allow(clippy::needless_pass_by_value)]
+    #[expect(clippy::needless_pass_by_value)]
     #[must_use]
     pub fn new<M: ToString>(http: u16, message: M, details: Option<String>) -> Self {
         Self {
@@ -110,4 +111,30 @@ pub fn error_conflict() -> ApiError {
         "The request could not be processed because of conflict in the current state of the resource.",
         None,
     )
+}
+
+/// A helper to help remove of [`ApiError`] where it's not appropriated.
+#[derive(Debug, Error)]
+pub struct UnApiError {
+    message: String,
+    details: Option<String>,
+}
+
+impl Display for UnApiError {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        writeln!(f, "UnApiError : {}", self.message)?;
+        if let Some(details) = &self.details {
+            writeln!(f, "\t {details}")?;
+        }
+        Ok(())
+    }
+}
+
+impl From<ApiError> for UnApiError {
+    fn from(value: ApiError) -> Self {
+        Self {
+            message: value.message,
+            details: value.details,
+        }
+    }
 }

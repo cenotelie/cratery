@@ -49,7 +49,7 @@ pub struct WorkerDescriptor {
 impl WorkerDescriptor {
     /// Gets the descriptor for this worker, base of the specified configuration
     #[must_use]
-    pub fn get_my_descriptor(config: &Configuration) -> WorkerDescriptor {
+    pub fn get_my_descriptor(config: &Configuration) -> Self {
         Self {
             identifier: generate_token(32),
             name: if let NodeRole::Worker(worker_config) = &config.self_role {
@@ -130,7 +130,7 @@ enum WorkerState {
 impl WorkerState {
     /// Checks whether the worker is available
     #[must_use]
-    pub fn is_available(&self) -> bool {
+    pub const fn is_available(&self) -> bool {
         matches!(self, Self::Available(_))
     }
 }
@@ -215,7 +215,7 @@ pub struct WorkerSelector {
 impl WorkerSelector {
     /// Builds a selector that requires a native host for a target
     #[must_use]
-    pub fn new_native_target(target: String) -> Self {
+    pub const fn new_native_target(target: String) -> Self {
         Self {
             toolchain_host: Some(target),
             toolchain_installed_target: None,
@@ -226,7 +226,7 @@ impl WorkerSelector {
 
     /// Builds a selector that requires a target to be available
     #[must_use]
-    pub fn new_available_target(target: String) -> Self {
+    pub const fn new_available_target(target: String) -> Self {
         Self {
             toolchain_host: None,
             toolchain_installed_target: None,
@@ -355,12 +355,12 @@ pub struct WorkerCheckout {
 
 impl WorkerCheckout {
     /// Gets the job sender
-    pub fn sender(&mut self) -> &mut Sender<JobSpecification> {
+    pub const fn sender(&mut self) -> &mut Sender<JobSpecification> {
         &mut self.job_sender
     }
 
     /// Gets the update receiver
-    pub fn update_receiver(&mut self) -> &mut Receiver<JobUpdate> {
+    pub const fn update_receiver(&mut self) -> &mut Receiver<JobUpdate> {
         self.update_receiver.as_mut().unwrap()
     }
 }
@@ -431,6 +431,7 @@ impl WorkersManager {
     }
 
     /// Remove a worker
+    #[expect(clippy::significant_drop_tightening)]
     pub fn remove_worker(&self, worker_id: &str) {
         info!("=== removing worker {worker_id}");
         let found = {
@@ -494,6 +495,7 @@ impl WorkersManager {
             });
             if let Some(index) = index {
                 let item = inner.queue.remove(index);
+                drop(inner);
                 item.waker.wake();
             }
         }
@@ -546,6 +548,7 @@ impl WorkersManager {
     }
 
     /// Send an event to listeners
+    #[expect(clippy::significant_drop_tightening)]
     async fn do_send_event(&self, event: WorkerEvent) -> Result<(), ApiError> {
         let mut listeners = self.listeners.lock().await;
         let mut index = if listeners.is_empty() {
@@ -581,7 +584,7 @@ pub enum JobSpecification {
 impl JobSpecification {
     /// Gets the job identifier
     #[must_use]
-    pub fn get_id(&self) -> JobIdentifier {
+    pub const fn get_id(&self) -> JobIdentifier {
         match self {
             Self::DocGen(doc_gen_job) => JobIdentifier::DocGen(doc_gen_job.id),
         }
@@ -617,7 +620,7 @@ mod tests {
     #[test]
     fn worker_host_match() {
         let selector = WorkerSelector::new_native_target("stable-x86_64-unknown-linux-gnu".into());
-        let workder_desk = WorkerDescriptor {
+        let worker_desk = WorkerDescriptor {
             identifier: String::default(),
             name: String::default(),
             toolchain_version_stable: semver::Version::new(1, 89, 0),
@@ -627,13 +630,13 @@ mod tests {
             toolchain_installable_targets: Vec::new(),
             capabilities: Vec::new(),
         };
-        assert!(workder_desk.matches(&selector));
+        assert!(worker_desk.matches(&selector));
     }
 
     #[test]
     fn worker_host_not_match() {
         let selector = WorkerSelector::new_native_target("stable-x86_64-unknown-linux-gnu".into());
-        let workder_desk = WorkerDescriptor {
+        let worker_desk = WorkerDescriptor {
             identifier: String::default(),
             name: String::default(),
             toolchain_version_stable: semver::Version::new(1, 89, 0),
@@ -643,13 +646,13 @@ mod tests {
             toolchain_installable_targets: Vec::new(),
             capabilities: Vec::new(),
         };
-        assert!(!workder_desk.matches(&selector));
+        assert!(!worker_desk.matches(&selector));
     }
 
     #[test]
     fn worker_target_installed_match() {
         let selector = WorkerSelector::new_available_target("x86_64-unknown-linux-gnu".into());
-        let workder_desk = WorkerDescriptor {
+        let worker_desk = WorkerDescriptor {
             identifier: String::default(),
             name: String::default(),
             toolchain_version_stable: semver::Version::new(1, 89, 0),
@@ -659,13 +662,13 @@ mod tests {
             toolchain_installable_targets: Vec::new(),
             capabilities: Vec::new(),
         };
-        assert!(workder_desk.matches(&selector));
+        assert!(worker_desk.matches(&selector));
     }
 
     #[test]
     fn worker_target_installed_not_match() {
         let selector = WorkerSelector::new_available_target("x86_64-unknown-linux-gnu".into());
-        let workder_desk = WorkerDescriptor {
+        let worker_desk = WorkerDescriptor {
             identifier: String::default(),
             name: String::default(),
             toolchain_version_stable: semver::Version::new(1, 89, 0),
@@ -675,13 +678,13 @@ mod tests {
             toolchain_installable_targets: Vec::new(),
             capabilities: Vec::new(),
         };
-        assert!(!workder_desk.matches(&selector));
+        assert!(!worker_desk.matches(&selector));
     }
 
     #[test]
     fn work_target_installable_match() {
         let selector = WorkerSelector::new_available_target("aarch64-unknown-linux-musl".into());
-        let workder_desk = WorkerDescriptor {
+        let worker_desk = WorkerDescriptor {
             identifier: String::default(),
             name: String::default(),
             toolchain_version_stable: semver::Version::new(1, 89, 0),
@@ -691,13 +694,13 @@ mod tests {
             toolchain_installable_targets: vec!["aarch64-unknown-linux-musl".to_string(), "wasm32-unknown-unknown".to_string()],
             capabilities: Vec::new(),
         };
-        assert!(workder_desk.matches(&selector));
+        assert!(worker_desk.matches(&selector));
     }
 
     #[test]
     fn work_target_installable_not_match() {
         let selector = WorkerSelector::new_available_target("aarch64-linux-android".into());
-        let workder_desk = WorkerDescriptor {
+        let worker_desk = WorkerDescriptor {
             identifier: String::default(),
             name: String::default(),
             toolchain_version_stable: semver::Version::new(1, 89, 0),
@@ -707,6 +710,6 @@ mod tests {
             toolchain_installable_targets: vec!["aarch64-unknown-linux-musl".to_string(), "wasm32-unknown-unknown".to_string()],
             capabilities: Vec::new(),
         };
-        assert!(!workder_desk.matches(&selector));
+        assert!(!worker_desk.matches(&selector));
     }
 }

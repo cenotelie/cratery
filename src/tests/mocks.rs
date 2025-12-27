@@ -18,15 +18,14 @@ use crate::model::deps::DepsAnalysis;
 use crate::model::docs::{DocGenEvent, DocGenJob, DocGenJobSpec, DocGenJobState, DocGenTrigger};
 use crate::model::osv::SimpleAdvisory;
 use crate::model::worker::WorkersManager;
-use crate::services::ServiceProvider;
 use crate::services::deps::DepsChecker;
 use crate::services::docs::DocsGenerator;
 use crate::services::emails::EmailSender;
-use crate::services::index::Index;
+use crate::services::index::{GitIndexError, Index};
 use crate::services::rustsec::RustSecChecker;
 use crate::services::storage::Storage;
+use crate::services::{ConfigurationError, ServiceProvider};
 use crate::utils::FaillibleFuture;
-use crate::utils::apierror::ApiError;
 use crate::utils::db::RwSqlitePool;
 use crate::utils::token::generate_token;
 
@@ -39,26 +38,29 @@ fn resolved_default<T: Default + Send>() -> FaillibleFuture<'static, T> {
 
 impl ServiceProvider for MockService {
     /// Gets the configuration
-    async fn get_configuration() -> Result<Configuration, ApiError> {
+    async fn get_configuration() -> Result<Configuration, ConfigurationError> {
         let mut temp_dir = temp_dir();
         temp_dir.push(format!("cratery-test-{}", generate_token(16)));
-        tokio::fs::create_dir_all(&temp_dir).await?;
+        let data_dir = temp_dir.to_str().unwrap().to_string();
+        tokio::fs::create_dir_all(&temp_dir)
+            .await
+            .map_err(|source| ConfigurationError::CreateTempDir { source, path: temp_dir })?;
         Ok(Configuration {
-            data_dir: temp_dir.to_str().unwrap().to_string(),
+            data_dir,
             ..Default::default()
         })
     }
 
     fn get_storage(_config: &Configuration) -> Arc<dyn Storage + Send + Sync> {
-        Arc::new(MockService)
+        Arc::new(Self)
     }
 
-    async fn get_index(_config: &Configuration, _expect_empty: bool) -> Result<Arc<dyn Index + Send + Sync>, ApiError> {
-        Ok(Arc::new(MockService))
+    async fn get_index(_config: &Configuration, _expect_empty: bool) -> Result<Arc<dyn Index + Send + Sync>, GitIndexError> {
+        Ok(Arc::new(Self))
     }
 
     fn get_rustsec(_config: &Configuration) -> Arc<dyn RustSecChecker + Send + Sync> {
-        Arc::new(MockService)
+        Arc::new(Self)
     }
 
     fn get_deps_checker(
@@ -66,11 +68,11 @@ impl ServiceProvider for MockService {
         _service_index: Arc<dyn Index + Send + Sync>,
         _service_rustsec: Arc<dyn RustSecChecker + Send + Sync>,
     ) -> Arc<dyn DepsChecker + Send + Sync> {
-        Arc::new(MockService)
+        Arc::new(Self)
     }
 
     fn get_email_sender(_config: Arc<Configuration>) -> Arc<dyn EmailSender + Send + Sync> {
-        Arc::new(MockService)
+        Arc::new(Self)
     }
 
     fn get_docs_generator(
@@ -79,7 +81,7 @@ impl ServiceProvider for MockService {
         _service_storage: Arc<dyn Storage + Send + Sync>,
         _worker_nodes: WorkersManager,
     ) -> Arc<dyn DocsGenerator + Send + Sync> {
-        Arc::new(MockService)
+        Arc::new(Self)
     }
 }
 

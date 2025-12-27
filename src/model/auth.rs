@@ -28,7 +28,7 @@ pub struct Authentication {
 impl Authentication {
     /// Creates a new authentication for a self connection
     #[must_use]
-    pub fn new_self() -> Self {
+    pub const fn new_self() -> Self {
         Self {
             principal: AuthenticationPrincipal::SelfAuth,
             can_write: false,
@@ -38,7 +38,7 @@ impl Authentication {
 
     // Creates a new authentication for a service using a global token
     #[must_use]
-    pub fn new_service(token_id: String) -> Self {
+    pub const fn new_service(token_id: String) -> Self {
         Self {
             principal: AuthenticationPrincipal::Service { token_id },
             can_write: false,
@@ -48,7 +48,7 @@ impl Authentication {
 
     // Creates a new user authentication that can do everything
     #[must_use]
-    pub fn new_user(uid: i64, email: String) -> Self {
+    pub const fn new_user(uid: i64, email: String) -> Self {
         Self {
             principal: AuthenticationPrincipal::User { uid, email },
             can_write: true,

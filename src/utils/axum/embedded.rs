@@ -11,7 +11,6 @@ use std::collections::HashMap;
 #[derive(Debug, Clone)]
 pub struct EmbeddedResource {
     /// The resource's filename
-    #[allow(unused)]
     pub file_name: &'static str,
     /// The content type for the resource
     pub content_type: &'static str,
@@ -75,10 +74,10 @@ pub enum WebappResource {
 impl WebappResource {
     /// Gets the content type for the resource
     #[must_use]
-    pub fn content_type(&self) -> &str {
+    pub const fn content_type(&self) -> &str {
         match self {
             Self::Embedded(res) => res.content_type,
-            Self::HotReload { content_type, data: _ } => content_type,
+            Self::HotReload { content_type, data: _ } => content_type.as_str(),
         }
     }
 

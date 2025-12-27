@@ -74,7 +74,7 @@ impl Database {
     }
 
     /// Gets whether the database does not contain any package at all
-    pub async fn get_is_empty(&self) -> Result<bool, ApiError> {
+    pub async fn get_is_empty(&self) -> Result<bool, sqlx::Error> {
         Ok(sqlx::query!("SELECT id FROM PackageVersion LIMIT 1")
             .fetch_optional(&mut *self.transaction.borrow().await)
             .await?
@@ -171,7 +171,6 @@ impl Database {
     }
 
     /// Publish a crate
-    #[allow(clippy::similar_names)]
     pub async fn publish_crate_version(&self, uid: i64, package: &CrateUploadData) -> Result<CrateUploadResult, ApiError> {
         let warnings = package.metadata.validate()?;
         let lowercase = package.metadata.name.to_ascii_lowercase();

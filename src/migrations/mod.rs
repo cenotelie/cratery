@@ -9,7 +9,6 @@ use std::ops::DerefMut;
 use log::info;
 use sqlx::{Executor, SqliteConnection};
 
-use crate::utils::apierror::ApiError;
 use crate::utils::db::{AppTransaction, Migration, MigrationContent, MigrationError, SCHEMA_METADATA_VERSION, VersionNumber};
 
 /// The migrations
@@ -89,7 +88,7 @@ async fn get_schema_metadata(connection: &mut SqliteConnection, name_input: &str
 /// # Panics
 ///
 /// Panics when the SQL queries cannot be built
-#[allow(clippy::explicit_deref_methods)]
+#[expect(clippy::explicit_deref_methods)]
 async fn set_schema_metadata(mut connection: &mut SqliteConnection, n: &str, v: &str) -> Result<(), sqlx::Error> {
     let row = sqlx::query!("SELECT value FROM SchemaMetadata WHERE name = $1 LIMIT 1", n)
         .fetch_optional(connection.deref_mut())
@@ -166,7 +165,7 @@ async fn migrate_db(transaction: AppTransaction, migrations: &[Migration<'_>]) -
 }
 
 /// Migrate to the last version
-pub async fn migrate_to_last(transaction: AppTransaction) -> Result<i32, ApiError> {
+pub async fn migrate_to_last(transaction: AppTransaction) -> Result<i32, MigrationError> {
     migrate_db(transaction, MIGRATIONS).await?;
     Ok(0)
 }

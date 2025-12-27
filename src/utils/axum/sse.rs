@@ -17,7 +17,6 @@ use http_body::Frame;
 use serde::Serialize;
 
 /// A Server-Sent Event
-#[allow(clippy::struct_field_names, dead_code)]
 pub struct Event<T> {
     /// The event type, to be serialized in the `event` field
     pub event_type: Option<String>,
@@ -29,7 +28,7 @@ pub struct Event<T> {
 
 impl<T> Event<T> {
     /// Produces an event from a payload
-    pub fn from_data(data: T) -> Event<T> {
+    pub const fn from_data(data: T) -> Self {
         Self {
             event_type: None,
             id: None,
@@ -60,8 +59,8 @@ where
     T: Serialize + Send + Unpin,
 {
     /// Encapsulate the original stream
-    pub fn new(stream: S) -> ServerSentEventStream<S> {
-        ServerSentEventStream(stream)
+    pub const fn new(stream: S) -> Self {
+        Self(stream)
     }
 }
 
