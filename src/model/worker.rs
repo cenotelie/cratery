@@ -617,7 +617,7 @@ mod tests {
     #[test]
     fn worker_host_match() {
         let selector = WorkerSelector::new_native_target("stable-x86_64-unknown-linux-gnu".into());
-        let workder_desk = WorkerDescriptor {
+        let worker_desk = WorkerDescriptor {
             identifier: String::default(),
             name: String::default(),
             toolchain_version_stable: semver::Version::new(1, 89, 0),
@@ -627,13 +627,13 @@ mod tests {
             toolchain_installable_targets: Vec::new(),
             capabilities: Vec::new(),
         };
-        assert!(workder_desk.matches(&selector));
+        assert!(worker_desk.matches(&selector));
     }
 
     #[test]
     fn worker_host_not_match() {
         let selector = WorkerSelector::new_native_target("stable-x86_64-unknown-linux-gnu".into());
-        let workder_desk = WorkerDescriptor {
+        let worker_desk = WorkerDescriptor {
             identifier: String::default(),
             name: String::default(),
             toolchain_version_stable: semver::Version::new(1, 89, 0),
@@ -643,13 +643,13 @@ mod tests {
             toolchain_installable_targets: Vec::new(),
             capabilities: Vec::new(),
         };
-        assert!(!workder_desk.matches(&selector));
+        assert!(!worker_desk.matches(&selector));
     }
 
     #[test]
     fn worker_target_installed_match() {
         let selector = WorkerSelector::new_available_target("x86_64-unknown-linux-gnu".into());
-        let workder_desk = WorkerDescriptor {
+        let worker_desk = WorkerDescriptor {
             identifier: String::default(),
             name: String::default(),
             toolchain_version_stable: semver::Version::new(1, 89, 0),
@@ -659,13 +659,13 @@ mod tests {
             toolchain_installable_targets: Vec::new(),
             capabilities: Vec::new(),
         };
-        assert!(workder_desk.matches(&selector));
+        assert!(worker_desk.matches(&selector));
     }
 
     #[test]
     fn worker_target_installed_not_match() {
         let selector = WorkerSelector::new_available_target("x86_64-unknown-linux-gnu".into());
-        let workder_desk = WorkerDescriptor {
+        let worker_desk = WorkerDescriptor {
             identifier: String::default(),
             name: String::default(),
             toolchain_version_stable: semver::Version::new(1, 89, 0),
@@ -675,13 +675,13 @@ mod tests {
             toolchain_installable_targets: Vec::new(),
             capabilities: Vec::new(),
         };
-        assert!(!workder_desk.matches(&selector));
+        assert!(!worker_desk.matches(&selector));
     }
 
     #[test]
     fn work_target_installable_match() {
         let selector = WorkerSelector::new_available_target("aarch64-unknown-linux-musl".into());
-        let workder_desk = WorkerDescriptor {
+        let worker_desk = WorkerDescriptor {
             identifier: String::default(),
             name: String::default(),
             toolchain_version_stable: semver::Version::new(1, 89, 0),
@@ -691,13 +691,13 @@ mod tests {
             toolchain_installable_targets: vec!["aarch64-unknown-linux-musl".to_string(), "wasm32-unknown-unknown".to_string()],
             capabilities: Vec::new(),
         };
-        assert!(workder_desk.matches(&selector));
+        assert!(worker_desk.matches(&selector));
     }
 
     #[test]
     fn work_target_installable_not_match() {
         let selector = WorkerSelector::new_available_target("aarch64-linux-android".into());
-        let workder_desk = WorkerDescriptor {
+        let worker_desk = WorkerDescriptor {
             identifier: String::default(),
             name: String::default(),
             toolchain_version_stable: semver::Version::new(1, 89, 0),
@@ -707,6 +707,6 @@ mod tests {
             toolchain_installable_targets: vec!["aarch64-unknown-linux-musl".to_string(), "wasm32-unknown-unknown".to_string()],
             capabilities: Vec::new(),
         };
-        assert!(!workder_desk.matches(&selector));
+        assert!(!worker_desk.matches(&selector));
     }
 }
