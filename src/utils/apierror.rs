@@ -57,12 +57,42 @@ impl Clone for ApiError {
     }
 }
 
+/// Indicate the http status code corresponding of an Error.
+///
+/// This is used to concert an error into an [`ApiError`]
+pub trait AsStatusCode: std::error::Error {
+    fn status_code(&self) -> StatusCode {
+        StatusCode::INTERNAL_SERVER_ERROR
+    }
+}
+
+impl AsStatusCode for std::convert::Infallible {}
+impl AsStatusCode for std::io::Error {}
+impl AsStatusCode for std::string::FromUtf8Error {}
+
+impl AsStatusCode for axum::Error {}
+impl AsStatusCode for axum::extract::ws::rejection::WebSocketUpgradeRejection {}
+impl AsStatusCode for axum::http::uri::InvalidUri {}
+impl AsStatusCode for lettre::address::AddressError {}
+impl AsStatusCode for lettre::error::Error {}
+impl AsStatusCode for lettre::message::header::ContentTypeErr {}
+impl AsStatusCode for lettre::transport::smtp::Error {}
+impl AsStatusCode for opendal::Error {}
+impl AsStatusCode for reqwest::Error {}
+impl AsStatusCode for semver::Error {}
+impl AsStatusCode for serde_json::Error {}
+impl AsStatusCode for sqlx::Error {}
+impl<T> AsStatusCode for tokio::sync::mpsc::error::SendError<T> {}
+impl AsStatusCode for tokio::time::error::Elapsed {}
+impl AsStatusCode for tokio_tungstenite::tungstenite::Error {}
+
 impl<E> From<E> for ApiError
 where
-    E: std::error::Error,
+    E: AsStatusCode,
 {
     fn from(err: E) -> Self {
-        Self::new(StatusCode::INTERNAL_SERVER_ERROR, "The operation failed in the backend.", Some(err.to_string()))
+        let code = err.status_code();
+        Self::new(code, "The operation failed in the backend.", Some(err.to_string()))
     }
 }
 

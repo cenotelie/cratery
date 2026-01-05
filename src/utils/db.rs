@@ -18,6 +18,7 @@ use sqlx::{Pool, Sqlite, SqliteConnection, Transaction};
 use thiserror::Error;
 
 use super::apierror::ApiError;
+use crate::utils::apierror::AsStatusCode;
 use crate::utils::shared::{ResourceLock, SharedResource, StillSharedError};
 
 /// Maximum number of concurrent READ connections
@@ -216,3 +217,4 @@ pub enum MigrationError {
     #[error("the transaction was still shared when a it terminated")]
     SharedTransaction(StillSharedError),
 }
+impl AsStatusCode for MigrationError {}
