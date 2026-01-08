@@ -10,7 +10,6 @@ use thiserror::Error;
 use super::Database;
 use crate::model::CrateVersion;
 use crate::model::stats::GlobalStats;
-use crate::utils::apierror::AsStatusCode;
 
 #[derive(Debug, Error)]
 pub enum CratesStatsError {
@@ -26,7 +25,6 @@ pub enum CratesStatsError {
     #[error("error during execution of request to get info of `last updated` crates")]
     LastUpdated(#[source] sqlx::Error),
 }
-impl AsStatusCode for CratesStatsError {}
 
 impl Database {
     /// Gets the global statistics for the registry

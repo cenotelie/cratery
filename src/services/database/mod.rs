@@ -18,7 +18,7 @@ use thiserror::Error;
 use crate::application::AuthenticationError;
 use crate::model::auth::ROLE_ADMIN;
 use crate::services::database::packages::CratesError;
-use crate::utils::apierror::AsStatusCode;
+use crate::utils::apierror::{ApiError, AsStatusCode};
 use crate::utils::db::{AppTransaction, RwSqlitePool};
 
 /// Executes a piece of work in the context of a transaction
@@ -28,11 +28,11 @@ use crate::utils::db::{AppTransaction, RwSqlitePool};
 /// # Errors
 ///
 /// Returns an instance of the `E` type argument
-pub async fn db_transaction_read<F, FUT, T, E>(pool: &RwSqlitePool, workload: F) -> Result<T, E>
+pub async fn db_transaction_read<F, FUT, T, E>(pool: &RwSqlitePool, workload: F) -> Result<T, ApiError>
 where
     F: FnOnce(Database) -> FUT,
     FUT: Future<Output = Result<T, E>>,
-    E: From<sqlx::Error>,
+    E: AsStatusCode + std::marker::Send + std::marker::Sync + 'static,
 {
     let transaction = pool.acquire_read().await?;
     let result = {
@@ -49,7 +49,7 @@ where
         }
         Err(error) => {
             transaction.rollback().await?;
-            Err(error)
+            Err(ApiError::from(error))
         }
     }
 }
