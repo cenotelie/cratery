@@ -19,7 +19,7 @@ use crate::model::deps::DepsAnalysis;
 use crate::model::docs::{DocGenEvent, DocGenJob, DocGenJobSpec, DocGenJobState, DocGenTrigger};
 use crate::model::osv::SimpleAdvisory;
 use crate::model::worker::WorkersManager;
-use crate::services::database::DbReadError;
+use crate::services::database::{DbReadError, DbWriteError};
 use crate::services::deps::DepsChecker;
 use crate::services::docs::DocsGenerator;
 use crate::services::emails::EmailSender;
@@ -137,7 +137,11 @@ impl DocsGenerator for MockService {
         resolved_default()
     }
 
-    fn queue<'a>(&'a self, spec: &'a DocGenJobSpec, trigger: &'a DocGenTrigger) -> FaillibleFuture<'a, DocGenJob> {
+    fn queue<'a>(
+        &'a self,
+        spec: &'a DocGenJobSpec,
+        trigger: &'a DocGenTrigger,
+    ) -> BoxFuture<'a, Result<DocGenJob, DbWriteError>> {
         Box::pin(async {
             Ok(DocGenJob {
                 id: -1,

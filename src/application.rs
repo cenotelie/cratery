@@ -30,7 +30,9 @@ use crate::services::database::admin::TokensError;
 use crate::services::database::packages::{CratesError, DepsError};
 use crate::services::database::stats::CratesStatsError;
 use crate::services::database::users::{UpdateUserError, UserError};
-use crate::services::database::{Database, DbReadError, IsCrateManagerError, db_transaction_read, db_transaction_write};
+use crate::services::database::{
+    Database, DbReadError, DbWriteError, IsCrateManagerError, db_transaction_read, db_transaction_write,
+};
 use crate::services::deps::DepsChecker;
 use crate::services::docs::DocsGenerator;
 use crate::services::emails::EmailSender;
@@ -229,6 +231,7 @@ impl Application {
             Ok::<_, EventHandlerError>(())
         })
         .await
+        .map_err(ApiError::from)
     }
 
     /// Executes a piece of work in the context of a transaction
@@ -265,7 +268,7 @@ impl Application {
         &'s self,
         operation: &'static str,
         workload: F,
-    ) -> Result<T, ApiError>
+    ) -> Result<T, DbWriteError>
     where
         F: FnOnce(ApplicationWithTransaction<'s>) -> FUT,
         FUT: Future<Output = Result<T, E>>,
@@ -337,7 +340,7 @@ impl Application {
     }
 
     /// Attempts to login using an OAuth code
-    pub async fn login_with_oauth_code(&self, code: &str) -> Result<RegistryUser, ApiError> {
+    pub async fn login_with_oauth_code(&self, code: &str) -> Result<RegistryUser, DbWriteError> {
         self.db_transaction_write("login_with_oauth_code", |app| async move {
             app.database.login_with_oauth_code(&self.configuration, code).await
         })
@@ -381,6 +384,7 @@ impl Application {
                 })
         })
         .await
+        .map_err(ApiError::from)
     }
 
     /// Attempts to deactivate a user
@@ -397,6 +401,7 @@ impl Application {
                 })
         })
         .await
+        .map_err(ApiError::from)
     }
 
     /// Attempts to re-activate a user
@@ -413,6 +418,7 @@ impl Application {
                 })
         })
         .await
+        .map_err(ApiError::from)
     }
 
     /// Attempts to delete a user
@@ -429,6 +435,7 @@ impl Application {
                 })
         })
         .await
+        .map_err(ApiError::from)
     }
 
     /// Gets the tokens for a user
@@ -465,6 +472,7 @@ impl Application {
                 })
         })
         .await
+        .map_err(ApiError::from)
     }
 
     /// Revoke a previous token
@@ -478,6 +486,7 @@ impl Application {
                 .map_err(|source| ApplicationError::RevokeToken { source, token_id })
         })
         .await
+        .map_err(ApiError::from)
     }
 
     /// Gets the global tokens for the registry, usually for CI purposes
@@ -508,6 +517,7 @@ impl Application {
                 })
         })
         .await
+        .map_err(ApiError::from)
     }
 
     /// Revokes a global token for the registry
@@ -521,6 +531,7 @@ impl Application {
                 .map_err(|source| ApplicationError::RevokeGlobalToken { source, token_id })
         })
         .await
+        .map_err(ApiError::from)
     }
 
     /// Publish a crate
@@ -708,6 +719,7 @@ impl Application {
                 })
         })
         .await
+        .map_err(ApiError::from)
     }
 
     /// Yank a crate version
@@ -730,6 +742,7 @@ impl Application {
                 })
         })
         .await
+        .map_err(ApiError::from)
     }
 
     /// Unyank a crate version
@@ -752,6 +765,7 @@ impl Application {
                 })
         })
         .await
+        .map_err(ApiError::from)
     }
 
     /// Gets the packages that need documentation generation
@@ -914,6 +928,7 @@ impl Application {
                 })
         })
         .await
+        .map_err(ApiError::from)
     }
 
     /// Remove owners from a package
@@ -935,6 +950,7 @@ impl Application {
                 })
         })
         .await
+        .map_err(ApiError::from)
     }
 
     /// Gets the targets for a crate
@@ -1060,6 +1076,7 @@ impl Application {
                 })
         })
         .await
+        .map_err(ApiError::from)
     }
 
     /// Sets whether a crate can have versions completely removed
@@ -1077,6 +1094,7 @@ impl Application {
                 })
         })
         .await
+        .map_err(ApiError::from)
     }
 
     /// Gets the global statistics for the registry

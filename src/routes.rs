@@ -369,7 +369,11 @@ pub async fn api_v1_login_with_oauth_code(
     body: Bytes,
 ) -> Result<(StatusCode, [(HeaderName, HeaderValue); 1], Json<RegistryUser>), (StatusCode, Json<ApiError>)> {
     let code = String::from_utf8_lossy(&body);
-    let registry_user = state.application.login_with_oauth_code(&code).await.map_err(response_error)?;
+    let registry_user = state
+        .application
+        .login_with_oauth_code(&code)
+        .await
+        .map_err(|err| response_error(ApiError::from(err)))?;
     let cookie = auth_data.create_id_cookie(&Authentication::new_user(registry_user.id, registry_user.email.clone()));
     Ok((
         StatusCode::OK,

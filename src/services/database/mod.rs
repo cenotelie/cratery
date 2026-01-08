@@ -18,7 +18,7 @@ use thiserror::Error;
 use crate::application::AuthenticationError;
 use crate::model::auth::ROLE_ADMIN;
 use crate::services::database::packages::CratesError;
-use crate::utils::apierror::{ApiError, AsStatusCode, anyhow_err_stack_to_string};
+use crate::utils::apierror::{AsStatusCode, anyhow_err_stack_to_string};
 use crate::utils::db::{AppTransaction, RwSqlitePool};
 
 #[derive(Debug, Error)]
@@ -98,6 +98,49 @@ where
     }
 }
 
+//TODO: document
+#[derive(Debug, Error)]
+pub enum DbWriteError {
+    #[error("failed to acquire write for operation `{operation}`")]
+    AcquireWrite {
+        #[source]
+        source: sqlx::Error,
+        operation: &'static str,
+    },
+
+    #[error("error in workload for operation `{operation}`")]
+    Workload {
+        #[source]
+        source: anyhow::Error,
+        operation: &'static str,
+        status_code: StatusCode,
+    },
+
+    #[error("failed to commit operation `{operation}`")]
+    Commit {
+        #[source]
+        source: sqlx::Error,
+        operation: &'static str,
+    },
+
+    #[error("failed to rollback operation `{operation}` after error :\n{original_err}")]
+    Rollback {
+        #[source]
+        source: sqlx::Error,
+        operation: &'static str,
+        original_err: String,
+    },
+}
+
+impl AsStatusCode for DbWriteError {
+    fn status_code(&self) -> StatusCode {
+        match self {
+            Self::AcquireWrite { .. } | Self::Commit { .. } | Self::Rollback { .. } => StatusCode::INTERNAL_SERVER_ERROR,
+            Self::Workload { status_code, .. } => *status_code,
+        }
+    }
+}
+
 /// Executes a piece of work in the context of a transaction
 /// The transaction is committed if the operation succeed,
 /// or rolled back if it fails
@@ -109,13 +152,16 @@ pub async fn db_transaction_write<F, FUT, T, E>(
     pool: &RwSqlitePool,
     operation: &'static str,
     workload: F,
-) -> Result<T, ApiError>
+) -> Result<T, DbWriteError>
 where
     F: FnOnce(Database) -> FUT,
     FUT: Future<Output = Result<T, E>>,
     E: AsStatusCode + std::marker::Send + std::marker::Sync + 'static,
 {
-    let transaction = pool.acquire_write(operation).await?;
+    let transaction = pool
+        .acquire_write(operation)
+        .await
+        .map_err(|source| DbWriteError::AcquireWrite { source, operation })?;
     let result = {
         let database = Database {
             transaction: transaction.clone(),
@@ -125,12 +171,25 @@ where
     let transaction = transaction.into_original().unwrap();
     match result {
         Ok(t) => {
-            transaction.commit().await?;
+            transaction
+                .commit()
+                .await
+                .map_err(|source| DbWriteError::Commit { source, operation })?;
             Ok(t)
         }
         Err(error) => {
-            transaction.rollback().await?;
-            Err(ApiError::from(error))
+            let status_code = error.status_code();
+            let workload_err = anyhow::Error::new(error);
+            transaction.rollback().await.map_err(|source| DbWriteError::Rollback {
+                source,
+                operation,
+                original_err: anyhow_err_stack_to_string(&workload_err),
+            })?;
+            Err(DbWriteError::Workload {
+                source: workload_err,
+                operation,
+                status_code,
+            })
         }
     }
 }
