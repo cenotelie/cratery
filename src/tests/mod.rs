@@ -72,8 +72,7 @@ pub async fn setup_create_user_base(
                 .bind(is_active)
                 .bind(roles)
                 .execute(&mut *app.database.transaction.borrow().await)
-                .await?;
-            Ok::<(), ApiError>(())
+                .await
         })
         .await?;
     Ok(())
@@ -97,8 +96,7 @@ pub async fn setup_create_token(
             .bind(Local::now().naive_local())
             .bind(can_write)
             .bind(can_admin)
-            .execute(&mut *app.database.transaction.borrow().await).await?;
-            Ok::<(), ApiError>(())
+            .execute(&mut *app.database.transaction.borrow().await).await
         }
     }).await?;
     Ok(token_secret)

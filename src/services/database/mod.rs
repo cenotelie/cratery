@@ -61,11 +61,15 @@ where
 /// # Errors
 ///
 /// Returns an instance of the `E` type argument
-pub async fn db_transaction_write<F, FUT, T, E>(pool: &RwSqlitePool, operation: &'static str, workload: F) -> Result<T, E>
+pub async fn db_transaction_write<F, FUT, T, E>(
+    pool: &RwSqlitePool,
+    operation: &'static str,
+    workload: F,
+) -> Result<T, ApiError>
 where
     F: FnOnce(Database) -> FUT,
     FUT: Future<Output = Result<T, E>>,
-    E: From<sqlx::Error>,
+    E: AsStatusCode + std::marker::Send + std::marker::Sync + 'static,
 {
     let transaction = pool.acquire_write(operation).await?;
     let result = {
@@ -82,7 +86,7 @@ where
         }
         Err(error) => {
             transaction.rollback().await?;
-            Err(error)
+            Err(ApiError::from(error))
         }
     }
 }
