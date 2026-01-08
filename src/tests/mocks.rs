@@ -9,6 +9,7 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 use chrono::NaiveDateTime;
+use futures::future::BoxFuture;
 use semver::Version;
 use tokio::sync::mpsc::Sender;
 
@@ -21,7 +22,7 @@ use crate::model::worker::WorkersManager;
 use crate::services::deps::DepsChecker;
 use crate::services::docs::DocsGenerator;
 use crate::services::emails::EmailSender;
-use crate::services::index::{GitIndexError, Index};
+use crate::services::index::{GitIndexError, Index, IndexError};
 use crate::services::rustsec::RustSecChecker;
 use crate::services::storage::Storage;
 use crate::services::{ConfigurationError, ServiceProvider};
@@ -32,7 +33,7 @@ use crate::utils::token::generate_token;
 /// A mocking service
 pub struct MockService;
 
-fn resolved_default<T: Default + Send>() -> FaillibleFuture<'static, T> {
+fn resolved_default<T: Default + Send, E>() -> BoxFuture<'static, Result<T, E>> {
     Box::pin(async { Ok(T::default()) })
 }
 
@@ -102,11 +103,11 @@ impl Index for MockService {
         resolved_default()
     }
 
-    fn remove_crate_version<'a>(&'a self, _package: &'a str, _version: &'a str) -> FaillibleFuture<'a, ()> {
+    fn remove_crate_version<'a>(&'a self, _package: &'a str, _version: &'a str) -> BoxFuture<'a, Result<(), IndexError>> {
         resolved_default()
     }
 
-    fn get_crate_data<'a>(&'a self, _package: &'a str) -> FaillibleFuture<'a, Vec<IndexCrateMetadata>> {
+    fn get_crate_data<'a>(&'a self, _package: &'a str) -> BoxFuture<'a, Result<Vec<IndexCrateMetadata>, IndexError>> {
         resolved_default()
     }
 }

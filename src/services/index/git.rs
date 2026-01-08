@@ -6,16 +6,17 @@
 
 use std::path::{Path, PathBuf};
 
+use futures::future::BoxFuture;
 use log::{error, info};
 use thiserror::Error;
 use tokio::fs::{File, OpenOptions, create_dir_all};
 use tokio::io::{self, AsyncBufReadExt, AsyncWriteExt, BufReader};
 use tokio::sync::Mutex;
 
-use super::{Index, build_package_file_path};
+use super::{Index, IndexError, build_package_file_path};
 use crate::model::cargo::IndexCrateMetadata;
 use crate::model::config::IndexConfig;
-use crate::utils::apierror::{ApiError, AsStatusCode, error_not_found, specialize};
+use crate::utils::apierror::{ApiError, AsStatusCode};
 use crate::utils::{CommandError, FaillibleFuture, execute_at_location, execute_git};
 
 #[derive(Debug, Error)]
@@ -35,6 +36,20 @@ pub enum GitIndexError {
         #[source]
         source: io::Error,
         location: PathBuf,
+    },
+
+    #[error("failed to open `{path}` for reading")]
+    OpenReadFile {
+        #[source]
+        source: io::Error,
+        path: PathBuf,
+    },
+
+    #[error("failed to open `{path}` for writing")]
+    OpenWriteFile {
+        #[source]
+        source: io::Error,
+        path: PathBuf,
     },
 
     #[error("error during read first entry in : '{location}'")]
@@ -88,6 +103,57 @@ pub enum GitIndexError {
 
     #[error("fail to write git index public config")]
     WritePublicConfig(#[source] io::Error),
+
+    #[error("failed to read `{path}`")]
+    ReadFile {
+        #[source]
+        source: io::Error,
+        path: PathBuf,
+    },
+
+    #[error("failed to read line {line_idx} in file `{path}`")]
+    ReadNextLine {
+        #[source]
+        source: io::Error,
+        path: PathBuf,
+        line_idx: usize,
+    },
+
+    #[error("failed to write into file `{path}`")]
+    WriteAll {
+        #[source]
+        source: io::Error,
+        path: PathBuf,
+    },
+
+    #[error("failed to flush file `{path}`")]
+    Flush {
+        #[source]
+        source: io::Error,
+        path: PathBuf,
+    },
+
+    #[error("failed to sync_all file `{path}`")]
+    SyncAll {
+        #[source]
+        source: io::Error,
+        path: PathBuf,
+    },
+
+    #[error("failed to deserialise line `{line_idx}` : \n{line}")]
+    DeserialiseLine {
+        #[source]
+        source: serde_json::Error,
+        line: String,
+        line_idx: usize,
+    },
+
+    #[error("failed to serialise package version : `{version}`")]
+    SerializeVersion {
+        #[source]
+        source: serde_json::Error,
+        version: String,
+    },
 }
 impl AsStatusCode for GitIndexError {}
 
@@ -123,11 +189,11 @@ impl Index for GitIndex {
         Box::pin(async move { self.inner.lock().await.publish_crate_version(metadata).await })
     }
 
-    fn remove_crate_version<'a>(&'a self, package: &'a str, version: &'a str) -> FaillibleFuture<'a, ()> {
+    fn remove_crate_version<'a>(&'a self, package: &'a str, version: &'a str) -> BoxFuture<'a, Result<(), IndexError>> {
         Box::pin(async move { self.inner.lock().await.remove_crate_version(package, version).await })
     }
 
-    fn get_crate_data<'a>(&'a self, package: &'a str) -> FaillibleFuture<'a, Vec<IndexCrateMetadata>> {
+    fn get_crate_data<'a>(&'a self, package: &'a str) -> BoxFuture<'a, Result<Vec<IndexCrateMetadata>, IndexError>> {
         Box::pin(async move { self.inner.lock().await.get_crate_data(package).await })
     }
 }
@@ -331,18 +397,38 @@ impl GitIndexImpl {
     }
 
     /// Completely removes a version from the registry
-    async fn remove_crate_version(&self, package: &str, version: &str) -> Result<(), ApiError> {
+    async fn remove_crate_version(&self, package: &str, version: &str) -> Result<(), IndexError> {
         let file_name = build_package_file_path(PathBuf::from(&self.config.location), package);
-        create_dir_all(file_name.parent().unwrap()).await?;
+        create_dir_all(file_name.parent().unwrap())
+            .await
+            .map_err(|source| GitIndexError::CreateDirAll {
+                source,
+                location: file_name.parent().unwrap().to_path_buf(),
+            })?;
         // get the existing versions
         let mut versions = {
             // expect the file to be present
-            let file = OpenOptions::new().read(true).open(&file_name).await?;
+            let file = OpenOptions::new()
+                .read(true)
+                .open(&file_name)
+                .await
+                .map_err(|source| GitIndexError::OpenReadFile {
+                    source,
+                    path: file_name.clone(),
+                })?;
             let reader = BufReader::new(file);
             let mut lines = reader.lines();
             let mut versions = Vec::new();
-            while let Some(line) = lines.next_line().await? {
-                versions.push(serde_json::from_str::<IndexCrateMetadata>(&line)?);
+            let mut line_idx = 0;
+            while let Some(line) = lines.next_line().await.map_err(|source| GitIndexError::ReadNextLine {
+                source,
+                path: file_name.clone(),
+                line_idx,
+            })? {
+                let index_crate_metadata = serde_json::from_str::<IndexCrateMetadata>(&line)
+                    .map_err(|source| GitIndexError::DeserialiseLine { source, line, line_idx })?;
+                versions.push(index_crate_metadata);
+                line_idx += 1;
             }
             versions
         };
@@ -350,14 +436,37 @@ impl GitIndexImpl {
         versions.retain(|v| v.vers != version);
         // write back
         {
-            let mut file = OpenOptions::new().write(true).truncate(true).open(file_name).await?;
+            let mut file = OpenOptions::new()
+                .write(true)
+                .truncate(true)
+                .open(&file_name)
+                .await
+                .map_err(|source| GitIndexError::OpenWriteFile {
+                    source,
+                    path: file_name.clone(),
+                })?;
             for version in versions {
-                let buffer = serde_json::to_vec(&version)?;
-                file.write_all(&buffer).await?;
-                file.write_all(&[0x0A]).await?; // add line end
+                let buffer = serde_json::to_vec(&version).map_err(|source| GitIndexError::SerializeVersion {
+                    source,
+                    version: format!("{version:#?}"),
+                })?;
+                file.write_all(&buffer).await.map_err(|source| GitIndexError::WriteAll {
+                    source,
+                    path: file_name.clone(),
+                })?;
+                file.write_all(&[0x0A]).await.map_err(|source| GitIndexError::WriteAll {
+                    source,
+                    path: file_name.clone(),
+                })?; // add line end
             }
-            file.flush().await?;
-            file.sync_all().await?;
+            file.flush().await.map_err(|source| GitIndexError::Flush {
+                source,
+                path: file_name.clone(),
+            })?;
+            file.sync_all().await.map_err(|source| GitIndexError::SyncAll {
+                source,
+                path: file_name.clone(),
+            })?;
         }
         // commit and update
         let message = format!("Removed {package}:{version}");
@@ -366,32 +475,47 @@ impl GitIndexImpl {
     }
 
     /// Commits the local changes to the index
-    async fn commit_changes(&self, message: &str) -> Result<(), ApiError> {
+    async fn commit_changes(&self, message: &str) -> Result<(), GitIndexError> {
         let location = PathBuf::from(&self.config.location);
-        execute_git(&location, &["add", "."]).await?;
-        execute_git(&location, &["commit", "-m", message]).await?;
-        execute_git(&location, &["update-server-info"]).await?;
+        execute_git(&location, &["add", "."])
+            .await
+            .map_err(GitIndexError::CommandAdd)?;
+        execute_git(&location, &["commit", "-m", message])
+            .await
+            .map_err(GitIndexError::CommandCommit)?;
+        execute_git(&location, &["update-server-info"])
+            .await
+            .map_err(GitIndexError::UpdateServerInfo)?;
         if let (Some(_), true) = (self.config.remote_origin.as_ref(), self.config.remote_push_changes) {
-            execute_git(&location, &["push", "origin", "master"]).await?;
+            execute_git(&location, &["push", "origin", "master"])
+                .await
+                .map_err(GitIndexError::PushOriginMaster)?;
         }
         Ok(())
     }
 
     ///  Gets the data for a crate
-    async fn get_crate_data(&self, package: &str) -> Result<Vec<IndexCrateMetadata>, ApiError> {
+    async fn get_crate_data(&self, package: &str) -> Result<Vec<IndexCrateMetadata>, IndexError> {
         let file_name = build_package_file_path(PathBuf::from(&self.config.location), package);
         if !file_name.exists() {
-            return Err(specialize(
-                error_not_found(),
-                format!("package {package} is not in this registry"),
-            ));
+            return Err(IndexError::PackageNotInRegistry { package: package.into() });
         }
-        let file = File::open(&file_name).await?;
+        let file = File::open(&file_name).await.map_err(|source| GitIndexError::OpenReadFile {
+            source,
+            path: file_name.clone(),
+        })?;
         let mut reader = BufReader::new(file).lines();
         let mut results = Vec::new();
-        while let Some(line) = reader.next_line().await? {
-            let data = serde_json::from_str(&line)?;
+        let mut line_idx = 0;
+        while let Some(line) = reader.next_line().await.map_err(|source| GitIndexError::ReadNextLine {
+            source,
+            path: file_name.clone(),
+            line_idx,
+        })? {
+            let data =
+                serde_json::from_str(&line).map_err(|source| GitIndexError::DeserialiseLine { source, line, line_idx })?;
             results.push(data);
+            line_idx += 1;
         }
         Ok(results)
     }
