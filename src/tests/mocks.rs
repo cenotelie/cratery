@@ -19,6 +19,7 @@ use crate::model::deps::DepsAnalysis;
 use crate::model::docs::{DocGenEvent, DocGenJob, DocGenJobSpec, DocGenJobState, DocGenTrigger};
 use crate::model::osv::SimpleAdvisory;
 use crate::model::worker::WorkersManager;
+use crate::services::database::DbReadError;
 use crate::services::deps::DepsChecker;
 use crate::services::docs::DocsGenerator;
 use crate::services::emails::EmailSender;
@@ -128,7 +129,7 @@ impl DepsChecker for MockService {
 }
 
 impl DocsGenerator for MockService {
-    fn get_jobs(&self) -> FaillibleFuture<'_, Vec<DocGenJob>> {
+    fn get_jobs(&self) -> BoxFuture<'_, Result<Vec<DocGenJob>, DbReadError>> {
         resolved_default()
     }
 

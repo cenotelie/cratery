@@ -5,7 +5,7 @@
 //! Definition of the error type for API requests
 
 use std::backtrace::Backtrace;
-use std::fmt::{Display, Formatter};
+use std::fmt::{Display, Formatter, Write};
 
 use axum::http::StatusCode;
 use serde_derive::{Deserialize, Serialize};
@@ -150,4 +150,13 @@ pub fn error_conflict() -> ApiError {
         "The request could not be processed because of conflict in the current state of the resource.",
         None,
     )
+}
+
+#[must_use]
+pub(crate) fn anyhow_err_stack_to_string(err: &anyhow::Error) -> String {
+    let chain = err.chain();
+    chain.enumerate().fold(String::new(), |mut val, (idx, err)| {
+        let _ = writeln!(&mut val, "*[{idx}]: {err}");
+        val
+    })
 }

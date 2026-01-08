@@ -18,8 +18,41 @@ use thiserror::Error;
 use crate::application::AuthenticationError;
 use crate::model::auth::ROLE_ADMIN;
 use crate::services::database::packages::CratesError;
-use crate::utils::apierror::{ApiError, AsStatusCode};
+use crate::utils::apierror::{ApiError, AsStatusCode, anyhow_err_stack_to_string};
 use crate::utils::db::{AppTransaction, RwSqlitePool};
+
+#[derive(Debug, Error)]
+pub enum DbReadError {
+    #[error("failed to acquire read")]
+    AcquireRead {
+        #[source]
+        source: sqlx::Error,
+    },
+
+    #[error("failed to run workload operation")]
+    Workload {
+        #[source]
+        source: anyhow::Error,
+        status_code: StatusCode,
+    },
+
+    #[error("failed to commit")]
+    Commit(#[source] sqlx::Error),
+    #[error("failed to rollback after error :\n{original_err}")]
+    Rollback {
+        #[source]
+        source: sqlx::Error,
+        original_err: String,
+    },
+}
+impl AsStatusCode for DbReadError {
+    fn status_code(&self) -> StatusCode {
+        match self {
+            Self::AcquireRead { .. } | Self::Commit { .. } | Self::Rollback { .. } => StatusCode::INTERNAL_SERVER_ERROR,
+            Self::Workload { status_code, .. } => *status_code,
+        }
+    }
+}
 
 /// Executes a piece of work in the context of a transaction
 /// The transaction is committed if the operation succeed,
@@ -28,13 +61,16 @@ use crate::utils::db::{AppTransaction, RwSqlitePool};
 /// # Errors
 ///
 /// Returns an instance of the `E` type argument
-pub async fn db_transaction_read<F, FUT, T, E>(pool: &RwSqlitePool, workload: F) -> Result<T, ApiError>
+pub async fn db_transaction_read<F, FUT, T, E>(pool: &RwSqlitePool, workload: F) -> Result<T, DbReadError>
 where
     F: FnOnce(Database) -> FUT,
     FUT: Future<Output = Result<T, E>>,
     E: AsStatusCode + std::marker::Send + std::marker::Sync + 'static,
 {
-    let transaction = pool.acquire_read().await?;
+    let transaction = pool
+        .acquire_read()
+        .await
+        .map_err(|source| DbReadError::AcquireRead { source })?;
     let result = {
         let database = Database {
             transaction: transaction.clone(),
@@ -44,12 +80,20 @@ where
     let transaction = transaction.into_original().unwrap();
     match result {
         Ok(t) => {
-            transaction.commit().await?;
+            transaction.commit().await.map_err(DbReadError::Commit)?;
             Ok(t)
         }
         Err(error) => {
-            transaction.rollback().await?;
-            Err(ApiError::from(error))
+            let status_code = error.status_code();
+            let workload_err = anyhow::Error::from(error);
+            transaction.rollback().await.map_err(|source| DbReadError::Rollback {
+                source,
+                original_err: anyhow_err_stack_to_string(&workload_err),
+            })?;
+            Err(DbReadError::Workload {
+                source: workload_err,
+                status_code,
+            })
         }
     }
 }

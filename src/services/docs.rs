@@ -12,6 +12,7 @@ use std::time::Duration;
 
 use chrono::Local;
 use flate2::bufread::GzDecoder;
+use futures::future::BoxFuture;
 use log::{error, info};
 use tar::Archive;
 use tokio::process::Command;
@@ -23,7 +24,7 @@ use crate::model::CHANNEL_NIGHTLY;
 use crate::model::config::Configuration;
 use crate::model::docs::{DocGenEvent, DocGenJob, DocGenJobSpec, DocGenJobState, DocGenJobUpdate, DocGenTrigger};
 use crate::model::worker::{JobIdentifier, JobSpecification, JobUpdate, WorkersManager};
-use crate::services::database::{db_transaction_read, db_transaction_write};
+use crate::services::database::{DbReadError, db_transaction_read, db_transaction_write};
 use crate::services::storage::Storage;
 use crate::utils::FaillibleFuture;
 use crate::utils::apierror::{ApiError, error_backend_failure, error_invalid_request, specialize};
@@ -33,7 +34,7 @@ use crate::utils::db::RwSqlitePool;
 /// Service to generate documentation for a crate
 pub trait DocsGenerator {
     /// Gets all the jobs
-    fn get_jobs(&self) -> FaillibleFuture<'_, Vec<DocGenJob>>;
+    fn get_jobs(&self) -> BoxFuture<'_, Result<Vec<DocGenJob>, DbReadError>>;
 
     /// Gets the log for a job
     fn get_job_log(&self, job_id: i64) -> FaillibleFuture<'_, String>;
@@ -86,7 +87,7 @@ struct DocsGeneratorImpl {
 
 impl DocsGenerator for DocsGeneratorImpl {
     /// Gets all the jobs
-    fn get_jobs(&self) -> FaillibleFuture<'_, Vec<DocGenJob>> {
+    fn get_jobs(&self) -> BoxFuture<'_, Result<Vec<DocGenJob>, DbReadError>> {
         Box::pin(async move {
             db_transaction_read(
                 &self.service_db_pool,
@@ -182,6 +183,7 @@ impl DocsGeneratorImpl {
             database.get_next_docgen_job().await
         })
         .await
+        .map_err(ApiError::from)
     }
 
     /// Implementation of the worker
