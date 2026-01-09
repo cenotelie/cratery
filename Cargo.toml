@@ -31,6 +31,7 @@ cookie = { version = "0.18", features = ["percent-encode", "secure"] }
 data-encoding = "2.10"
 flate2 = "1.1"
 http-body = "1"
+http-serde = "2.1"
 opendal = { version = "0.55", features = ["services-fs", "services-s3"] }
 rand = "0.9"
 ring = "0.17"

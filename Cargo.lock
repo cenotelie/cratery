@@ -430,6 +430,7 @@ dependencies = [
  "flate2",
  "futures",
  "http-body",
+ "http-serde",
  "lettre",
  "log",
  "opendal",
@@ -442,7 +443,7 @@ dependencies = [
  "serde_json",
  "sqlx",
  "tar",
- "thiserror",
+ "thiserror 2.0.17",
  "tokio",
  "tokio-stream",
  "tokio-tungstenite",
@@ -1023,6 +1024,16 @@ dependencies = [
  "http",
  "http-body",
  "pin-project-lite",
+]
+
+[[package]]
+name = "http-serde"
+version = "2.1.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "0f056c8559e3757392c8d091e796416e4649d8e49e88b8d76df6c002f05027fd"
+dependencies = [
+ "http",
+ "serde",
 ]
 
 [[package]]

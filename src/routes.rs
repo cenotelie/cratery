@@ -789,9 +789,9 @@ pub async fn api_v1_download_crate(
             data,
         )),
         Err(mut error) => {
-            if error.http == 401 {
-                // map to 403
-                error.http = 403;
+            if error.http == StatusCode::UNAUTHORIZED {
+                // map UNAUTHORIZED - 401 to FORBIDDEN - 403
+                error.http = StatusCode::FORBIDDEN;
             }
             Err(response_error(error))
         }
