@@ -22,7 +22,7 @@ pub type ApiResult<T> = Result<(StatusCode, Json<T>), (StatusCode, Json<ApiError
 pub fn response_error_http(http: StatusCode, error: ApiError) -> (StatusCode, Json<ApiError>) {
     if http == StatusCode::INTERNAL_SERVER_ERROR {
         // log internal errors
-        error!("{error}");
+        error!("{error:?}");
         if let Some(backtrace) = &error.backtrace {
             error!("{backtrace}");
         }
