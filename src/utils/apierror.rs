@@ -106,7 +106,7 @@ pub fn error_not_found() -> ApiError {
 #[must_use]
 pub fn error_conflict() -> ApiError {
     ApiError::new(
-        408,
+        409, //StatusCode::CONFLICT
         "The request could not be processed because of conflict in the current state of the resource.",
         None,
     )
