@@ -222,18 +222,15 @@ impl Application {
             if count == 0 {
                 break;
             }
-            if let Err(e) = self.events_handler_handle(&events).await {
-                error!("{e}");
-                if let Some(backtrace) = e.backtrace {
-                    error!("{backtrace}");
-                }
+            if let Err(err) = self.events_handler_handle(&events).await {
+                error!("events_handler - {:#?}", anyhow::Error::from(err));
             }
             events.clear();
         }
     }
 
     /// Handles a set of events
-    async fn events_handler_handle(&self, events: &[AppEvent]) -> Result<(), ApiError> {
+    async fn events_handler_handle(&self, events: &[AppEvent]) -> Result<(), DbWriteError> {
         #[derive(Debug, Error)]
         enum EventHandlerError {
             #[error("failed to update token last usage")]
@@ -270,7 +267,6 @@ impl Application {
             Ok::<_, EventHandlerError>(())
         })
         .await
-        .map_err(ApiError::from)
     }
 
     /// Executes a piece of work in the context of a transaction
