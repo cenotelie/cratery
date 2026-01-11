@@ -36,17 +36,8 @@ pub fn response_error(error: ApiError) -> (StatusCode, Json<ApiError>) {
 }
 
 /// Produces an OK response
-///
-/// # Panics
-///
-/// Panic when the HTTP code is not a correct status code
-pub fn response_ok_http<T>(http: u16, data: T) -> (StatusCode, Json<T>) {
-    (StatusCode::from_u16(http).unwrap(), Json(data))
-}
-
-/// Produces an OK response
-pub fn response_ok<T>(data: T) -> (StatusCode, Json<T>) {
-    response_ok_http(200, data)
+pub const fn response_ok<T>(data: T) -> (StatusCode, Json<T>) {
+    (StatusCode::OK, Json(data))
 }
 
 /// Maps a service result to a web api result
