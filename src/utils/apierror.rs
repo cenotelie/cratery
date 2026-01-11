@@ -19,7 +19,7 @@ pub struct ApiError {
     /// Optional details for the error
     pub details: Option<String>,
     /// The backtrace when the error was produced
-    #[serde(skip_serializing, skip_deserializing)]
+    #[serde(skip)]
     pub backtrace: Option<Backtrace>,
 }
 
