@@ -24,7 +24,7 @@ allow = [
     "Zlib",
 ]
 confidence-threshold = 0.8
-exceptions = [{ allow = ["OpenSSL"], crate = "ring" }]
+exceptions = [{ allow = ["OpenSSL"], crate = "aws-lc-sys" }]
 
 [[licenses.clarify]]
 crate = "ring"

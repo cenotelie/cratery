@@ -22,23 +22,23 @@ serde_json = "1.0"
 # basic dependencies
 base64 = "0.22"
 byteorder = "1.5"
-bytes = "1.10"
+bytes = "1.11"
 chrono = { version = "0.4", features = ["serde"] }
 cookie = { version = "0.18", features = ["percent-encode", "secure"] }
-data-encoding = "2.9"
+data-encoding = "2.10"
 flate2 = "1.1"
 http-body = "1"
-opendal = { version = "0.54", features = ["services-fs", "services-s3"] }
+opendal = { version = "0.55", features = ["services-fs", "services-s3"] }
 rand = "0.9"
 ring = "0.17"
 semver = { version = "1.0", features = ["serde"] }
 tar = "0.4"
 urlencoding = "2.1"
-uuid = { version = "1.18", features = ["fast-rng", "v4"] }
+uuid = { version = "1.19", features = ["fast-rng", "v4"] }
 
 # async support
 futures = "0.3"
-tokio = { version = "1.47", features = ["full"] }
+tokio = { version = "1.49", features = ["full"] }
 tokio-stream = "0.1"
 tokio-util = { version = "0.7", features = ["io"] }
 
@@ -51,9 +51,9 @@ lettre = { version = "0.11", default-features = false, features = [
     "tokio1",
     "tokio1-rustls-tls",
 ] }
-reqwest = { version = "0.12", default-features = false, features = [
-    "rustls-tls",
-    "rustls-tls-native-roots",
+reqwest = { version = "0.13", default-features = false, features = [
+    "form",
+    "rustls",
     "stream",
 ] }
 sqlx = { version = "0.8", default-features = false, features = [
@@ -62,7 +62,7 @@ sqlx = { version = "0.8", default-features = false, features = [
     "runtime-tokio-rustls",
     "sqlite",
 ] }
-tokio-tungstenite = "0.27"
+tokio-tungstenite = "0.28"
 
 [lints.rust]
 unsafe_code = "forbid"
