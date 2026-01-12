@@ -736,7 +736,12 @@ impl Application {
     pub async fn remove_crate_version(&self, auth_data: &AuthData, package: &str, version: &str) -> Result<(), ApiError> {
         self.db_transaction_write("remove_crate_version", |app| async move {
             let authentication = app.authenticate(auth_data).await?;
-            app.check_can_manage_crate(&authentication, package).await?;
+            app.check_can_manage_crate(&authentication, package)
+                .await
+                .map_err(|source| ApplicationError::CanManageCrate {
+                    source,
+                    package: package.into(),
+                })?;
             app.database.remove_crate_version(package, version).await.map_err(|source| {
                 ApplicationError::RemoveVersionFromDatabase {
                     source,
@@ -766,7 +771,12 @@ impl Application {
     ) -> Result<YesNoResult, ApiError> {
         self.db_transaction_write("yank_crate_version", |app| async move {
             let authentication = app.authenticate(auth_data).await?;
-            app.check_can_manage_crate(&authentication, package).await?;
+            app.check_can_manage_crate(&authentication, package)
+                .await
+                .map_err(|source| ApplicationError::CanManageCrate {
+                    source,
+                    package: package.into(),
+                })?;
             app.database
                 .yank_crate_version(package, version)
                 .await
@@ -789,7 +799,12 @@ impl Application {
     ) -> Result<YesNoResult, ApiError> {
         self.db_transaction_write("unyank_crate_version", |app| async move {
             let authentication = app.authenticate(auth_data).await?;
-            app.check_can_manage_crate(&authentication, package).await?;
+            app.check_can_manage_crate(&authentication, package)
+                .await
+                .map_err(|source| ApplicationError::CanManageCrate {
+                    source,
+                    package: package.into(),
+                })?;
             app.database
                 .unyank_crate_version(package, version)
                 .await
@@ -846,7 +861,12 @@ impl Application {
         let (user, targets, capabilities) = self
             .db_transaction_write("regen_crate_version_doc", |app| async move {
                 let authentication = app.authenticate(auth_data).await?;
-                let principal_uid = app.check_can_manage_crate(&authentication, package).await?;
+                let principal_uid = app.check_can_manage_crate(&authentication, package).await.map_err(|source| {
+                    ApplicationError::CanManageCrate {
+                        source,
+                        package: package.into(),
+                    }
+                })?;
                 let user =
                     app.database
                         .get_user_profile(principal_uid)
@@ -953,7 +973,12 @@ impl Application {
     ) -> Result<YesNoMsgResult, ApiError> {
         self.db_transaction_write("add_crate_owners", |app| async move {
             let authentication = app.authenticate(auth_data).await?;
-            app.check_can_manage_crate(&authentication, package).await?;
+            app.check_can_manage_crate(&authentication, package)
+                .await
+                .map_err(|source| ApplicationError::CanManageCrate {
+                    source,
+                    package: package.into(),
+                })?;
             app.database
                 .add_crate_owners(package, new_users)
                 .await
@@ -975,7 +1000,12 @@ impl Application {
     ) -> Result<YesNoResult, ApiError> {
         self.db_transaction_write("remove_crate_owners", |app| async move {
             let authentication = app.authenticate(auth_data).await?;
-            app.check_can_manage_crate(&authentication, package).await?;
+            app.check_can_manage_crate(&authentication, package)
+                .await
+                .map_err(|source| ApplicationError::CanManageCrate {
+                    source,
+                    package: package.into(),
+                })?;
             app.database
                 .remove_crate_owners(package, old_users)
                 .await
@@ -1014,7 +1044,12 @@ impl Application {
         let (user, jobs) = self
             .db_transaction_write("set_crate_targets", |app| async move {
                 let authentication = app.authenticate(auth_data).await?;
-                let principal_uid = app.check_can_manage_crate(&authentication, package).await?;
+                let principal_uid = app.check_can_manage_crate(&authentication, package).await.map_err(|source| {
+                    ApplicationError::CanManageCrate {
+                        source,
+                        package: package.into(),
+                    }
+                })?;
                 let user =
                     app.database
                         .get_user_profile(principal_uid)
@@ -1082,7 +1117,12 @@ impl Application {
     ) -> Result<(), ApiError> {
         self.db_transaction_write("set_crate_required_capabilities", |app| async move {
             let authentication = app.authenticate(auth_data).await?;
-            let _ = app.check_can_manage_crate(&authentication, package).await?;
+            let _ = app.check_can_manage_crate(&authentication, package).await.map_err(|source| {
+                ApplicationError::CanManageCrate {
+                    source,
+                    package: package.into(),
+                }
+            })?;
             app.database
                 .set_crate_required_capabilities(package, capabilities)
                 .await
@@ -1100,7 +1140,12 @@ impl Application {
     pub async fn set_crate_deprecation(&self, auth_data: &AuthData, package: &str, deprecated: bool) -> Result<(), ApiError> {
         self.db_transaction_write("set_crate_deprecation", |app| async move {
             let authentication = app.authenticate(auth_data).await?;
-            app.check_can_manage_crate(&authentication, package).await?;
+            app.check_can_manage_crate(&authentication, package)
+                .await
+                .map_err(|source| ApplicationError::CanManageCrate {
+                    source,
+                    package: package.into(),
+                })?;
             app.database
                 .set_crate_deprecation(package, deprecated)
                 .await
@@ -1118,7 +1163,12 @@ impl Application {
     pub async fn set_crate_can_remove(&self, auth_data: &AuthData, package: &str, can_remove: bool) -> Result<(), ApiError> {
         self.db_transaction_write("set_crate_can_remove", |app| async move {
             let authentication = app.authenticate(auth_data).await?;
-            app.check_can_manage_crate(&authentication, package).await?;
+            app.check_can_manage_crate(&authentication, package)
+                .await
+                .map_err(|source| ApplicationError::CanManageCrate {
+                    source,
+                    package: package.into(),
+                })?;
             app.database
                 .set_crate_can_remove(package, can_remove)
                 .await
@@ -1257,8 +1307,12 @@ enum ApplicationError {
     #[error(transparent)]
     Authentication(#[from] AuthenticationError),
 
-    #[error(transparent)]
-    CanManageCrate(#[from] CanManageCrateError),
+    #[error("can't manage package '{package}'")]
+    CanManageCrate {
+        #[source]
+        source: CanManageCrateError,
+        package: SmolStr,
+    },
 
     #[error(transparent)]
     CanAdminRegistry(#[from] CanAdminRegistryError),
@@ -1462,7 +1516,7 @@ impl AsStatusCode for ApplicationError {
                 source: authentication_error,
             } => authentication_error.status_code(),
 
-            Self::CanManageCrate(can_manage_crate_error) => can_manage_crate_error.status_code(),
+            Self::CanManageCrate { source, .. } => source.status_code(),
             Self::CanAdminRegistry(can_admin_registry_error) => can_admin_registry_error.status_code(),
 
             Self::GetCrateInfo { source, .. }
