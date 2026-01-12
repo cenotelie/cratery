@@ -43,9 +43,9 @@ pub fn response_error(error: ApiError) -> (StatusCode, Json<ResponseError>) {
 }
 
 /// Produces an error response
-#[expect(clippy::needless_pass_by_value)]
-pub fn into_response_error(error: impl AsStatusCode) -> (StatusCode, Json<ResponseError>) {
+pub fn into_response_error(error: impl AsStatusCode + Send + Sync + 'static) -> (StatusCode, Json<ResponseError>) {
     let status_code = error.status_code();
+    let error = anyhow::Error::from(error);
     let uuid = Uuid::new_v4();
     if status_code == StatusCode::INTERNAL_SERVER_ERROR {
         // log internal errors
