@@ -5,9 +5,9 @@ services:
     image: cenotelie/cratery:latest
     restart: unless-stopped
     ports:
-      - "80:80"
+      - "127.0.0.1:8080:80"
     volumes:
-      - ./data:/data
+      - vol-data:/data
     environment:
       RUST_BACKTRACE: 1
       # REGISTRY_LOG_LEVEL: INFO
@@ -57,3 +57,6 @@ services:
       # REGISTRY_SELF_LOCAL_NAME: localhost
       # REGISTRY_NODE_ROLE: standalone
       # REGISTRY_NODE_WORKER_TOKEN: super secret token
+
+volumes:
+  vol-data:
