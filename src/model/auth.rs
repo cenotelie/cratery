@@ -7,7 +7,7 @@
 use chrono::NaiveDateTime;
 use serde_derive::{Deserialize, Serialize};
 
-use crate::utils::apierror::{ApiError, error_forbidden, error_invalid_request, specialize};
+use crate::application::AuthenticationError;
 
 /// The admin role
 pub const ROLE_ADMIN: &str = "admin";
@@ -57,50 +57,38 @@ impl Authentication {
     }
 
     /// Gets the uid of the associated user
-    pub fn uid(&self) -> Result<i64, ApiError> {
+    pub const fn uid(&self) -> Result<i64, AuthenticationError> {
         if let AuthenticationPrincipal::User { uid, email: _ } = &self.principal {
             Ok(*uid)
         } else {
-            Err(specialize(
-                error_invalid_request(),
-                String::from("Expected a user to be authenticated"),
-            ))
+            Err(AuthenticationError::NoUserAuthenticated)
         }
     }
 
     /// Gets the email of the associated user
-    pub fn email(&self) -> Result<&str, ApiError> {
+    pub fn email(&self) -> Result<&str, AuthenticationError> {
         if let AuthenticationPrincipal::User { uid: _, email } = &self.principal {
             Ok(email)
         } else {
-            Err(specialize(
-                error_invalid_request(),
-                String::from("Expected a user to be authenticated"),
-            ))
+            Err(AuthenticationError::NoUserAuthenticated)
         }
     }
 
     /// Checks that this authentication enables writing
-    pub fn check_can_write(&self) -> Result<(), ApiError> {
+    pub const fn check_can_write(&self) -> Result<(), AuthenticationError> {
         if self.can_write {
             Ok(())
         } else {
-            Err(specialize(
-                error_forbidden(),
-                String::from("writing is forbidden for this authentication"),
-            ))
+            Err(AuthenticationError::WriteIsForbidden)
         }
     }
 
     /// Checks that this authentication enables admin tasks
-    pub fn check_can_admin(&self) -> Result<(), ApiError> {
+    pub const fn check_can_admin(&self) -> Result<(), AuthenticationError> {
         if self.can_admin {
             Ok(())
         } else {
-            Err(specialize(
-                error_forbidden(),
-                String::from("administration is forbidden for this authentication"),
-            ))
+            Err(AuthenticationError::AdministrationIsForbidden)
         }
     }
 }

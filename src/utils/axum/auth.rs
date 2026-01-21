@@ -17,7 +17,6 @@ use cookie::{Cookie, CookieJar, Expiration, Key, SameSite};
 
 use super::extractors::Cookies;
 use crate::model::auth::Authentication;
-use crate::utils::apierror::ApiError;
 
 /// An authentication token
 #[derive(Debug, Clone)]
@@ -196,13 +195,12 @@ impl AuthData {
     /// # Errors
     ///
     /// Propagates the error from the `check_token` callback.
-    pub fn try_authenticate_cookie(&self) -> Result<Option<Authentication>, ApiError> {
+    pub fn try_authenticate_cookie(&self) -> Result<Option<Authentication>, serde_json::Error> {
         // try the cookie
-        Ok(self
-            .cookie_jar
+        self.cookie_jar
             .private(&self.cookie_key)
             .get(&self.cookie_id_name)
             .map(|cookie| serde_json::from_str(cookie.value()))
-            .transpose()?)
+            .transpose()
     }
 }

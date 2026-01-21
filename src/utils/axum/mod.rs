@@ -9,48 +9,61 @@ pub mod embedded;
 pub mod extractors;
 pub mod sse;
 
+use std::backtrace::{Backtrace, BacktraceStatus};
+
 use axum::Json;
 use axum::http::StatusCode;
-use log::error;
+use log::{error, info};
+use uuid::Uuid;
 
-use crate::utils::apierror::ApiError;
+use crate::utils::apierror::{ApiError, AsStatusCode, ResponseError};
 
 /// Defines an API response
-pub type ApiResult<T> = Result<(StatusCode, Json<T>), (StatusCode, Json<ApiError>)>;
+pub type ApiResult<T> = Result<(StatusCode, Json<T>), (StatusCode, Json<ResponseError>)>;
 
 /// Produces an error response
-///
-/// # Panics
-///
-/// Panic when the HTTP code is not a correct status code
-pub fn response_error_http(http: u16, error: ApiError) -> (StatusCode, Json<ApiError>) {
-    if http == 500 {
+pub fn response_error_http(http: StatusCode, error: ApiError) -> (StatusCode, Json<ResponseError>) {
+    let uuid = Uuid::new_v4();
+    if http == StatusCode::INTERNAL_SERVER_ERROR {
         // log internal errors
-        error!("{error}");
+        error!("{uuid} {error:?}");
         if let Some(backtrace) = &error.backtrace {
             error!("{backtrace}");
         }
+    } else {
+        info!("{uuid} {error:?}");
     }
-    (StatusCode::from_u16(http).unwrap(), Json(error))
+    let body = Json(ResponseError::new(uuid, error.message, error.details));
+    (http, body)
 }
 
 /// Produces an error response
-pub fn response_error(error: ApiError) -> (StatusCode, Json<ApiError>) {
+pub fn response_error(error: ApiError) -> (StatusCode, Json<ResponseError>) {
     response_error_http(error.http, error)
 }
 
-/// Produces an OK response
-///
-/// # Panics
-///
-/// Panic when the HTTP code is not a correct status code
-pub fn response_ok_http<T>(http: u16, data: T) -> (StatusCode, Json<T>) {
-    (StatusCode::from_u16(http).unwrap(), Json(data))
+/// Produces an error response
+pub fn into_response_error(error: impl AsStatusCode + Send + Sync + 'static) -> (StatusCode, Json<ResponseError>) {
+    let status_code = error.status_code();
+    let error = anyhow::Error::from(error);
+    let uuid = Uuid::new_v4();
+    if status_code == StatusCode::INTERNAL_SERVER_ERROR {
+        // log internal errors
+        error!("{uuid} {error:?}");
+        let backtrace = Backtrace::capture();
+        if backtrace.status() == BacktraceStatus::Captured {
+            error!("{backtrace}");
+        }
+    } else {
+        info!("{uuid} {error:?}");
+    }
+    let body = Json(ResponseError::new(uuid, error.to_string(), None));
+    (status_code, body)
 }
 
 /// Produces an OK response
-pub fn response_ok<T>(data: T) -> (StatusCode, Json<T>) {
-    response_ok_http(200, data)
+pub const fn response_ok<T>(data: T) -> (StatusCode, Json<T>) {
+    (StatusCode::OK, Json(data))
 }
 
 /// Maps a service result to a web api result

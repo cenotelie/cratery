@@ -9,6 +9,7 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 use chrono::NaiveDateTime;
+use futures::future::BoxFuture;
 use semver::Version;
 use tokio::sync::mpsc::Sender;
 
@@ -18,33 +19,36 @@ use crate::model::deps::DepsAnalysis;
 use crate::model::docs::{DocGenEvent, DocGenJob, DocGenJobSpec, DocGenJobState, DocGenTrigger};
 use crate::model::osv::SimpleAdvisory;
 use crate::model::worker::WorkersManager;
-use crate::services::ServiceProvider;
+use crate::services::database::{DbReadError, DbWriteError};
 use crate::services::deps::DepsChecker;
 use crate::services::docs::DocsGenerator;
 use crate::services::emails::EmailSender;
-use crate::services::index::Index;
+use crate::services::index::{GitIndexError, Index, IndexError};
 use crate::services::rustsec::RustSecChecker;
 use crate::services::storage::Storage;
+use crate::services::{ConfigurationError, ServiceProvider};
 use crate::utils::FaillibleFuture;
-use crate::utils::apierror::ApiError;
 use crate::utils::db::RwSqlitePool;
 use crate::utils::token::generate_token;
 
 /// A mocking service
 pub struct MockService;
 
-fn resolved_default<T: Default + Send>() -> FaillibleFuture<'static, T> {
+fn resolved_default<T: Default + Send, E>() -> BoxFuture<'static, Result<T, E>> {
     Box::pin(async { Ok(T::default()) })
 }
 
 impl ServiceProvider for MockService {
     /// Gets the configuration
-    async fn get_configuration() -> Result<Configuration, ApiError> {
+    async fn get_configuration() -> Result<Configuration, ConfigurationError> {
         let mut temp_dir = temp_dir();
         temp_dir.push(format!("cratery-test-{}", generate_token(16)));
-        tokio::fs::create_dir_all(&temp_dir).await?;
+        let data_dir = temp_dir.to_str().unwrap().to_string();
+        tokio::fs::create_dir_all(&temp_dir)
+            .await
+            .map_err(|source| ConfigurationError::CreateTempDir { source, path: temp_dir })?;
         Ok(Configuration {
-            data_dir: temp_dir.to_str().unwrap().to_string(),
+            data_dir,
             ..Default::default()
         })
     }
@@ -53,7 +57,7 @@ impl ServiceProvider for MockService {
         Arc::new(Self)
     }
 
-    async fn get_index(_config: &Configuration, _expect_empty: bool) -> Result<Arc<dyn Index + Send + Sync>, ApiError> {
+    async fn get_index(_config: &Configuration, _expect_empty: bool) -> Result<Arc<dyn Index + Send + Sync>, GitIndexError> {
         Ok(Arc::new(Self))
     }
 
@@ -100,11 +104,11 @@ impl Index for MockService {
         resolved_default()
     }
 
-    fn remove_crate_version<'a>(&'a self, _package: &'a str, _version: &'a str) -> FaillibleFuture<'a, ()> {
+    fn remove_crate_version<'a>(&'a self, _package: &'a str, _version: &'a str) -> BoxFuture<'a, Result<(), IndexError>> {
         resolved_default()
     }
 
-    fn get_crate_data<'a>(&'a self, _package: &'a str) -> FaillibleFuture<'a, Vec<IndexCrateMetadata>> {
+    fn get_crate_data<'a>(&'a self, _package: &'a str) -> BoxFuture<'a, Result<Vec<IndexCrateMetadata>, IndexError>> {
         resolved_default()
     }
 }
@@ -125,7 +129,7 @@ impl DepsChecker for MockService {
 }
 
 impl DocsGenerator for MockService {
-    fn get_jobs(&self) -> FaillibleFuture<'_, Vec<DocGenJob>> {
+    fn get_jobs(&self) -> BoxFuture<'_, Result<Vec<DocGenJob>, DbReadError>> {
         resolved_default()
     }
 
@@ -133,7 +137,11 @@ impl DocsGenerator for MockService {
         resolved_default()
     }
 
-    fn queue<'a>(&'a self, spec: &'a DocGenJobSpec, trigger: &'a DocGenTrigger) -> FaillibleFuture<'a, DocGenJob> {
+    fn queue<'a>(
+        &'a self,
+        spec: &'a DocGenJobSpec,
+        trigger: &'a DocGenTrigger,
+    ) -> BoxFuture<'a, Result<DocGenJob, DbWriteError>> {
         Box::pin(async {
             Ok(DocGenJob {
                 id: -1,

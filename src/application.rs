@@ -8,7 +8,11 @@ use std::future::Future;
 use std::ops::Deref;
 use std::sync::Arc;
 
+use axum::http::StatusCode;
 use log::{error, info};
+use smol_str::SmolStr;
+use thiserror::Error;
+use tokio::io;
 use tokio::sync::mpsc::{Receiver, Sender, channel};
 
 use crate::model::auth::{Authentication, RegistryUserToken, RegistryUserTokenWithSecret};
@@ -23,16 +27,50 @@ use crate::model::stats::{DownloadStats, GlobalStats};
 use crate::model::worker::{WorkerEvent, WorkerPublicData, WorkersManager};
 use crate::model::{AppEvent, CrateVersion, RegistryInformation};
 use crate::services::ServiceProvider;
-use crate::services::database::{Database, db_transaction_read, db_transaction_write};
+use crate::services::database::admin::TokensError;
+use crate::services::database::packages::{CratesError, DepsError};
+use crate::services::database::stats::CratesStatsError;
+use crate::services::database::users::{UpdateUserError, UserError};
+use crate::services::database::{
+    Database, DbReadError, DbWriteError, IsCrateManagerError, db_transaction_read, db_transaction_write,
+};
 use crate::services::deps::DepsChecker;
 use crate::services::docs::DocsGenerator;
 use crate::services::emails::EmailSender;
-use crate::services::index::Index;
+use crate::services::index::{GitIndexError, Index, IndexError};
 use crate::services::rustsec::RustSecChecker;
 use crate::services::storage::Storage;
-use crate::utils::apierror::{ApiError, error_forbidden, error_invalid_request, error_unauthorized, specialize};
+use crate::utils::apierror::{ApiError, AsStatusCode, error_forbidden};
 use crate::utils::axum::auth::{AuthData, Token};
-use crate::utils::db::RwSqlitePool;
+use crate::utils::db::{PoolCreateError, RwSqlitePool};
+
+#[derive(Debug, Error)]
+pub enum LaunchError {
+    #[error("failed to create new db `{db_filename}` with default content")]
+    CreateNewDb {
+        #[source]
+        source: io::Error,
+        db_filename: String,
+    },
+
+    #[error("failed to initialize connection to DB")]
+    CreateSqlitePool(#[source] PoolCreateError),
+
+    #[error("failed to migrate database")]
+    DbMigrationWrite(#[source] DbWriteError),
+
+    #[error("failed to read Db")]
+    DbRead(#[source] DbReadError),
+
+    #[error("failed to get `index service`")]
+    GetIndex(#[source] GitIndexError),
+
+    #[error("failed to get JobSpecs for undocumented packages")]
+    JobSpecs(#[source] DbWriteError),
+
+    #[error("failed to launch doc generator for undocumented packages")]
+    DocGenerator(#[source] DbWriteError),
+}
 
 /// The state of this application for axum
 pub struct Application {
@@ -65,7 +103,7 @@ const DB_EMPTY: &[u8] = include_bytes!("empty.db");
 
 impl Application {
     /// Creates a new application
-    pub async fn launch<P: ServiceProvider>(configuration: Configuration) -> Result<Arc<Self>, ApiError> {
+    pub async fn launch<P: ServiceProvider>(configuration: Configuration) -> Result<Arc<Self>, LaunchError> {
         // load configuration
         let configuration = Arc::new(configuration);
 
@@ -74,21 +112,27 @@ impl Application {
         if tokio::fs::metadata(&db_filename).await.is_err() {
             // write the file
             info!("db file is inaccessible => attempt to create an empty one");
-            tokio::fs::write(&db_filename, DB_EMPTY).await?;
+            tokio::fs::write(&db_filename, DB_EMPTY)
+                .await
+                .map_err(|source| LaunchError::CreateNewDb { source, db_filename })?;
         }
-        let service_db_pool = RwSqlitePool::new(&configuration.get_database_url())?;
+        let service_db_pool = RwSqlitePool::new(&configuration.get_database_url()).map_err(LaunchError::CreateSqlitePool)?;
         // migrate the database, if appropriate
         db_transaction_write(&service_db_pool, "migrate_to_last", |database| async move {
             crate::migrations::migrate_to_last(database.transaction).await
         })
-        .await?;
+        .await
+        .map_err(LaunchError::DbMigrationWrite)?;
 
         let worker_nodes = WorkersManager::default();
 
-        let db_is_empty =
-            db_transaction_read(&service_db_pool, |database| async move { database.get_is_empty().await }).await?;
+        let db_is_empty = db_transaction_read(&service_db_pool, |database| async move { database.get_is_empty().await })
+            .await
+            .map_err(LaunchError::DbRead)?;
         let service_storage = P::get_storage(&configuration.deref().clone());
-        let service_index = P::get_index(&configuration, db_is_empty).await?;
+        let service_index = P::get_index(&configuration, db_is_empty)
+            .await
+            .map_err(LaunchError::GetIndex)?;
         let service_rustsec = P::get_rustsec(&configuration);
         let service_deps_checker = P::get_deps_checker(configuration.clone(), service_index.clone(), service_rustsec.clone());
         let service_email_sender = P::get_email_sender(configuration.clone());
@@ -112,12 +156,16 @@ impl Application {
                         .set_crate_documentation(&job.package, &job.version, &job.target, false, false)
                         .await?;
                 }
-                Ok::<_, ApiError>(jobs)
+                Ok::<_, sqlx::Error>(jobs)
             },
         )
-        .await?;
+        .await
+        .map_err(LaunchError::JobSpecs)?;
         for spec in &job_specs {
-            service_docs_generator.queue(spec, &DocGenTrigger::MissingOnLaunch).await?;
+            service_docs_generator
+                .queue(spec, &DocGenTrigger::MissingOnLaunch)
+                .await
+                .map_err(LaunchError::DocGenerator)?;
         }
 
         // deps worker
@@ -174,30 +222,49 @@ impl Application {
             if count == 0 {
                 break;
             }
-            if let Err(e) = self.events_handler_handle(&events).await {
-                error!("{e}");
-                if let Some(backtrace) = e.backtrace {
-                    error!("{backtrace}");
-                }
+            if let Err(err) = self.events_handler_handle(&events).await {
+                error!("events_handler - {:#?}", anyhow::Error::from(err));
             }
             events.clear();
         }
     }
 
     /// Handles a set of events
-    async fn events_handler_handle(&self, events: &[AppEvent]) -> Result<(), ApiError> {
+    async fn events_handler_handle(&self, events: &[AppEvent]) -> Result<(), DbWriteError> {
+        #[derive(Debug, Error)]
+        enum EventHandlerError {
+            #[error("failed to update token last usage")]
+            UpdateTokenUsage(#[source] sqlx::Error),
+            #[error("failed to increment crate version download count")]
+            CrateDownload(#[source] DepsError),
+        }
+        impl AsStatusCode for EventHandlerError {
+            fn status_code(&self) -> StatusCode {
+                match self {
+                    Self::UpdateTokenUsage(_) => StatusCode::INTERNAL_SERVER_ERROR,
+                    Self::CrateDownload(deps_error) => deps_error.status_code(),
+                }
+            }
+        }
+
         self.db_transaction_write("events_handler_handle", |app| async move {
             for event in events {
                 match event {
                     AppEvent::TokenUse(usage) => {
-                        app.database.update_token_last_usage(usage).await?;
+                        app.database
+                            .update_token_last_usage(usage)
+                            .await
+                            .map_err(EventHandlerError::UpdateTokenUsage)?;
                     }
                     AppEvent::CrateDownload(CrateVersion { package: name, version }) => {
-                        app.database.increment_crate_version_dl_count(name, version).await?;
+                        app.database
+                            .increment_crate_version_dl_count(name, version)
+                            .await
+                            .map_err(EventHandlerError::CrateDownload)?;
                     }
                 }
             }
-            Ok::<_, ApiError>(())
+            Ok::<_, EventHandlerError>(())
         })
         .await
     }
@@ -209,11 +276,11 @@ impl Application {
     /// # Errors
     ///
     /// Returns an instance of the `E` type argument
-    pub(crate) async fn db_transaction_read<'s, F, FUT, T, E>(&'s self, workload: F) -> Result<T, E>
+    pub(crate) async fn db_transaction_read<'s, F, FUT, T, E>(&'s self, workload: F) -> Result<T, DbReadError>
     where
         F: FnOnce(ApplicationWithTransaction<'s>) -> FUT,
         FUT: Future<Output = Result<T, E>>,
-        E: From<sqlx::Error>,
+        E: AsStatusCode + std::marker::Send + std::marker::Sync + 'static,
     {
         db_transaction_read(&self.service_db_pool, |database| async move {
             workload(ApplicationWithTransaction {
@@ -232,11 +299,15 @@ impl Application {
     /// # Errors
     ///
     /// Returns an instance of the `E` type argument
-    pub(crate) async fn db_transaction_write<'s, F, FUT, T, E>(&'s self, operation: &'static str, workload: F) -> Result<T, E>
+    pub(crate) async fn db_transaction_write<'s, F, FUT, T, E>(
+        &'s self,
+        operation: &'static str,
+        workload: F,
+    ) -> Result<T, DbWriteError>
     where
         F: FnOnce(ApplicationWithTransaction<'s>) -> FUT,
         FUT: Future<Output = Result<T, E>>,
-        E: From<sqlx::Error>,
+        E: AsStatusCode + std::marker::Send + std::marker::Sync + 'static,
     {
         db_transaction_write(&self.service_db_pool, operation, |database| async move {
             workload(ApplicationWithTransaction {
@@ -252,6 +323,7 @@ impl Application {
     pub async fn authenticate(&self, auth_data: &AuthData) -> Result<Authentication, ApiError> {
         self.db_transaction_read(|app| async move { app.authenticate(auth_data).await })
             .await
+            .map_err(ApiError::from)
     }
 
     /// Gets the registry configuration
@@ -290,13 +362,20 @@ impl Application {
     pub async fn get_current_user(&self, auth_data: &AuthData) -> Result<RegistryUser, ApiError> {
         self.db_transaction_read(|app| async move {
             let authentication = app.authenticate(auth_data).await?;
-            app.database.get_user_profile(authentication.uid()?).await
+            let uid = authentication
+                .uid()
+                .map_err(|source| ApplicationError::ExtractUid { source })?;
+            app.database
+                .get_user_profile(uid)
+                .await
+                .map_err(|source| ApplicationError::GetUserProfile { source, uid })
         })
         .await
+        .map_err(ApiError::from)
     }
 
     /// Attempts to login using an OAuth code
-    pub async fn login_with_oauth_code(&self, code: &str) -> Result<RegistryUser, ApiError> {
+    pub async fn login_with_oauth_code(&self, code: &str) -> Result<RegistryUser, DbWriteError> {
         self.db_transaction_write("login_with_oauth_code", |app| async move {
             app.database.login_with_oauth_code(&self.configuration, code).await
         })
@@ -308,9 +387,13 @@ impl Application {
         self.db_transaction_read(|app| async move {
             let authentication = app.authenticate(auth_data).await?;
             app.check_can_admin_registry(&authentication).await?;
-            app.database.get_users().await
+            app.database
+                .get_users()
+                .await
+                .map_err(|source| ApplicationError::GetUsers { source })
         })
         .await
+        .map_err(ApiError::from)
     }
 
     /// Updates the information of a user
@@ -326,9 +409,17 @@ impl Application {
                 app.check_can_admin_registry(&authentication).await?;
                 true
             };
-            app.database.update_user(principal_uid, target, can_admin).await
+            app.database
+                .update_user(principal_uid, target, can_admin)
+                .await
+                .map_err(|source| ApplicationError::UpdateUser {
+                    source,
+                    target: target.name.as_str().into(),
+                    can_admin,
+                })
         })
         .await
+        .map_err(ApiError::from)
     }
 
     /// Attempts to deactivate a user
@@ -336,9 +427,16 @@ impl Application {
         self.db_transaction_write("deactivate_user", |app| async move {
             let authentication = app.authenticate(auth_data).await?;
             let principal_uid = app.check_can_admin_registry(&authentication).await?;
-            app.database.deactivate_user(principal_uid, target).await
+            app.database
+                .deactivate_user(principal_uid, target)
+                .await
+                .map_err(|source| ApplicationError::DeactivateUser {
+                    source,
+                    target: target.into(),
+                })
         })
         .await
+        .map_err(ApiError::from)
     }
 
     /// Attempts to re-activate a user
@@ -346,9 +444,16 @@ impl Application {
         self.db_transaction_write("reactivate_user", |app| async move {
             let authentication = app.authenticate(auth_data).await?;
             app.check_can_admin_registry(&authentication).await?;
-            app.database.reactivate_user(target).await
+            app.database
+                .reactivate_user(target)
+                .await
+                .map_err(|source| ApplicationError::ReactivateUser {
+                    source,
+                    target: target.into(),
+                })
         })
         .await
+        .map_err(ApiError::from)
     }
 
     /// Attempts to delete a user
@@ -356,9 +461,16 @@ impl Application {
         self.db_transaction_write("delete_user", |app| async move {
             let authentication = app.authenticate(auth_data).await?;
             let principal_uid = app.check_can_admin_registry(&authentication).await?;
-            app.database.delete_user(principal_uid, target).await
+            app.database
+                .delete_user(principal_uid, target)
+                .await
+                .map_err(|source| ApplicationError::DeleteUser {
+                    source,
+                    target: target.into(),
+                })
         })
         .await
+        .map_err(ApiError::from)
     }
 
     /// Gets the tokens for a user
@@ -366,9 +478,13 @@ impl Application {
         self.db_transaction_read(|app| async move {
             let authentication = app.authenticate(auth_data).await?;
             authentication.check_can_admin()?;
-            app.database.get_tokens(authentication.uid()?).await
+            app.database
+                .get_tokens(authentication.uid()?)
+                .await
+                .map_err(|source| ApplicationError::GetTokens { source })
         })
         .await
+        .map_err(ApiError::from)
     }
 
     /// Creates a token for the current user
@@ -385,8 +501,13 @@ impl Application {
             app.database
                 .create_token(authentication.uid()?, name, can_write, can_admin)
                 .await
+                .map_err(|source| ApplicationError::CreateToken {
+                    source,
+                    name: name.into(),
+                })
         })
         .await
+        .map_err(ApiError::from)
     }
 
     /// Revoke a previous token
@@ -394,9 +515,13 @@ impl Application {
         self.db_transaction_write("revoke_token", |app| async move {
             let authentication = app.authenticate(auth_data).await?;
             authentication.check_can_admin()?;
-            app.database.revoke_token(authentication.uid()?, token_id).await
+            app.database
+                .revoke_token(authentication.uid()?, token_id)
+                .await
+                .map_err(|source| ApplicationError::RevokeToken { source, token_id })
         })
         .await
+        .map_err(ApiError::from)
     }
 
     /// Gets the global tokens for the registry, usually for CI purposes
@@ -404,9 +529,13 @@ impl Application {
         self.db_transaction_read(|app| async move {
             let authentication = app.authenticate(auth_data).await?;
             app.check_can_admin_registry(&authentication).await?;
-            app.database.get_global_tokens().await
+            app.database
+                .get_global_tokens()
+                .await
+                .map_err(|source| ApplicationError::GetGlobalTokens { source })
         })
         .await
+        .map_err(ApiError::from)
     }
 
     /// Creates a global token for the registry
@@ -414,9 +543,16 @@ impl Application {
         self.db_transaction_write("create_global_token", |app| async move {
             let authentication = app.authenticate(auth_data).await?;
             app.check_can_admin_registry(&authentication).await?;
-            app.database.create_global_token(name).await
+            app.database
+                .create_global_token(name)
+                .await
+                .map_err(|source| ApplicationError::CreateGlobalToken {
+                    source,
+                    name: name.into(),
+                })
         })
         .await
+        .map_err(ApiError::from)
     }
 
     /// Revokes a global token for the registry
@@ -424,9 +560,13 @@ impl Application {
         self.db_transaction_write("revoke_global_token", |app| async move {
             let authentication = app.authenticate(auth_data).await?;
             app.check_can_admin_registry(&authentication).await?;
-            app.database.revoke_global_token(token_id).await
+            app.database
+                .revoke_global_token(token_id)
+                .await
+                .map_err(|source| ApplicationError::RevokeGlobalToken { source, token_id })
         })
         .await
+        .map_err(ApiError::from)
     }
 
     /// Publish a crate
@@ -440,10 +580,28 @@ impl Application {
             self.db_transaction_write("publish_crate_version", |app| async move {
                 let authentication = app.authenticate(auth_data).await?;
                 authentication.check_can_write()?;
-                let user = app.database.get_user_profile(authentication.uid()?).await?;
+                let uid = authentication.uid()?;
+                let user = app
+                    .database
+                    .get_user_profile(uid)
+                    .await
+                    .map_err(|source| ApplicationError::GetUserProfile { source, uid })?;
                 // publish
-                let result = app.database.publish_crate_version(user.id, package).await?;
-                let mut targets = app.database.get_crate_targets(&package.metadata.name).await?;
+                let result = app.database.publish_crate_version(user.id, package).await.map_err(|source| {
+                    ApplicationError::PublishVersion {
+                        source,
+                        package: package.metadata.name.as_str().into(),
+                        user_login: user.login.as_str().into(),
+                    }
+                })?;
+                let mut targets = app
+                    .database
+                    .get_crate_targets(&package.metadata.name)
+                    .await
+                    .map_err(|source| ApplicationError::GetCrateTargets {
+                        source,
+                        package: package.metadata.name.as_str().into(),
+                    })?;
                 if targets.is_empty() {
                     targets.push(CrateInfoTarget {
                         target: self.configuration.self_toolchain_host.clone(),
@@ -453,10 +611,23 @@ impl Application {
                 for info in &targets {
                     app.database
                         .set_crate_documentation(&package.metadata.name, &package.metadata.vers, &info.target, false, false)
-                        .await?;
+                        .await
+                        .map_err(|source| ApplicationError::SetCrateDocumentation {
+                            source,
+                            package: package.metadata.name.as_str().into(),
+                            version: package.metadata.vers.as_str().into(),
+                            target: info.target.as_str().into(),
+                        })?;
                 }
-                let capabilities = app.database.get_crate_required_capabilities(&package.metadata.name).await?;
-                Ok::<_, ApiError>((user, result, targets, capabilities))
+                let capabilities = app
+                    .database
+                    .get_crate_required_capabilities(&package.metadata.name)
+                    .await
+                    .map_err(|source| ApplicationError::GetRequireCapabilities {
+                        source,
+                        package: package.metadata.name.as_str().into(),
+                    })?;
+                Ok::<_, ApplicationError>((user, result, targets, capabilities))
             })
             .await
         }?;
@@ -485,9 +656,21 @@ impl Application {
         let info = self
             .db_transaction_read(|app| async move {
                 let _authentication = app.authenticate(auth_data).await?;
+                let versions =
+                    self.service_index
+                        .get_crate_data(package)
+                        .await
+                        .map_err(|source| ApplicationError::GetCrateData {
+                            source,
+                            package: package.into(),
+                        })?;
                 app.database
-                    .get_crate_info(package, self.service_index.get_crate_data(package).await?)
+                    .get_crate_info(package, versions)
                     .await
+                    .map_err(|source| ApplicationError::GetCrateInfo {
+                        source,
+                        package: package.into(),
+                    })
             })
             .await?;
         let metadata = self
@@ -502,8 +685,13 @@ impl Application {
         let version = self
             .db_transaction_read(|app| async move {
                 let _authentication = app.authenticate(auth_data).await?;
-                let version = app.database.get_crate_last_version(package).await?;
-                Ok::<_, ApiError>(version)
+                app.database
+                    .get_crate_last_version(package)
+                    .await
+                    .map_err(|source| ApplicationError::GetCrateLastVersion {
+                        source,
+                        package: package.into(),
+                    })
             })
             .await?;
         let readme = self.service_storage.download_crate_readme(package, &version).await?;
@@ -524,8 +712,14 @@ impl Application {
             if !public_read {
                 let _authentication = app.authenticate(auth_data).await?;
             }
-            app.database.check_crate_exists(package, version).await?;
-            Ok::<_, ApiError>(())
+            app.database
+                .check_crate_exists(package, version)
+                .await
+                .map_err(|source| ApplicationError::CheckCrateExists {
+                    source,
+                    package: package.into(),
+                    version: version.into(),
+                })
         })
         .await?;
         let content = self.service_storage.download_crate(package, version).await?;
@@ -542,12 +736,30 @@ impl Application {
     pub async fn remove_crate_version(&self, auth_data: &AuthData, package: &str, version: &str) -> Result<(), ApiError> {
         self.db_transaction_write("remove_crate_version", |app| async move {
             let authentication = app.authenticate(auth_data).await?;
-            app.check_can_manage_crate(&authentication, package).await?;
-            app.database.remove_crate_version(package, version).await?;
-            self.service_index.remove_crate_version(package, version).await?;
-            Ok(())
+            app.check_can_manage_crate(&authentication, package)
+                .await
+                .map_err(|source| ApplicationError::CanManageCrate {
+                    source,
+                    package: package.into(),
+                })?;
+            app.database.remove_crate_version(package, version).await.map_err(|source| {
+                ApplicationError::RemoveVersionFromDatabase {
+                    source,
+                    package: package.into(),
+                    version: version.into(),
+                }
+            })?;
+            self.service_index
+                .remove_crate_version(package, version)
+                .await
+                .map_err(|source| ApplicationError::RemoveVersionFromIndex {
+                    source,
+                    package: package.into(),
+                    version: version.into(),
+                })
         })
         .await
+        .map_err(ApiError::from)
     }
 
     /// Yank a crate version
@@ -559,10 +771,23 @@ impl Application {
     ) -> Result<YesNoResult, ApiError> {
         self.db_transaction_write("yank_crate_version", |app| async move {
             let authentication = app.authenticate(auth_data).await?;
-            app.check_can_manage_crate(&authentication, package).await?;
-            app.database.yank_crate_version(package, version).await
+            app.check_can_manage_crate(&authentication, package)
+                .await
+                .map_err(|source| ApplicationError::CanManageCrate {
+                    source,
+                    package: package.into(),
+                })?;
+            app.database
+                .yank_crate_version(package, version)
+                .await
+                .map_err(|source| ApplicationError::YankVersion {
+                    source,
+                    package: package.into(),
+                    version: version.into(),
+                })
         })
         .await
+        .map_err(ApiError::from)
     }
 
     /// Unyank a crate version
@@ -574,10 +799,23 @@ impl Application {
     ) -> Result<YesNoResult, ApiError> {
         self.db_transaction_write("unyank_crate_version", |app| async move {
             let authentication = app.authenticate(auth_data).await?;
-            app.check_can_manage_crate(&authentication, package).await?;
-            app.database.unyank_crate_version(package, version).await
+            app.check_can_manage_crate(&authentication, package)
+                .await
+                .map_err(|source| ApplicationError::CanManageCrate {
+                    source,
+                    package: package.into(),
+                })?;
+            app.database
+                .unyank_crate_version(package, version)
+                .await
+                .map_err(|source| ApplicationError::UnyankVersion {
+                    source,
+                    package: package.into(),
+                    version: version.into(),
+                })
         })
         .await
+        .map_err(ApiError::from)
     }
 
     /// Gets the packages that need documentation generation
@@ -587,14 +825,16 @@ impl Application {
             app.database
                 .get_undocumented_crates(&self.configuration.self_toolchain_host)
                 .await
+                .map_err(|source| ApplicationError::GetUndocumentedCrates { source })
         })
         .await
+        .map_err(ApiError::from)
     }
 
     /// Gets the documentation jobs
     pub async fn get_doc_gen_jobs(&self, auth_data: &AuthData) -> Result<Vec<DocGenJob>, ApiError> {
         let _authentication = self.authenticate(auth_data).await?;
-        self.service_docs_generator.get_jobs().await
+        self.service_docs_generator.get_jobs().await.map_err(ApiError::from)
     }
 
     /// Gets the log for a documentation generation job
@@ -621,14 +861,38 @@ impl Application {
         let (user, targets, capabilities) = self
             .db_transaction_write("regen_crate_version_doc", |app| async move {
                 let authentication = app.authenticate(auth_data).await?;
-                let principal_uid = app.check_can_manage_crate(&authentication, package).await?;
-                let user = app.database.get_user_profile(principal_uid).await?;
+                let principal_uid = app.check_can_manage_crate(&authentication, package).await.map_err(|source| {
+                    ApplicationError::CanManageCrate {
+                        source,
+                        package: package.into(),
+                    }
+                })?;
+                let user =
+                    app.database
+                        .get_user_profile(principal_uid)
+                        .await
+                        .map_err(|source| ApplicationError::GetUserProfile {
+                            source,
+                            uid: principal_uid,
+                        })?;
                 let targets = app
                     .database
                     .regen_crate_version_doc(package, version, &self.configuration.self_toolchain_host)
-                    .await?;
-                let capabilities = app.database.get_crate_required_capabilities(package).await?;
-                Ok::<_, ApiError>((user, targets, capabilities))
+                    .await
+                    .map_err(|source| ApplicationError::RegenVersionDoc {
+                        source,
+                        package: package.into(),
+                        version: version.into(),
+                    })?;
+                let capabilities = app
+                    .database
+                    .get_crate_required_capabilities(package)
+                    .await
+                    .map_err(|source| ApplicationError::GetRequireCapabilities {
+                        source,
+                        package: package.into(),
+                    })?;
+                Ok::<_, ApplicationError>((user, targets, capabilities))
             })
             .await?;
 
@@ -656,18 +920,29 @@ impl Application {
     pub async fn get_crates_outdated_heads(&self, auth_data: &AuthData) -> Result<Vec<CrateVersion>, ApiError> {
         self.db_transaction_read(|app| async move {
             let _authentication = app.authenticate(auth_data).await?;
-            app.database.get_crates_outdated_heads().await
+            app.database
+                .get_crates_outdated_heads()
+                .await
+                .map_err(ApplicationError::GetOutdatedHeads)
         })
         .await
+        .map_err(ApiError::from)
     }
 
     /// Gets the download statistics for a crate
     pub async fn get_crate_dl_stats(&self, auth_data: &AuthData, package: &str) -> Result<DownloadStats, ApiError> {
         self.db_transaction_read(|app| async move {
             let _authentication = app.authenticate(auth_data).await?;
-            app.database.get_crate_dl_stats(package).await
+            app.database
+                .get_crate_dl_stats(package)
+                .await
+                .map_err(|source| ApplicationError::GetDlStats {
+                    source,
+                    package: package.into(),
+                })
         })
         .await
+        .map_err(ApiError::from)
     }
 
     /// Gets the list of owners for a package
@@ -677,9 +952,16 @@ impl Application {
             if !public_read {
                 let _authentication = app.authenticate(auth_data).await?;
             }
-            app.database.get_crate_owners(package).await
+            app.database
+                .get_crate_owners(package)
+                .await
+                .map_err(|source| ApplicationError::GetOwners {
+                    source,
+                    package: package.into(),
+                })
         })
         .await
+        .map_err(ApiError::from)
     }
 
     /// Add owners to a package
@@ -691,10 +973,22 @@ impl Application {
     ) -> Result<YesNoMsgResult, ApiError> {
         self.db_transaction_write("add_crate_owners", |app| async move {
             let authentication = app.authenticate(auth_data).await?;
-            app.check_can_manage_crate(&authentication, package).await?;
-            app.database.add_crate_owners(package, new_users).await
+            app.check_can_manage_crate(&authentication, package)
+                .await
+                .map_err(|source| ApplicationError::CanManageCrate {
+                    source,
+                    package: package.into(),
+                })?;
+            app.database
+                .add_crate_owners(package, new_users)
+                .await
+                .map_err(|source| ApplicationError::AddOwners {
+                    source,
+                    package: package.into(),
+                })
         })
         .await
+        .map_err(ApiError::from)
     }
 
     /// Remove owners from a package
@@ -706,19 +1000,38 @@ impl Application {
     ) -> Result<YesNoResult, ApiError> {
         self.db_transaction_write("remove_crate_owners", |app| async move {
             let authentication = app.authenticate(auth_data).await?;
-            app.check_can_manage_crate(&authentication, package).await?;
-            app.database.remove_crate_owners(package, old_users).await
+            app.check_can_manage_crate(&authentication, package)
+                .await
+                .map_err(|source| ApplicationError::CanManageCrate {
+                    source,
+                    package: package.into(),
+                })?;
+            app.database
+                .remove_crate_owners(package, old_users)
+                .await
+                .map_err(|source| ApplicationError::RemoveOwners {
+                    source,
+                    package: package.into(),
+                })
         })
         .await
+        .map_err(ApiError::from)
     }
 
     /// Gets the targets for a crate
     pub async fn get_crate_targets(&self, auth_data: &AuthData, package: &str) -> Result<Vec<CrateInfoTarget>, ApiError> {
         self.db_transaction_read(|app| async move {
             let _authentication = app.authenticate(auth_data).await?;
-            app.database.get_crate_targets(package).await
+            app.database
+                .get_crate_targets(package)
+                .await
+                .map_err(|source| ApplicationError::GetCrateTargets {
+                    source,
+                    package: package.into(),
+                })
         })
         .await
+        .map_err(ApiError::from)
     }
 
     /// Sets the targets for a crate
@@ -731,23 +1044,45 @@ impl Application {
         let (user, jobs) = self
             .db_transaction_write("set_crate_targets", |app| async move {
                 let authentication = app.authenticate(auth_data).await?;
-                let principal_uid = app.check_can_manage_crate(&authentication, package).await?;
-                let user = app.database.get_user_profile(principal_uid).await?;
+                let principal_uid = app.check_can_manage_crate(&authentication, package).await.map_err(|source| {
+                    ApplicationError::CanManageCrate {
+                        source,
+                        package: package.into(),
+                    }
+                })?;
+                let user =
+                    app.database
+                        .get_user_profile(principal_uid)
+                        .await
+                        .map_err(|source| ApplicationError::GetUserProfile {
+                            source,
+                            uid: principal_uid,
+                        })?;
                 for info in targets {
                     if !self.configuration.self_known_targets.contains(&info.target) {
-                        return Err(specialize(
-                            error_invalid_request(),
-                            format!("Unknown target: {}", info.target),
-                        ));
+                        return Err(ApplicationError::UnknownTarget {
+                            target: info.target.clone(),
+                        });
                     }
                 }
-                let jobs = app.database.set_crate_targets(package, targets).await?;
+                let jobs = app.database.set_crate_targets(package, targets).await.map_err(|source| {
+                    ApplicationError::SetCrateTarget {
+                        source,
+                        package: package.into(),
+                    }
+                })?;
                 for job in &jobs {
                     app.database
                         .set_crate_documentation(&job.package, &job.version, &job.target, false, false)
-                        .await?;
+                        .await
+                        .map_err(|source| ApplicationError::SetCrateDocumentation {
+                            source,
+                            package: job.package.as_str().into(),
+                            version: job.version.as_str().into(),
+                            target: job.target.as_str().into(),
+                        })?;
                 }
-                Ok::<_, ApiError>((user, jobs))
+                Ok::<_, ApplicationError>((user, jobs))
             })
             .await?;
         for job in jobs {
@@ -762,9 +1097,15 @@ impl Application {
     pub async fn get_crate_required_capabilities(&self, auth_data: &AuthData, package: &str) -> Result<Vec<String>, ApiError> {
         self.db_transaction_read(|app| async move {
             let _authentication = app.authenticate(auth_data).await?;
-            app.database.get_crate_required_capabilities(package).await
+            app.database.get_crate_required_capabilities(package).await.map_err(|source| {
+                ApplicationError::GetRequireCapabilities {
+                    source,
+                    package: package.into(),
+                }
+            })
         })
         .await
+        .map_err(ApiError::from)
     }
 
     /// Sets the required capabilities for a crate
@@ -776,9 +1117,20 @@ impl Application {
     ) -> Result<(), ApiError> {
         self.db_transaction_write("set_crate_required_capabilities", |app| async move {
             let authentication = app.authenticate(auth_data).await?;
-            let _ = app.check_can_manage_crate(&authentication, package).await?;
-            app.database.set_crate_required_capabilities(package, capabilities).await?;
-            Ok::<_, ApiError>(())
+            let _ = app.check_can_manage_crate(&authentication, package).await.map_err(|source| {
+                ApplicationError::CanManageCrate {
+                    source,
+                    package: package.into(),
+                }
+            })?;
+            app.database
+                .set_crate_required_capabilities(package, capabilities)
+                .await
+                .map_err(|source| ApplicationError::SetRequiredCapabilities {
+                    source,
+                    package: package.into(),
+                })?;
+            Ok::<_, ApplicationError>(())
         })
         .await?;
         Ok(())
@@ -788,29 +1140,59 @@ impl Application {
     pub async fn set_crate_deprecation(&self, auth_data: &AuthData, package: &str, deprecated: bool) -> Result<(), ApiError> {
         self.db_transaction_write("set_crate_deprecation", |app| async move {
             let authentication = app.authenticate(auth_data).await?;
-            app.check_can_manage_crate(&authentication, package).await?;
-            app.database.set_crate_deprecation(package, deprecated).await
+            app.check_can_manage_crate(&authentication, package)
+                .await
+                .map_err(|source| ApplicationError::CanManageCrate {
+                    source,
+                    package: package.into(),
+                })?;
+            app.database
+                .set_crate_deprecation(package, deprecated)
+                .await
+                .map_err(|source| ApplicationError::SetDeprecation {
+                    source,
+                    package: package.into(),
+                    deprecated,
+                })
         })
         .await
+        .map_err(ApiError::from)
     }
 
     /// Sets whether a crate can have versions completely removed
     pub async fn set_crate_can_remove(&self, auth_data: &AuthData, package: &str, can_remove: bool) -> Result<(), ApiError> {
         self.db_transaction_write("set_crate_can_remove", |app| async move {
             let authentication = app.authenticate(auth_data).await?;
-            app.check_can_manage_crate(&authentication, package).await?;
-            app.database.set_crate_can_remove(package, can_remove).await
+            app.check_can_manage_crate(&authentication, package)
+                .await
+                .map_err(|source| ApplicationError::CanManageCrate {
+                    source,
+                    package: package.into(),
+                })?;
+            app.database
+                .set_crate_can_remove(package, can_remove)
+                .await
+                .map_err(|source| ApplicationError::SetCanRemove {
+                    source,
+                    package: package.into(),
+                    can_remove,
+                })
         })
         .await
+        .map_err(ApiError::from)
     }
 
     /// Gets the global statistics for the registry
     pub async fn get_crates_stats(&self, auth_data: &AuthData) -> Result<GlobalStats, ApiError> {
         self.db_transaction_read(|app| async move {
             let _authentication = app.authenticate(auth_data).await?;
-            app.database.get_crates_stats().await
+            app.database
+                .get_crates_stats()
+                .await
+                .map_err(|source| ApplicationError::GetCratesStats { source })
         })
         .await
+        .map_err(ApiError::from)
     }
 
     /// Search for crates
@@ -826,9 +1208,16 @@ impl Application {
             if !public_read {
                 let _authentication = app.authenticate(auth_data).await?;
             }
-            app.database.search_crates(query, per_page, deprecated).await
+            app.database
+                .search_crates(query, per_page, deprecated)
+                .await
+                .map_err(|source| ApplicationError::SearchCrates {
+                    source,
+                    query: query.into(),
+                })
         })
         .await
+        .map_err(ApiError::from)
     }
 
     /// Checks the dependencies of a local crate
@@ -841,12 +1230,357 @@ impl Application {
         let targets = self
             .db_transaction_read(|app| async move {
                 let _authentication = app.authenticate(auth_data).await?;
-                app.database.check_crate_exists(package, version).await?;
-                app.database.get_crate_targets(package).await
+                app.database.check_crate_exists(package, version).await.map_err(|source| {
+                    ApplicationError::CheckCrateExists {
+                        source,
+                        package: package.into(),
+                        version: version.into(),
+                    }
+                })?;
+                app.database
+                    .get_crate_targets(package)
+                    .await
+                    .map_err(|source| ApplicationError::GetCrateTargets {
+                        source,
+                        package: package.into(),
+                    })
             })
             .await?;
         let targets = targets.into_iter().map(|info| info.target).collect::<Vec<_>>();
         self.service_deps_checker.check_crate(package, version, &targets).await
+    }
+}
+
+#[derive(Debug, Error)]
+pub enum AuthenticationError {
+    #[error("missing cookie")]
+    CookieMissing,
+
+    #[error("failed to deserialize cookie")]
+    CookieDeserialization(serde_json::Error),
+
+    #[error("user is not authenticated.")]
+    Unauthorized,
+
+    #[error("access is forbidden for user")]
+    Forbidden,
+
+    #[error("administration is forbidden for this authentication")]
+    AdministrationIsForbidden,
+
+    #[error("writing is forbidden for this authentication")]
+    WriteIsForbidden,
+
+    #[error("failed to check global token")]
+    GlobalToken(#[source] sqlx::Error),
+
+    #[error("failed to check user token")]
+    UserToken(#[source] sqlx::Error),
+
+    #[error("failed to check user token")]
+    CheckUser(#[source] sqlx::Error),
+
+    #[error("failed to check user roles")]
+    CheckRoles(#[source] sqlx::Error),
+
+    #[error("expected a user to be authenticated")]
+    NoUserAuthenticated,
+}
+
+impl AsStatusCode for AuthenticationError {
+    fn status_code(&self) -> StatusCode {
+        match self {
+            Self::Unauthorized | Self::CookieMissing => StatusCode::UNAUTHORIZED,
+            Self::CookieDeserialization(_)
+            | Self::GlobalToken(_)
+            | Self::UserToken(_)
+            | Self::CheckUser(_)
+            | Self::CheckRoles(_) => StatusCode::INTERNAL_SERVER_ERROR,
+            Self::NoUserAuthenticated => StatusCode::BAD_REQUEST,
+            Self::Forbidden | Self::AdministrationIsForbidden | Self::WriteIsForbidden => StatusCode::FORBIDDEN,
+        }
+    }
+}
+
+#[derive(Debug, Error)]
+enum ApplicationError {
+    #[error(transparent)]
+    Authentication(#[from] AuthenticationError),
+
+    #[error("can't manage package '{package}'")]
+    CanManageCrate {
+        #[source]
+        source: CanManageCrateError,
+        package: SmolStr,
+    },
+
+    #[error(transparent)]
+    CanAdminRegistry(#[from] CanAdminRegistryError),
+
+    #[error("failed to publish crate '{package}' by '{user_login}'")]
+    PublishVersion {
+        source: CratesError,
+        package: SmolStr,
+        user_login: SmolStr,
+    },
+
+    #[error("failed to get uid from request")]
+    ExtractUid {
+        #[source]
+        source: AuthenticationError,
+    },
+
+    // User
+    #[error("failed to get user")]
+    GetUsers { source: sqlx::Error },
+
+    #[error("failed to get user profile from request '{uid}'")]
+    GetUserProfile { source: UserError, uid: i64 },
+
+    #[error("failed to update user '{target}' with can_admin '{can_admin}'")]
+    UpdateUser {
+        source: UpdateUserError,
+        target: SmolStr,
+        can_admin: bool,
+    },
+
+    #[error("failed to deactivate user '{target}'")]
+    DeactivateUser { source: UpdateUserError, target: SmolStr },
+    #[error("failed to reactivate user '{target}'")]
+    ReactivateUser { source: sqlx::Error, target: SmolStr },
+    #[error("failed to delete user '{target}'")]
+    DeleteUser { source: UpdateUserError, target: SmolStr },
+
+    // tokens
+    #[error("failed to get tokens")]
+    GetTokens {
+        #[source]
+        source: sqlx::Error,
+    },
+
+    #[error("failed to create token '{name}'")]
+    CreateToken {
+        #[source]
+        source: sqlx::Error,
+        name: SmolStr,
+    },
+
+    #[error("failed to revoke token '{token_id}'")]
+    RevokeToken {
+        #[source]
+        source: sqlx::Error,
+        token_id: i64,
+    },
+
+    #[error("failed to get global tokens")]
+    GetGlobalTokens { source: sqlx::Error },
+
+    #[error("failed to create global token '{name}'")]
+    CreateGlobalToken { source: TokensError, name: SmolStr },
+
+    #[error("failed to remove global token '{token_id}'")]
+    RevokeGlobalToken { source: sqlx::Error, token_id: i64 },
+
+    // crates
+    #[error("failed to get last version of crate '{package}'")]
+    GetCrateLastVersion { source: CratesError, package: SmolStr },
+
+    #[error("failed to check than crate exist '{package} {version}'")]
+    CheckCrateExists {
+        source: CratesError,
+        package: SmolStr,
+        version: SmolStr,
+    },
+
+    #[error("failed to get undocumented crates")]
+    GetUndocumentedCrates { source: sqlx::Error },
+
+    #[error("failed to crate data for '{package}'")]
+    GetCrateData { source: IndexError, package: SmolStr },
+
+    #[error("failed to crate info for '{package}'")]
+    GetCrateInfo { source: CratesError, package: SmolStr },
+
+    #[error("failed to Yank package '{package} {version}'")]
+    YankVersion {
+        source: CratesError,
+        package: SmolStr,
+        version: SmolStr,
+    },
+
+    #[error("failed to Unyank package '{package} {version}'")]
+    UnyankVersion {
+        source: CratesError,
+        package: SmolStr,
+        version: SmolStr,
+    },
+
+    #[error("failed to regen version doc for package '{package} {version}'")]
+    RegenVersionDoc {
+        source: CratesError,
+        package: SmolStr,
+        version: SmolStr,
+    },
+
+    #[error("failed to get targets for crate '{package}'")]
+    GetCrateTargets { source: CratesError, package: SmolStr },
+
+    #[error("failed to get outdated heads")]
+    GetOutdatedHeads(CratesError),
+
+    #[error("failed to get dl stats for crate '{package}'")]
+    GetDlStats { source: CratesError, package: SmolStr },
+
+    #[error("failed to get owners for crate '{package}'")]
+    GetOwners { source: CratesError, package: SmolStr },
+
+    #[error("failed to add owners on crate '{package}'")]
+    AddOwners { source: CratesError, package: SmolStr },
+
+    #[error("failed to remove owners on crate '{package}'")]
+    RemoveOwners { source: CratesError, package: SmolStr },
+
+    #[error("failed to set target to crate '{package}'")]
+    SetCrateTarget { source: CratesError, package: SmolStr },
+
+    #[error("failed to set documentation to crate '{package} {version} {target}'")]
+    SetCrateDocumentation {
+        source: sqlx::Error,
+        package: SmolStr,
+        version: SmolStr,
+        target: SmolStr,
+    },
+
+    #[error("unknown target '{target}'")]
+    UnknownTarget { target: String },
+
+    #[error("failed to get 'capabilities' of package '{package}'")]
+    GetRequireCapabilities {
+        #[source]
+        source: CratesError,
+        package: SmolStr,
+    },
+
+    #[error("failed to get crates stats")]
+    GetCratesStats { source: CratesStatsError },
+
+    #[error("failed to search crate for query '{query}'")]
+    SearchCrates { source: sqlx::Error, query: SmolStr },
+
+    #[error("failed to remove package from database '{package} {version}'")]
+    RemoveVersionFromDatabase {
+        source: CratesError,
+        package: SmolStr,
+        version: SmolStr,
+    },
+
+    #[error("failed to remove package from index '{package} {version}'")]
+    RemoveVersionFromIndex {
+        source: IndexError,
+        package: SmolStr,
+        version: SmolStr,
+    },
+
+    #[error("failed to set 'capabilities' to package '{package}'")]
+    SetRequiredCapabilities {
+        #[source]
+        source: CratesError,
+        package: SmolStr,
+    },
+
+    #[error("failed to set 'can_remove': {can_remove} to package '{package}'")]
+    SetCanRemove {
+        #[source]
+        source: sqlx::Error,
+        package: SmolStr,
+        can_remove: bool,
+    },
+
+    #[error("failed to set 'deprecation': {deprecated} to package '{package}'")]
+    SetDeprecation {
+        #[source]
+        source: sqlx::Error,
+        package: SmolStr,
+        deprecated: bool,
+    },
+}
+impl AsStatusCode for ApplicationError {
+    fn status_code(&self) -> StatusCode {
+        match self {
+            Self::GetUserProfile { source, .. } => source.status_code(),
+            Self::UpdateUser { source, .. } | Self::DeactivateUser { source, .. } | Self::DeleteUser { source, .. } => {
+                source.status_code()
+            }
+            Self::Authentication(authentication_error)
+            | Self::ExtractUid {
+                source: authentication_error,
+            } => authentication_error.status_code(),
+
+            Self::CanManageCrate { source, .. } => source.status_code(),
+            Self::CanAdminRegistry(can_admin_registry_error) => can_admin_registry_error.status_code(),
+
+            Self::GetCrateInfo { source, .. }
+            | Self::GetCrateLastVersion { source, .. }
+            | Self::CheckCrateExists { source, .. }
+            | Self::PublishVersion { source, .. }
+            | Self::RemoveVersionFromDatabase { source, .. }
+            | Self::YankVersion { source, .. }
+            | Self::UnyankVersion { source, .. }
+            | Self::RegenVersionDoc { source, .. }
+            | Self::GetCrateTargets { source, .. }
+            | Self::GetOutdatedHeads(source)
+            | Self::GetDlStats { source, .. }
+            | Self::GetOwners { source, .. }
+            | Self::AddOwners { source, .. }
+            | Self::RemoveOwners { source, .. }
+            | Self::SetCrateTarget { source, .. }
+            | Self::GetRequireCapabilities { source, .. }
+            | Self::SetRequiredCapabilities { source, .. } => source.status_code(),
+
+            Self::CreateGlobalToken { source, .. } => source.status_code(),
+            Self::GetCrateData { source, .. } | Self::RemoveVersionFromIndex { source, .. } => source.status_code(),
+
+            Self::UnknownTarget { .. } => StatusCode::BAD_REQUEST,
+            Self::GetUsers { .. }
+            | Self::ReactivateUser { .. }
+            | Self::GetTokens { .. }
+            | Self::GetGlobalTokens { .. }
+            | Self::RevokeGlobalToken { .. }
+            | Self::CreateToken { .. }
+            | Self::RevokeToken { .. }
+            | Self::GetCratesStats { .. }
+            | Self::GetUndocumentedCrates { .. }
+            | Self::SearchCrates { .. }
+            | Self::SetCrateDocumentation { .. }
+            | Self::SetCanRemove { .. }
+            | Self::SetDeprecation { .. } => StatusCode::INTERNAL_SERVER_ERROR,
+        }
+    }
+}
+
+#[derive(Debug, Error)]
+#[error("the current user can't administrate registry")]
+struct CanAdminRegistryError(#[from] AuthenticationError);
+impl AsStatusCode for CanAdminRegistryError {
+    fn status_code(&self) -> StatusCode {
+        self.0.status_code()
+    }
+}
+
+#[derive(Debug, Error)]
+enum CanManageCrateError {
+    #[error(transparent)]
+    Authentication(#[from] AuthenticationError),
+
+    #[error(transparent)]
+    CrateManager(#[from] IsCrateManagerError),
+}
+impl AsStatusCode for CanManageCrateError {
+    fn status_code(&self) -> StatusCode {
+        match self {
+            Self::Authentication(authentication_error) => authentication_error.status_code(),
+            Self::CrateManager(is_crate_manager_error) => is_crate_manager_error.status_code(),
+        }
     }
 }
 
@@ -860,18 +1594,22 @@ pub(crate) struct ApplicationWithTransaction<'a> {
 
 impl ApplicationWithTransaction<'_> {
     /// Attempts the authentication of a user
-    async fn authenticate(&self, auth_data: &AuthData) -> Result<Authentication, ApiError> {
+    async fn authenticate(&self, auth_data: &AuthData) -> Result<Authentication, AuthenticationError> {
         if let Some(token) = &auth_data.token {
             self.authenticate_token(token).await
         } else {
-            let authentication = auth_data.try_authenticate_cookie()?.ok_or_else(error_unauthorized)?;
-            self.database.check_is_user(authentication.email()?).await?;
+            let authentication = auth_data
+                .try_authenticate_cookie()
+                .map_err(AuthenticationError::CookieDeserialization)?
+                .ok_or_else(|| AuthenticationError::CookieMissing)?;
+            let email = authentication.email()?;
+            self.database.check_is_user(email).await?;
             Ok(authentication)
         }
     }
 
     /// Tries to authenticate using a token
-    async fn authenticate_token(&self, token: &Token) -> Result<Authentication, ApiError> {
+    async fn authenticate_token(&self, token: &Token) -> Result<Authentication, AuthenticationError> {
         if token.id == self.application.configuration.self_service_login
             && token.secret == self.application.configuration.self_service_token
         {
@@ -892,7 +1630,7 @@ impl ApplicationWithTransaction<'_> {
     }
 
     /// Checks that the given authentication can perform admin tasks
-    async fn check_can_admin_registry(&self, authentication: &Authentication) -> Result<i64, ApiError> {
+    async fn check_can_admin_registry(&self, authentication: &Authentication) -> Result<i64, CanAdminRegistryError> {
         authentication.check_can_admin()?;
         let principal_uid = authentication.uid()?;
         self.database.check_is_admin(principal_uid).await?;
@@ -900,7 +1638,7 @@ impl ApplicationWithTransaction<'_> {
     }
 
     /// Checks that the given authentication can manage a given crate
-    async fn check_can_manage_crate(&self, authentication: &Authentication, package: &str) -> Result<i64, ApiError> {
+    async fn check_can_manage_crate(&self, authentication: &Authentication, package: &str) -> Result<i64, CanManageCrateError> {
         authentication.check_can_write()?;
         let principal_uid = authentication.uid()?;
         self.database.check_is_crate_manager(principal_uid, package).await?;

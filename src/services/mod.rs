@@ -4,11 +4,15 @@
 
 //! Service implementations
 
-use std::sync::Arc;
+use std::{io, path::PathBuf, sync::Arc};
 
-use crate::model::config::Configuration;
+use index::GitIndexError;
+use thiserror::Error;
+
+use crate::model::config::{Configuration, WriteAuthConfigError};
+use crate::model::errors::MissingEnvVar;
 use crate::model::worker::WorkersManager;
-use crate::utils::apierror::ApiError;
+use crate::utils::apierror::AsStatusCode;
 use crate::utils::db::RwSqlitePool;
 
 pub mod database;
@@ -19,17 +23,37 @@ pub mod index;
 pub mod rustsec;
 pub mod storage;
 
+#[derive(Debug, Error)]
+pub enum ConfigurationError {
+    #[error("failed to get configuration")]
+    GetConfiguration(#[source] MissingEnvVar),
+
+    #[error("failed to write configuration")]
+    WriteConfiguration(#[source] WriteAuthConfigError),
+
+    #[error("failed to create temp dir '{path}'")]
+    CreateTempDir {
+        #[source]
+        source: io::Error,
+        path: PathBuf,
+    },
+}
+impl AsStatusCode for ConfigurationError {}
+
 /// Factory responsible for building services
 #[expect(async_fn_in_trait)]
 pub trait ServiceProvider {
     /// Gets the configuration
-    async fn get_configuration() -> Result<Configuration, ApiError>;
+    async fn get_configuration() -> Result<Configuration, ConfigurationError>;
 
     /// Gets the backing storage for the documentation
     fn get_storage(config: &Configuration) -> Arc<dyn storage::Storage + Send + Sync>;
 
     /// Gets the index service
-    async fn get_index(config: &Configuration, expect_empty: bool) -> Result<Arc<dyn index::Index + Send + Sync>, ApiError>;
+    async fn get_index(
+        config: &Configuration,
+        expect_empty: bool,
+    ) -> Result<Arc<dyn index::Index + Send + Sync>, GitIndexError>;
 
     /// Gets the rustsec service
     fn get_rustsec(config: &Configuration) -> Arc<dyn rustsec::RustSecChecker + Send + Sync>;
@@ -58,9 +82,14 @@ pub struct StandardServiceProvider;
 
 impl ServiceProvider for StandardServiceProvider {
     /// Gets the configuration
-    async fn get_configuration() -> Result<Configuration, ApiError> {
-        let configuration = Configuration::from_env().await?;
-        configuration.write_auth_config().await?;
+    async fn get_configuration() -> Result<Configuration, ConfigurationError> {
+        let configuration = Configuration::from_env()
+            .await
+            .map_err(ConfigurationError::GetConfiguration)?;
+        configuration
+            .write_auth_config()
+            .await
+            .map_err(ConfigurationError::WriteConfiguration)?;
         Ok(configuration)
     }
 
@@ -70,7 +99,10 @@ impl ServiceProvider for StandardServiceProvider {
     }
 
     /// Gets the index service
-    async fn get_index(config: &Configuration, expect_empty: bool) -> Result<Arc<dyn index::Index + Send + Sync>, ApiError> {
+    async fn get_index(
+        config: &Configuration,
+        expect_empty: bool,
+    ) -> Result<Arc<dyn index::Index + Send + Sync>, GitIndexError> {
         index::get_service(config, expect_empty).await
     }
 

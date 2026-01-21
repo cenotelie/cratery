@@ -9,11 +9,14 @@ use std::pin::pin;
 use std::str::FromStr;
 use std::sync::Arc;
 
+use anyhow::Context;
 use axum::Router;
 use axum::extract::DefaultBodyLimit;
 use axum::routing::{delete, get, patch, post, put};
 use cookie::Key;
-use log::info;
+use futures::io;
+use log::{SetLoggerError, info};
+use thiserror::Error;
 
 use crate::application::Application;
 use crate::routes::AxumState;
@@ -39,9 +42,23 @@ pub const GIT_HASH: &str = env!("GIT_HASH");
 /// The git tag that was used to build the application
 pub const GIT_TAG: &str = env!("GIT_TAG");
 
+/// Handle define serve root errors
+#[derive(Error, Debug)]
+enum ServeError {
+    #[error("failed to bind {socket_addr}")]
+    BindSocket {
+        #[source]
+        source: io::Error,
+        socket_addr: SocketAddr,
+    },
+
+    #[error("failed to start axum serve")]
+    AxumServe(#[source] io::Error),
+}
+
 /// Main payload for serving the application
 #[expect(clippy::too_many_lines)]
-async fn main_serve_app(application: Arc<Application>, cookie_key: Key) -> Result<(), std::io::Error> {
+async fn main_serve_app(application: Arc<Application>, cookie_key: Key) -> Result<(), ServeError> {
     // web application
     let webapp_resources = webapp::get_resources();
     let body_limit = application.configuration.web_body_limit;
@@ -151,13 +168,14 @@ async fn main_serve_app(application: Arc<Application>, cookie_key: Key) -> Resul
     axum::serve(
         tokio::net::TcpListener::bind(socket_addr)
             .await
-            .unwrap_or_else(|_| panic!("failed to bind {socket_addr}")),
+            .map_err(|source| ServeError::BindSocket { source, socket_addr })?,
         app.into_make_service_with_connect_info::<SocketAddr>(),
     )
     .await
+    .map_err(ServeError::AxumServe)
 }
 
-fn setup_log() {
+fn setup_log() -> Result<(), SetLoggerError> {
     let log_date_time_format =
         std::env::var("REGISTRY_LOG_DATE_TIME_FORMAT").unwrap_or_else(|_| String::from("[%Y-%m-%d %H:%M:%S]"));
 
@@ -181,28 +199,31 @@ fn setup_log() {
         .level(log_level)
         .chain(std::io::stdout())
         .apply()
-        .expect("log configuration failed");
 }
 
 /// Main entry point
 #[tokio::main]
-async fn main() {
-    setup_log();
+async fn main() -> anyhow::Result<()> {
+    setup_log().context("Failed to setup logger")?;
     info!("{CRATE_NAME} commit={GIT_HASH} tag={GIT_TAG}");
-    let configuration = services::StandardServiceProvider::get_configuration().await.unwrap();
+    let configuration = services::StandardServiceProvider::get_configuration()
+        .await
+        .context("Failed to get configuration for Standard Service Provider.")?;
     if configuration.self_role.is_worker() {
-        let _ = waiting_sigterm(pin!(worker::main_worker(configuration))).await;
+        let worker = pin!(worker::main_worker(configuration));
+        waiting_sigterm(worker).await.context("an error terminate worker execution")?;
     } else {
         // standalone or master
         let application = Application::launch::<services::StandardServiceProvider>(configuration)
             .await
-            .unwrap();
+            .context("failed to launch application")?;
         let cookie_key = Key::from(
             std::env::var("REGISTRY_WEB_COOKIE_SECRET")
                 .expect("REGISTRY_WEB_COOKIE_SECRET must be set")
                 .as_bytes(),
         );
         let server = pin!(main_serve_app(application, cookie_key,));
-        let _ = waiting_sigterm(server).await;
+        waiting_sigterm(server).await.context("an error terminate server execution")?;
     }
+    Ok(())
 }

@@ -12,12 +12,13 @@ use std::task::{Context, Poll, Waker};
 
 use log::{error, info};
 use serde_derive::{Deserialize, Serialize};
+use thiserror::Error;
 use tokio::sync::Mutex;
 use tokio::sync::mpsc::{Receiver, Sender};
 
 use super::docs::{DocGenJob, DocGenJobUpdate};
 use crate::model::config::{Configuration, NodeRole};
-use crate::utils::apierror::ApiError;
+use crate::utils::apierror::{ApiError, AsStatusCode};
 use crate::utils::token::generate_token;
 
 /// The descriptor of a worker and its capabilities
@@ -277,19 +278,13 @@ impl Display for WorkerSelector {
 }
 
 /// Error when no worker matches the selector
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Error)]
+#[error("no connected worker matches the selector: {selector}")]
 pub struct NoMatchingWorkerError {
     /// The selector that was used
     pub selector: WorkerSelector,
 }
-
-impl Display for NoMatchingWorkerError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "no connected worker matches the selector: {}", self.selector)
-    }
-}
-
-impl std::error::Error for NoMatchingWorkerError {}
+impl AsStatusCode for NoMatchingWorkerError {}
 
 /// Wait for a worker
 pub struct WorkerWaiter {

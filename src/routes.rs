@@ -25,6 +25,7 @@ use futures::future::select_all;
 use futures::{SinkExt, Stream, StreamExt};
 use log::error;
 use serde::Deserialize;
+use thiserror::Error;
 use tokio::fs::File;
 use tokio::sync::Mutex;
 use tokio::sync::mpsc::channel;
@@ -42,15 +43,17 @@ use crate::model::packages::{CrateInfo, CrateInfoTarget};
 use crate::model::stats::{DownloadStats, GlobalStats};
 use crate::model::worker::{JobSpecification, JobUpdate, WorkerDescriptor, WorkerPublicData, WorkerRegistrationData};
 use crate::model::{AppVersion, CrateVersion, RegistryInformation};
+use crate::services::database::DbWriteError;
 use crate::services::index::Index;
 use crate::utils::apierror::{
-    ApiError, error_backend_failure, error_invalid_request, error_not_found, error_unauthorized, specialize,
+    ApiError, AsStatusCode, ResponseError, error_backend_failure, error_invalid_request, error_not_found, error_unauthorized,
+    specialize,
 };
 use crate::utils::axum::auth::{AuthData, AxumStateForCookies};
 use crate::utils::axum::embedded::{EmbeddedResources, WebappResource};
 use crate::utils::axum::extractors::Base64;
 use crate::utils::axum::sse::{Event, ServerSentEventStream};
-use crate::utils::axum::{ApiResult, response, response_error};
+use crate::utils::axum::{ApiResult, into_response_error, response, response_error};
 use crate::utils::token::generate_token;
 
 /// The state of this application for axum
@@ -359,17 +362,36 @@ pub async fn api_v1_get_registry_information(
 
 /// Get the current user
 pub async fn api_v1_get_current_user(auth_data: AuthData, State(state): State<Arc<AxumState>>) -> ApiResult<RegistryUser> {
-    response(state.application.get_current_user(&auth_data).await)
+    let x = state.application.get_current_user(&auth_data).await;
+    response(x)
+}
+
+#[derive(Debug, Error)]
+#[error("failed to login with oauth")]
+pub(crate) struct LoginWithOAuthError(DbWriteError);
+impl AsStatusCode for LoginWithOAuthError {
+    fn status_code(&self) -> StatusCode {
+        self.0.status_code()
+    }
+}
+impl IntoResponse for LoginWithOAuthError {
+    fn into_response(self) -> Response {
+        into_response_error(self).into_response()
+    }
 }
 
 /// Attempts to login using an OAuth code
-pub async fn api_v1_login_with_oauth_code(
+pub(crate) async fn api_v1_login_with_oauth_code(
     mut auth_data: AuthData,
     State(state): State<Arc<AxumState>>,
     body: Bytes,
-) -> Result<(StatusCode, [(HeaderName, HeaderValue); 1], Json<RegistryUser>), (StatusCode, Json<ApiError>)> {
+) -> Result<(StatusCode, [(HeaderName, HeaderValue); 1], Json<RegistryUser>), LoginWithOAuthError> {
     let code = String::from_utf8_lossy(&body);
-    let registry_user = state.application.login_with_oauth_code(&code).await.map_err(response_error)?;
+    let registry_user = state
+        .application
+        .login_with_oauth_code(&code)
+        .await
+        .map_err(LoginWithOAuthError)?;
     let cookie = auth_data.create_id_cookie(&Authentication::new_user(registry_user.id, registry_user.email.clone()));
     Ok((
         StatusCode::OK,
@@ -466,7 +488,7 @@ pub async fn api_v1_get_doc_gen_job_log(
 pub async fn api_v1_get_doc_gen_job_updates(
     auth_data: AuthData,
     State(state): State<Arc<AxumState>>,
-) -> Result<Response, (StatusCode, Json<ApiError>)> {
+) -> Result<Response, (StatusCode, Json<ResponseError>)> {
     let receiver = match state.application.get_doc_gen_job_updates(&auth_data).await {
         Ok(r) => r,
         Err(e) => return Err(response_error(e)),
@@ -484,7 +506,7 @@ pub async fn api_v1_get_workers(auth_data: AuthData, State(state): State<Arc<Axu
 pub async fn api_v1_get_workers_updates(
     auth_data: AuthData,
     State(state): State<Arc<AxumState>>,
-) -> Result<Response, (StatusCode, Json<ApiError>)> {
+) -> Result<Response, (StatusCode, Json<ResponseError>)> {
     let receiver = match state.application.get_workers_updates(&auth_data).await {
         Ok(r) => r,
         Err(e) => return Err(response_error(e)),
@@ -498,7 +520,7 @@ pub async fn api_v1_worker_connect(
     auth_data: AuthData,
     State(state): State<Arc<AxumState>>,
     request: Request<Body>,
-) -> Result<Response, (StatusCode, Json<ApiError>)> {
+) -> Result<Response, (StatusCode, Json<ResponseError>)> {
     let token = auth_data.token.as_ref().ok_or_else(|| response_error(error_unauthorized()))?;
     if Some(token.secret.as_str()) != state.application.configuration.self_role.get_worker_token() {
         return Err(response_error(error_unauthorized()));
@@ -745,7 +767,7 @@ pub async fn api_v1_get_crate_last_readme(
     auth_data: AuthData,
     State(state): State<Arc<AxumState>>,
     Path(PathInfoCrate { package }): Path<PathInfoCrate>,
-) -> Result<(StatusCode, [(HeaderName, HeaderValue); 1], Vec<u8>), (StatusCode, Json<ApiError>)> {
+) -> Result<(StatusCode, [(HeaderName, HeaderValue); 1], Vec<u8>), (StatusCode, Json<ResponseError>)> {
     let data = state
         .application
         .get_crate_last_readme(&auth_data, &package)
@@ -763,7 +785,7 @@ pub async fn api_v1_get_crate_readme(
     auth_data: AuthData,
     State(state): State<Arc<AxumState>>,
     Path(PathInfoCrateVersion { package, version }): Path<PathInfoCrateVersion>,
-) -> Result<(StatusCode, [(HeaderName, HeaderValue); 1], Vec<u8>), (StatusCode, Json<ApiError>)> {
+) -> Result<(StatusCode, [(HeaderName, HeaderValue); 1], Vec<u8>), (StatusCode, Json<ResponseError>)> {
     let data = state
         .application
         .get_crate_readme(&auth_data, &package, &version)
@@ -781,7 +803,7 @@ pub async fn api_v1_download_crate(
     auth_data: AuthData,
     State(state): State<Arc<AxumState>>,
     Path(PathInfoCrateVersion { package, version }): Path<PathInfoCrateVersion>,
-) -> Result<(StatusCode, [(HeaderName, HeaderValue); 1], Vec<u8>), (StatusCode, Json<ApiError>)> {
+) -> Result<(StatusCode, [(HeaderName, HeaderValue); 1], Vec<u8>), (StatusCode, Json<ResponseError>)> {
     match state.application.get_crate_content(&auth_data, &package, &version).await {
         Ok(data) => Ok((
             StatusCode::OK,
@@ -789,9 +811,9 @@ pub async fn api_v1_download_crate(
             data,
         )),
         Err(mut error) => {
-            if error.http == 401 {
-                // map to 403
-                error.http = 403;
+            if error.http == StatusCode::UNAUTHORIZED {
+                // map UNAUTHORIZED - 401 to FORBIDDEN - 403
+                error.http = StatusCode::FORBIDDEN;
             }
             Err(response_error(error))
         }
@@ -977,7 +999,7 @@ pub async fn index_serve_inner(
     }
 }
 
-fn index_serve_map_err(e: ApiError, domain: &str) -> (StatusCode, [(HeaderName, HeaderValue); 2], Json<ApiError>) {
+fn index_serve_map_err(e: ApiError, domain: &str) -> (StatusCode, [(HeaderName, HeaderValue); 2], Json<ResponseError>) {
     let (status, body) = response_error(e);
     (
         status,
@@ -995,7 +1017,7 @@ fn index_serve_map_err(e: ApiError, domain: &str) -> (StatusCode, [(HeaderName, 
 pub async fn index_serve_check_auth(
     application: &Application,
     auth_data: &AuthData,
-) -> Result<(), (StatusCode, [(HeaderName, HeaderValue); 2], Json<ApiError>)> {
+) -> Result<(), (StatusCode, [(HeaderName, HeaderValue); 2], Json<ResponseError>)> {
     if application.configuration.self_public_read {
         return Ok(());
     }
@@ -1010,7 +1032,8 @@ pub async fn index_serve(
     auth_data: AuthData,
     State(state): State<Arc<AxumState>>,
     request: Request<Body>,
-) -> Result<(StatusCode, [(HeaderName, HeaderValue); 2], Body), (StatusCode, [(HeaderName, HeaderValue); 2], Json<ApiError>)> {
+) -> Result<(StatusCode, [(HeaderName, HeaderValue); 2], Body), (StatusCode, [(HeaderName, HeaderValue); 2], Json<ResponseError>)>
+{
     let map_err = |e| index_serve_map_err(e, &state.application.configuration.web_domain);
     let path = request.uri().path();
     if path != "/config.json" && !state.application.configuration.index.allow_protocol_sparse {
@@ -1037,7 +1060,8 @@ pub async fn index_serve_info_refs(
     auth_data: AuthData,
     State(state): State<Arc<AxumState>>,
     Query(query): Query<HashMap<String, String>>,
-) -> Result<(StatusCode, [(HeaderName, HeaderValue); 2], Body), (StatusCode, [(HeaderName, HeaderValue); 2], Json<ApiError>)> {
+) -> Result<(StatusCode, [(HeaderName, HeaderValue); 2], Body), (StatusCode, [(HeaderName, HeaderValue); 2], Json<ResponseError>)>
+{
     let map_err = |e| index_serve_map_err(e, &state.application.configuration.web_domain);
     if !state.application.configuration.index.allow_protocol_git {
         return Err(map_err(error_not_found()));
@@ -1073,7 +1097,8 @@ pub async fn index_serve_git_upload_pack(
     auth_data: AuthData,
     State(state): State<Arc<AxumState>>,
     body: Bytes,
-) -> Result<(StatusCode, [(HeaderName, HeaderValue); 2], Body), (StatusCode, [(HeaderName, HeaderValue); 2], Json<ApiError>)> {
+) -> Result<(StatusCode, [(HeaderName, HeaderValue); 2], Body), (StatusCode, [(HeaderName, HeaderValue); 2], Json<ResponseError>)>
+{
     let map_err = |e| index_serve_map_err(e, &state.application.configuration.web_domain);
     if !state.application.configuration.index.allow_protocol_git {
         return Err(map_err(error_not_found()));
