@@ -42,6 +42,7 @@ struct RustSecCheckerImpl {
 
 impl RustSecChecker for RustSecCheckerImpl {
     /// Gets the advisories against a crate
+    #[expect(clippy::significant_drop_tightening)]
     fn check_crate<'a>(&'a self, package: &'a str, version: &'a Version) -> FaillibleFuture<'a, Vec<SimpleAdvisory>> {
         Box::pin(async move {
             let mut data = self.data.lock().await;
