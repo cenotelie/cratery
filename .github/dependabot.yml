@@ -14,3 +14,11 @@ updates:
     # Check for updates once a week
     schedule:
       interval: "weekly"
+
+  # Enable version updates for rust
+  - package-ecosystem: "rust-toolchain"
+    # Look for `Cargo.lock` files in the `root` directory
+    directory: "/"
+    # Check the cargo registry for updates once a week
+    schedule:
+      interval: "weekly"
