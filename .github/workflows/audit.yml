@@ -1,0 +1,14 @@
+name: Scheduled Audit
+
+on:
+  schedule:
+    # daily at 8 AM
+    - cron: "0 8 * * *"
+  workflow_dispatch:
+
+jobs:
+  rust-audit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: EmbarkStudios/cargo-deny-action@v2
