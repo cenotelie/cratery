@@ -1,0 +1,24 @@
+version: 2
+updates:
+  # Enable version updates for GitHub Actions
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    # Check for updates every Monday
+    schedule:
+      interval: "weekly"
+
+  # Enable version updates for Docker
+  - package-ecosystem: "docker"
+    # Look for a `Dockerfile` in the `root` directory
+    directory: "/"
+    # Check for updates once a week
+    schedule:
+      interval: "weekly"
+
+  # Enable version updates for rust
+  - package-ecosystem: "rust-toolchain"
+    # Look for `Cargo.lock` files in the `root` directory
+    directory: "/"
+    # Check the cargo registry for updates once a week
+    schedule:
+      interval: "weekly"
