@@ -494,6 +494,9 @@ pub struct Configuration {
     /// A negative number deactivates background analysis of crates
     #[serde(rename = "depsStaleAnalysis")]
     pub deps_stale_analysis: i64,
+    /// Maximum number of major versions to fetch for dependency analysis
+    #[serde(rename = "depsMaxMajorVersions")]
+    pub deps_max_major_versions: usize,
     /// Whether to send a notification by email to the owners of a crate when some of its dependencies become outdated
     #[serde(rename = "depsNotifyOutdated")]
     pub deps_notify_outdated: bool,
@@ -583,6 +586,7 @@ impl Default for Configuration {
             deps_check_period: 60,
             deps_stale_registry: 60 * 1000,
             deps_stale_analysis: 24 * 60,
+            deps_max_major_versions: 5,
             deps_notify_outdated: false,
             deps_notify_cves: false,
             email: EmailConfig::default(),
@@ -686,6 +690,9 @@ impl Configuration {
             deps_stale_analysis: get_var("REGISTRY_DEPS_STALE_ANALYSIS")
                 .map(|s| s.parse().expect("invalid REGISTRY_DEPS_STALE_ANALYSIS"))
                 .unwrap_or(24 * 60), // 24 hours
+            deps_max_major_versions: get_var("REGISTRY_DEPS_MAX_MAJOR_VERSIONS")
+                .map(|s| s.parse().expect("invalid REGISTRY_DEPS_MAX_MAJOR_VERSIONS"))
+                .unwrap_or(5),
             deps_notify_outdated,
             deps_notify_cves,
             email,

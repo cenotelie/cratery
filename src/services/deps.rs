@@ -20,6 +20,7 @@ use tokio::fs::File;
 use tokio::io::AsyncBufReadExt;
 
 use crate::model::cargo::{IndexCrateDependency, IndexCrateMetadata};
+use semver::Version;
 use crate::model::config::{Configuration, ExternalRegistryProtocol};
 use crate::model::deps::{
     BUILTIN_CRATES_REGISTRY_URI, DepAdvisory, DepsAnalysis, DepsAnalysisJobSpec, DepsGraph, DepsGraphCrateOrigin,
@@ -365,15 +366,15 @@ impl DepsCheckerImpl {
                     &self.configuration.self_toolchain_version_stable,
                 ))
             } else if registry == CRATES_IO_REGISTRY_URI {
-                self.get_dependency_info_git(name, CRATES_IO_NAME, CRATES_IO_REGISTRY_URI)
-                    .await
+                let versions = self.get_dependency_info_git(name, CRATES_IO_NAME, CRATES_IO_REGISTRY_URI).await?;
+                Ok(self.filter_versions(versions))
             } else if let Some(registry) = self
                 .configuration
                 .external_registries
                 .iter()
                 .find(|reg| reg.index == registry)
             {
-                match registry.protocol {
+                let versions = match registry.protocol {
                     ExternalRegistryProtocol::Git => self.get_dependency_info_git(name, &registry.name, &registry.index).await,
                     ExternalRegistryProtocol::Sparse => {
                         self.get_dependency_info_sparse(
@@ -384,13 +385,15 @@ impl DepsCheckerImpl {
                         )
                         .await
                     }
-                }
+                };
+                Ok(self.filter_versions(versions?))
             } else {
                 Err(specialize(error_not_found(), format!("Unknown registry: {registry}")))
             }
         } else {
             // same registry, lookup in internal index
-            self.service_index.get_crate_data(name).await
+            let versions = self.service_index.get_crate_data(name).await?;
+            Ok(self.filter_versions(versions))
         }
     }
 
@@ -401,6 +404,38 @@ impl DepsCheckerImpl {
             vers: toolchain_version.to_string(),
             ..Default::default()
         }]
+    }
+
+    /// Filters versions to keep only the last N major versions
+    fn filter_versions(&self, mut versions: Vec<IndexCrateMetadata>) -> Vec<IndexCrateMetadata> {
+        let max_major = self.configuration.deps_max_major_versions;
+
+        let parsed: Vec<_> = versions
+            .iter()
+            .filter_map(|v| {
+                if v.yanked {
+                    return None;
+                }
+                v.vers.parse::<Version>().ok().filter(|ver| ver.pre.is_empty())
+            })
+            .collect();
+
+        if parsed.is_empty() {
+            return versions;
+        }
+
+        let latest_major = parsed.iter().map(|v| v.major).max().unwrap_or(0);
+        let cutoff_major = latest_major.saturating_sub((max_major - 1) as u64);
+
+        versions.retain(|v| {
+            if let Ok(ver) = v.vers.parse::<Version>() {
+                ver.major >= cutoff_major
+            } else {
+                false
+            }
+        });
+
+        versions
     }
 
     /// Gets the crate index data for a dependency in a registry with the git protocol
