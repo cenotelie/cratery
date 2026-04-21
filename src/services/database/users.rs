@@ -7,9 +7,12 @@
 
 use std::future::Future;
 
+use axum::http::StatusCode;
 use chrono::Local;
+use thiserror::Error;
 
 use super::Database;
+use crate::application::AuthenticationError;
 use crate::model::auth::{
     Authentication, AuthenticationPrincipal, OAuthToken, ROLE_ADMIN, RegistryUserToken, RegistryUserTokenWithSecret, TokenKind,
     TokenUsage, find_field_in_blob,
@@ -17,26 +20,187 @@ use crate::model::auth::{
 use crate::model::cargo::RegistryUser;
 use crate::model::config::Configuration;
 use crate::model::namegen::generate_name;
-use crate::utils::apierror::{
-    ApiError, error_conflict, error_forbidden, error_invalid_request, error_not_found, error_unauthorized, specialize,
-};
+use crate::utils::apierror::AsStatusCode;
 use crate::utils::token::{check_hash, generate_token, hash_token};
+
+#[derive(Debug, Error)]
+pub enum UserError {
+    #[error("failed to execute sql request to get user profile for `{uid}`")]
+    SqlxGetUserProfile {
+        #[source]
+        source: sqlx::Error,
+        uid: i64,
+    },
+
+    #[error("user with uid `{uid}` not found")]
+    UserNotFound { uid: i64 },
+}
+
+impl AsStatusCode for UserError {}
+
+#[derive(Debug, Error)]
+pub enum UpdateUserError {
+    #[error("failed to execute request for get login and roles on DB")]
+    SqlLoginAndRoles(#[source] sqlx::Error),
+
+    #[error("user with id `{uid}`not found")]
+    UserNotFound { uid: i64 },
+
+    #[error("only admins can change roles")]
+    OnlyAdminCanChangeRoles,
+
+    #[error("admins cannot remove themselves")]
+    AdminCantRemoveThemselves,
+
+    #[error("login cannot be empty")]
+    LoginCannotBeEmpty,
+
+    #[error("failed to execute request for count RegistryUser for login")]
+    CountUserForLogin(#[source] sqlx::Error),
+
+    #[error("the specified login `{login}` is not found in db")]
+    LoginNotAvailable { login: String },
+
+    #[error("failed to execute db request to update user")]
+    UpdateUserSqlx(#[source] sqlx::Error),
+
+    #[error("user can't update user")]
+    Authentication(#[from] AuthenticationError),
+
+    #[error("cannot self deactivate")]
+    SelfDeactivate,
+
+    #[error("failed to execute request for activate user")]
+    ActiveUserSql {
+        #[source]
+        source: sqlx::Error,
+        target: String,
+    },
+
+    #[error("failed to execute request to select user corresponding an email")]
+    SqlSelectUserByEmail(#[source] sqlx::Error),
+
+    #[error("user for `{0}` not found")]
+    UserEmailNotFound(String),
+
+    #[error("cannot delete self")]
+    CannotDeleteSelf,
+
+    #[error("failed to execute request to remove user token")]
+    SqlRemoveUserToken(#[source] sqlx::Error),
+
+    #[error("failed to execute request to remove user as package owner")]
+    SqlRemoveFromPackageOwner(#[source] sqlx::Error),
+
+    #[error("failed to execute request to remove user")]
+    SqlRemoveUser(#[source] sqlx::Error),
+}
+
+impl AsStatusCode for UpdateUserError {
+    fn status_code(&self) -> StatusCode {
+        match self {
+            Self::SqlLoginAndRoles(_)
+            | Self::CountUserForLogin(_)
+            | Self::UpdateUserSqlx(_)
+            | Self::Authentication(_)
+            | Self::SqlSelectUserByEmail(_)
+            | Self::ActiveUserSql { .. }
+            | Self::SqlRemoveUserToken(_)
+            | Self::SqlRemoveFromPackageOwner(_)
+            | Self::SqlRemoveUser(_) => StatusCode::INTERNAL_SERVER_ERROR,
+
+            Self::AdminCantRemoveThemselves | Self::OnlyAdminCanChangeRoles | Self::SelfDeactivate | Self::CannotDeleteSelf => {
+                StatusCode::FORBIDDEN
+            }
+            Self::LoginCannotBeEmpty => StatusCode::BAD_REQUEST,
+            Self::UserNotFound { .. } | Self::UserEmailNotFound(_) => StatusCode::NOT_FOUND,
+
+            Self::LoginNotAvailable { .. } => StatusCode::CONFLICT,
+        }
+    }
+}
+
+#[derive(Debug, Error)]
+pub enum OAuthLoginError {
+    #[error("failed to retrieve token from '{oauth_token_uri}'")]
+    GetRetrieveToken {
+        source: reqwest::Error,
+        oauth_token_uri: String,
+    },
+
+    #[error("failed to get retrieve token response")]
+    RetrieveTokenResponse { source: reqwest::Error },
+
+    #[error("failed to parse retrieve token response")]
+    ParseRetrieveTokenResponse { source: serde_json::Error, body: String },
+
+    #[error("failed to retried token for authentication: {status} '{body}'")]
+    RetrieveTokenFailed { status: StatusCode, body: String },
+
+    #[error("failed to autentify at '{uri}': {status}")]
+    RetrieveUserProfile { status: StatusCode, uri: String },
+
+    #[error("failed to retrieve user profile from '{oauth_userinfo_uri}'")]
+    GetUserProfile {
+        source: reqwest::Error,
+        oauth_userinfo_uri: String,
+    },
+
+    #[error("failed to get user profile response")]
+    GetUserProfileResponse { source: reqwest::Error },
+
+    #[error("failed to parse get user profile response")]
+    ParseGetUserProfileResponse { source: serde_json::Error, body: String },
+
+    #[error("failed to execute user database request")]
+    UserDatabaseRequest(#[source] sqlx::Error),
+
+    #[error("inactive user")]
+    InactiveUser,
+
+    #[error("no email in returned user info:\n{0}")]
+    EmailMissingInUserInfo(String),
+}
+impl AsStatusCode for OAuthLoginError {
+    fn status_code(&self) -> StatusCode {
+        match self {
+            Self::EmailMissingInUserInfo(_)
+            | Self::RetrieveTokenFailed { .. }
+            | Self::RetrieveUserProfile { .. }
+            | Self::InactiveUser => StatusCode::UNAUTHORIZED,
+
+            Self::GetRetrieveToken { .. }
+            | Self::RetrieveTokenResponse { .. }
+            | Self::ParseRetrieveTokenResponse { .. }
+            | Self::GetUserProfile { .. }
+            | Self::GetUserProfileResponse { .. }
+            | Self::ParseGetUserProfileResponse { .. }
+            | Self::UserDatabaseRequest(_) => StatusCode::INTERNAL_SERVER_ERROR,
+        }
+    }
+}
 
 impl Database {
     /// Retrieves a user profile
-    pub async fn get_user_profile(&self, uid: i64) -> Result<RegistryUser, ApiError> {
+    pub async fn get_user_profile(&self, uid: i64) -> Result<RegistryUser, UserError> {
         let maybe_row = sqlx::query_as!(
             RegistryUser,
             "SELECT id, isActive AS is_active, email, login, name, roles FROM RegistryUser WHERE id = $1",
             uid
         )
         .fetch_optional(&mut *self.transaction.borrow().await)
-        .await?;
-        maybe_row.ok_or_else(error_not_found)
+        .await
+        .map_err(|source| UserError::SqlxGetUserProfile { source, uid })?;
+        maybe_row.ok_or(UserError::UserNotFound { uid })
     }
 
     /// Attempts to login using an OAuth code
-    pub async fn login_with_oauth_code(&self, configuration: &Configuration, code: &str) -> Result<RegistryUser, ApiError> {
+    #[expect(clippy::too_many_lines)]
+    pub async fn login_with_oauth_code(
+        &self,
+        configuration: &Configuration,
+        code: &str,
+    ) -> Result<RegistryUser, OAuthLoginError> {
         let client = reqwest::Client::new();
         // retrieve the token
         let response = client
@@ -50,25 +214,58 @@ impl Database {
             ])
             .header(reqwest::header::ACCEPT, "application/json")
             .send()
-            .await?;
+            .await
+            .map_err(|source| OAuthLoginError::GetRetrieveToken {
+                source,
+                oauth_token_uri: configuration.oauth_token_uri.as_str().into(),
+            })?;
         if !response.status().is_success() {
-            return Err(specialize(error_unauthorized(), String::from("authentication failed")));
+            let status = response.status();
+            let body = response.bytes().await.unwrap();
+            return Err(OAuthLoginError::RetrieveTokenFailed {
+                status,
+                body: String::from_utf8_lossy(&body).into(),
+            });
         }
-        let body = response.bytes().await?;
-        let token = serde_json::from_slice::<OAuthToken>(&body)?;
+        let body = response
+            .bytes()
+            .await
+            .map_err(|source| OAuthLoginError::RetrieveTokenResponse { source })?;
+        let token =
+            serde_json::from_slice::<OAuthToken>(&body).map_err(|source| OAuthLoginError::ParseRetrieveTokenResponse {
+                source,
+                body: String::from_utf8_lossy(&body).into(),
+            })?;
 
         // retrieve the user profile
         let response = client
             .get(&configuration.oauth_userinfo_uri)
             .header("authorization", format!("Bearer {}", token.access_token))
             .send()
-            .await?;
+            .await
+            .map_err(|source| OAuthLoginError::GetUserProfile {
+                source,
+                oauth_userinfo_uri: configuration.oauth_userinfo_uri.as_str().into(),
+            })?;
         if !response.status().is_success() {
-            return Err(specialize(error_unauthorized(), String::from("authentication failed")));
+            let status = response.status();
+            return Err(OAuthLoginError::RetrieveUserProfile {
+                status,
+                uri: configuration.oauth_userinfo_uri.as_str().into(),
+            });
         }
-        let body = response.bytes().await?;
-        let user_info = serde_json::from_slice::<serde_json::Value>(&body)?;
-        let email = find_field_in_blob(&user_info, &configuration.oauth_userinfo_path_email).ok_or_else(error_unauthorized)?;
+        let body = response
+            .bytes()
+            .await
+            .map_err(|source| OAuthLoginError::GetUserProfileResponse { source })?;
+        let user_info = serde_json::from_slice::<serde_json::Value>(&body).map_err(|source| {
+            OAuthLoginError::ParseGetUserProfileResponse {
+                source,
+                body: String::from_utf8_lossy(&body).into(),
+            }
+        })?;
+        let email = find_field_in_blob(&user_info, &configuration.oauth_userinfo_path_email)
+            .ok_or_else(|| OAuthLoginError::EmailMissingInUserInfo(user_info.to_string()))?;
 
         // resolve the user
         let row = sqlx::query!(
@@ -76,10 +273,11 @@ impl Database {
             email
         )
         .fetch_optional(&mut *self.transaction.borrow().await)
-        .await?;
+        .await
+        .map_err(OAuthLoginError::UserDatabaseRequest)?;
         if let Some(row) = row {
             if !row.is_active {
-                return Err(specialize(error_unauthorized(), String::from("inactive user")));
+                return Err(OAuthLoginError::InactiveUser);
             }
             // already exists
             return Ok(RegistryUser {
@@ -94,12 +292,14 @@ impl Database {
         // create the user
         let count = sqlx::query!("SELECT COUNT(id) AS count FROM RegistryUser")
             .fetch_one(&mut *self.transaction.borrow().await)
-            .await?
+            .await
+            .map_err(OAuthLoginError::UserDatabaseRequest)?
             .count;
         let mut login = email[..email.find('@').unwrap()].to_string();
         while sqlx::query!("SELECT COUNT(id) AS count FROM RegistryUser WHERE login = $1", login)
             .fetch_one(&mut *self.transaction.borrow().await)
-            .await?
+            .await
+            .map_err(OAuthLoginError::UserDatabaseRequest)?
             .count
             != 0
         {
@@ -115,7 +315,8 @@ impl Database {
             roles
         )
         .fetch_one(&mut *self.transaction.borrow().await)
-        .await?
+        .await
+        .map_err(OAuthLoginError::UserDatabaseRequest)?
         .id;
         Ok(RegistryUser {
             id,
@@ -128,7 +329,7 @@ impl Database {
     }
 
     /// Gets the known users
-    pub async fn get_users(&self) -> Result<Vec<RegistryUser>, ApiError> {
+    pub async fn get_users(&self) -> Result<Vec<RegistryUser>, sqlx::Error> {
         let rows = sqlx::query_as!(
             RegistryUser,
             "SELECT id, isActive AS is_active, email, login, name, roles FROM RegistryUser ORDER BY login",
@@ -144,35 +345,36 @@ impl Database {
         principal_uid: i64,
         target: &RegistryUser,
         can_admin: bool,
-    ) -> Result<RegistryUser, ApiError> {
+    ) -> Result<RegistryUser, UpdateUserError> {
         let row = sqlx::query!("SELECT login, roles FROM RegistryUser WHERE id = $1 LIMIT 1", target.id)
             .fetch_optional(&mut *self.transaction.borrow().await)
-            .await?
-            .ok_or_else(error_not_found)?;
+            .await
+            .map_err(UpdateUserError::SqlLoginAndRoles)?
+            .ok_or_else(|| UpdateUserError::UserNotFound { uid: target.id })?;
         let old_roles = row.roles;
         if !can_admin && target.roles != old_roles {
             // not admin and changing roles
-            return Err(specialize(error_forbidden(), String::from("only admins can change roles")));
+            return Err(UpdateUserError::OnlyAdminCanChangeRoles);
         }
         if can_admin && target.id == principal_uid && target.roles.split(',').all(|role| role.trim() != ROLE_ADMIN) {
             // admin and removing admin role from self
-            return Err(specialize(error_forbidden(), String::from("admins cannot remove themselves")));
+            return Err(UpdateUserError::AdminCantRemoveThemselves);
         }
         if target.login.is_empty() {
-            return Err(specialize(error_invalid_request(), String::from("login cannot be empty")));
+            return Err(UpdateUserError::LoginCannotBeEmpty);
         }
         if row.login != target.login {
             // check that the new login is available
             if sqlx::query!("SELECT COUNT(id) AS count FROM RegistryUser WHERE login = $1", target.login)
                 .fetch_one(&mut *self.transaction.borrow().await)
-                .await?
+                .await
+                .map_err(UpdateUserError::CountUserForLogin)?
                 .count
                 != 0
             {
-                return Err(specialize(
-                    error_conflict(),
-                    String::from("the specified login is not available"),
-                ));
+                return Err(UpdateUserError::LoginNotAvailable {
+                    login: target.login.clone(),
+                });
             }
         }
         sqlx::query!(
@@ -183,25 +385,30 @@ impl Database {
             target.roles
         )
         .execute(&mut *self.transaction.borrow().await)
-        .await?;
+        .await
+        .map_err(UpdateUserError::UpdateUserSqlx)?;
         Ok(target.clone())
     }
 
     /// Attempts to deactivate a user
-    pub async fn deactivate_user(&self, principal_uid: i64, target: &str) -> Result<(), ApiError> {
+    pub async fn deactivate_user(&self, principal_uid: i64, target: &str) -> Result<(), UpdateUserError> {
         let target_uid = self.check_is_user(target).await?;
         if principal_uid == target_uid {
             // cannot deactivate self
-            return Err(specialize(error_forbidden(), String::from("cannot self deactivate")));
+            return Err(UpdateUserError::SelfDeactivate);
         }
         sqlx::query!("UPDATE RegistryUser SET isActive = FALSE WHERE id = $1", target_uid)
             .execute(&mut *self.transaction.borrow().await)
-            .await?;
+            .await
+            .map_err(|source| UpdateUserError::ActiveUserSql {
+                source,
+                target: target.into(),
+            })?;
         Ok(())
     }
 
     /// Attempts to re-activate a user
-    pub async fn reactivate_user(&self, target: &str) -> Result<(), ApiError> {
+    pub async fn reactivate_user(&self, target: &str) -> Result<(), sqlx::Error> {
         sqlx::query!("UPDATE RegistryUser SET isActive = TRUE WHERE email = $1", target)
             .execute(&mut *self.transaction.borrow().await)
             .await?;
@@ -209,29 +416,33 @@ impl Database {
     }
 
     /// Attempts to delete a user
-    pub async fn delete_user(&self, principal_uid: i64, target: &str) -> Result<(), ApiError> {
+    pub async fn delete_user(&self, principal_uid: i64, target: &str) -> Result<(), UpdateUserError> {
         let target_uid = sqlx::query!("SELECT id FROM RegistryUser WHERE email = $1", target)
             .fetch_optional(&mut *self.transaction.borrow().await)
-            .await?
-            .ok_or_else(error_not_found)?
+            .await
+            .map_err(UpdateUserError::SqlSelectUserByEmail)?
+            .ok_or_else(|| UpdateUserError::UserEmailNotFound(target.into()))?
             .id;
         if principal_uid == target_uid {
-            return Err(specialize(error_forbidden(), String::from("cannot delete self")));
+            return Err(UpdateUserError::CannotDeleteSelf);
         }
         sqlx::query!("DELETE FROM RegistryUserToken WHERE user = $1", target_uid)
             .execute(&mut *self.transaction.borrow().await)
-            .await?;
+            .await
+            .map_err(UpdateUserError::SqlRemoveUserToken)?;
         sqlx::query!("DELETE FROM PackageOwner WHERE owner = $1", target_uid)
             .execute(&mut *self.transaction.borrow().await)
-            .await?;
+            .await
+            .map_err(UpdateUserError::SqlRemoveFromPackageOwner)?;
         sqlx::query!("DELETE FROM RegistryUser WHERE id = $1", target_uid)
             .execute(&mut *self.transaction.borrow().await)
-            .await?;
+            .await
+            .map_err(UpdateUserError::SqlRemoveUser)?;
         Ok(())
     }
 
     /// Gets the tokens for a user
-    pub async fn get_tokens(&self, uid: i64) -> Result<Vec<RegistryUserToken>, ApiError> {
+    pub async fn get_tokens(&self, uid: i64) -> Result<Vec<RegistryUserToken>, sqlx::Error> {
         let rows = sqlx::query!(
             "SELECT id, name, lastUsed AS last_used, canWrite AS can_write, canAdmin AS can_admin FROM RegistryUserToken WHERE user = $1 ORDER BY id",
             uid
@@ -257,7 +468,7 @@ impl Database {
         name: &str,
         can_write: bool,
         can_admin: bool,
-    ) -> Result<RegistryUserTokenWithSecret, ApiError> {
+    ) -> Result<RegistryUserTokenWithSecret, sqlx::Error> {
         let token_secret = generate_token(64);
         let token_hash = hash_token(&token_secret);
         let now = Local::now().naive_local();
@@ -284,7 +495,7 @@ impl Database {
     }
 
     /// Revoke a previous token
-    pub async fn revoke_token(&self, uid: i64, token_id: i64) -> Result<(), ApiError> {
+    pub async fn revoke_token(&self, uid: i64, token_id: i64) -> Result<(), sqlx::Error> {
         sqlx::query!("DELETE FROM RegistryUserToken WHERE user = $1 AND id = $2", uid, token_id)
             .execute(&mut *self.transaction.borrow().await)
             .await?;
@@ -292,18 +503,31 @@ impl Database {
     }
 
     /// Checks an authentication request with a token
-    pub async fn check_token<F, FUT>(&self, login: &str, token_secret: &str, on_usage: &F) -> Result<Authentication, ApiError>
+    pub async fn check_token<F, FUT>(
+        &self,
+        login: &str,
+        token_secret: &str,
+        on_usage: &F,
+    ) -> Result<Authentication, AuthenticationError>
     where
         F: Fn(TokenUsage) -> FUT + Sync,
         FUT: Future<Output = ()>,
     {
-        if let Some(auth) = self.check_token_global(login, token_secret, &on_usage).await? {
+        if let Some(auth) = self
+            .check_token_global(login, token_secret, &on_usage)
+            .await
+            .map_err(AuthenticationError::GlobalToken)?
+        {
             return Ok(auth);
         }
-        if let Some(auth) = self.check_token_user(login, token_secret, &on_usage).await? {
+        if let Some(auth) = self
+            .check_token_user(login, token_secret, &on_usage)
+            .await
+            .map_err(AuthenticationError::UserToken)?
+        {
             return Ok(auth);
         }
-        Err(error_unauthorized())
+        Err(AuthenticationError::Unauthorized)
     }
 
     /// Checks whether the information provided is a user token
@@ -312,7 +536,7 @@ impl Database {
         login: &str,
         token_secret: &str,
         on_usage: &F,
-    ) -> Result<Option<Authentication>, ApiError>
+    ) -> Result<Option<Authentication>, sqlx::Error>
     where
         F: Fn(TokenUsage) -> FUT + Sync,
         FUT: Future<Output = ()>,
@@ -353,7 +577,7 @@ impl Database {
         login: &str,
         token_secret: &str,
         on_usage: &F,
-    ) -> Result<Option<Authentication>, ApiError>
+    ) -> Result<Option<Authentication>, sqlx::Error>
     where
         F: Fn(TokenUsage) -> FUT + Sync,
         FUT: Future<Output = ()>,
@@ -377,7 +601,7 @@ impl Database {
     }
 
     /// Updates the last usage of a token
-    pub async fn update_token_last_usage(&self, event: &TokenUsage) -> Result<(), ApiError> {
+    pub async fn update_token_last_usage(&self, event: &TokenUsage) -> Result<(), sqlx::Error> {
         if event.kind == TokenKind::User {
             sqlx::query!(
                 "UPDATE RegistryUserToken SET lastUsed = $2 WHERE id = $1",

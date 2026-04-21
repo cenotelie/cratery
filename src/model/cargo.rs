@@ -8,10 +8,12 @@ use std::collections::HashMap;
 use std::io::Cursor;
 use std::str::FromStr;
 
+use axum::http::StatusCode;
 use byteorder::{LittleEndian, ReadBytesExt};
 use serde_derive::{Deserialize, Serialize};
+use thiserror::Error;
 
-use crate::utils::apierror::{ApiError, error_invalid_request, specialize};
+use crate::utils::apierror::{ApiError, AsStatusCode};
 use crate::utils::hashes::sha256;
 
 /// A crate to appear in search results
@@ -133,6 +135,27 @@ pub struct RegistryUser {
     pub roles: String,
 }
 
+///TODO:
+#[derive(Debug, Error)]
+pub enum CrateNameError {
+    #[error("name must not be empty")]
+    Empty,
+
+    #[error("name must not exceed 64 characters ({0})")]
+    Length(usize),
+
+    #[error("name must start with an ASCII letter, `{0}` is invalid")]
+    StartCharacter(char),
+
+    #[error("name must only contain alphanumeric, -, _")]
+    Characters,
+}
+impl AsStatusCode for CrateNameError {
+    fn status_code(&self) -> StatusCode {
+        StatusCode::BAD_REQUEST
+    }
+}
+
 /// The metadata for a crate
 #[derive(Default, Debug, Clone, Serialize, Deserialize)]
 pub struct CrateMetadata {
@@ -192,37 +215,32 @@ pub struct CrateMetadata {
 
 impl CrateMetadata {
     /// Validate the crate's metadata
-    pub fn validate(&self) -> Result<CrateUploadResult, ApiError> {
+    pub fn validate(&self) -> Result<CrateUploadResult, CrateNameError> {
         self.validate_name()?;
         Ok(CrateUploadResult::default())
     }
 
     /// Validates the package name
-    fn validate_name(&self) -> Result<(), ApiError> {
+    fn validate_name(&self) -> Result<(), CrateNameError> {
         if self.name.is_empty() {
-            return validation_error("Name must not be empty");
+            return Err(CrateNameError::Empty);
         }
         if self.name.len() > 64 {
-            return validation_error("Name must not exceed 64 characters");
+            return Err(CrateNameError::Length(self.name.len()));
         }
         for (i, c) in self.name.chars().enumerate() {
             match (i, c) {
                 (0, c) if !c.is_ascii_alphabetic() => {
-                    return validation_error("Name must start with an ASCII letter");
+                    return Err(CrateNameError::StartCharacter(c));
                 }
                 (_, c) if !c.is_ascii_alphanumeric() && c != '-' && c != '_' => {
-                    return validation_error("Name must only contain alphanumeric, -, _");
+                    return Err(CrateNameError::Characters);
                 }
                 _ => { /* this is ok */ }
             }
         }
         Ok(())
     }
-}
-
-/// Creates a validation error
-pub fn validation_error(details: &str) -> Result<(), ApiError> {
-    Err(specialize(error_invalid_request(), details.to_string()))
 }
 
 /// The kind of dependency

@@ -13,15 +13,50 @@ use axum::http::Uri;
 use base64::Engine;
 use base64::engine::general_purpose::STANDARD;
 use serde_derive::{Deserialize, Serialize};
-use tokio::fs::File;
-use tokio::io::{AsyncWriteExt, BufWriter};
+use thiserror::Error;
+use tokio::fs::{self, File};
+use tokio::io::{self, AsyncWrite, AsyncWriteExt, BufWriter};
 use tokio::process::Command;
 
 use super::{CHANNEL_NIGHTLY, CHANNEL_STABLE};
 use crate::model::errors::MissingEnvVar;
-use crate::utils::apierror::{ApiError, error_backend_failure, specialize};
+use crate::utils::apierror::{ApiError, AsStatusCode, error_backend_failure, specialize};
 use crate::utils::comma_sep_to_vec;
 use crate::utils::token::generate_token;
+
+#[derive(Debug, Error)]
+pub enum WriteConfigError {
+    #[error("failed to compute parent path for '{path}'")]
+    ParentPath { path: PathBuf },
+
+    #[error("failed to create folder '{path}'")]
+    CreateDir {
+        #[source]
+        source: io::Error,
+        path: PathBuf,
+    },
+
+    #[error("failed to create file '{path}'")]
+    CreateConfigFile {
+        #[source]
+        source: io::Error,
+        path: PathBuf,
+    },
+
+    #[error("failed to write file content")]
+    WriteContent(#[source] io::Error),
+}
+
+#[derive(Debug, Error)]
+pub enum WriteAuthConfigError {
+    #[error("failed to write `{filename}`")]
+    WriteAuthConfig {
+        #[source]
+        source: WriteConfigError,
+        filename: &'static str,
+    },
+}
+impl AsStatusCode for WriteAuthConfigError {}
 
 /// Gets the value for an environment variable
 pub fn get_var<T: AsRef<str>>(name: T) -> Result<String, MissingEnvVar> {
@@ -739,29 +774,81 @@ impl Configuration {
     /// # Errors
     ///
     /// Return an error when writing fail
-    pub async fn write_auth_config(&self) -> Result<(), ApiError> {
+    pub async fn write_auth_config(&self) -> Result<(), WriteAuthConfigError> {
         if self.index.allow_protocol_git {
             self.write_auth_config_git_config().await?;
             self.write_auth_config_git_credentials().await?;
         }
-        self.write_auth_config_cargo_config().await?;
+        self.write_auth_cargo_config().await?;
         self.write_auth_config_cargo_credentials().await?;
         Ok(())
     }
 
-    /// Write the configuration for authenticating to registries
-    async fn write_auth_config_git_config(&self) -> Result<(), ApiError> {
-        let file = File::create(self.get_home_path_for(&[".gitconfig"])).await?;
-        let mut writer = BufWriter::new(file);
-        writer.write_all(b"[credential]\n    helper = store\n").await?;
-        writer.flush().await?;
-        Ok(())
+    async fn create_config_file(&self, path: &[&str]) -> Result<BufWriter<File>, WriteConfigError> {
+        let path = self.get_home_path_for(path);
+
+        // create parent folder if needed
+        let parent_path = path
+            .parent()
+            .ok_or_else(|| WriteConfigError::ParentPath { path: path.clone() })?;
+        if !parent_path.exists() {
+            fs::create_dir(parent_path)
+                .await
+                .map_err(|source| WriteConfigError::CreateDir {
+                    source,
+                    path: parent_path.to_path_buf(),
+                })?;
+        }
+
+        // create config file
+        let file = File::create(&path)
+            .await
+            .map_err(|source| WriteConfigError::CreateConfigFile { source, path })?;
+        Ok(BufWriter::new(file))
+    }
+
+    async fn write_auth_config_git_config(&self) -> Result<(), WriteAuthConfigError> {
+        const GIT_CONFIG_FILENAME: &str = ".gitconfig";
+        let mk_err = |source: WriteConfigError| WriteAuthConfigError::WriteAuthConfig {
+            source,
+            filename: GIT_CONFIG_FILENAME,
+        };
+
+        let writer = self.create_config_file(&[GIT_CONFIG_FILENAME]).await.map_err(mk_err)?;
+        self.write_auth_config_git_config_content(writer)
+            .await
+            .map_err(WriteConfigError::WriteContent)
+            .map_err(mk_err)
     }
 
     /// Write the configuration for authenticating to registries
-    async fn write_auth_config_git_credentials(&self) -> Result<(), ApiError> {
-        let file = File::create(self.get_home_path_for(&[".git-credentials"])).await?;
-        let mut writer = BufWriter::new(file);
+    async fn write_auth_config_git_config_content(
+        &self,
+        mut writer: impl AsyncWrite + std::marker::Unpin,
+    ) -> Result<(), io::Error> {
+        writer.write_all(b"[credential]\n    helper = store\n").await?;
+        writer.flush().await
+    }
+
+    /// Write the configuration for authenticating to registries
+    async fn write_auth_config_git_credentials(&self) -> Result<(), WriteAuthConfigError> {
+        const GIT_CREDENTIALS_FILENAME: &str = ".git-credentials";
+        let mk_err = |source: WriteConfigError| WriteAuthConfigError::WriteAuthConfig {
+            source,
+            filename: GIT_CREDENTIALS_FILENAME,
+        };
+
+        let writer = self.create_config_file(&[GIT_CREDENTIALS_FILENAME]).await.map_err(mk_err)?;
+        self.write_auth_config_git_credentials_content(writer)
+            .await
+            .map_err(WriteConfigError::WriteContent)
+            .map_err(mk_err)
+    }
+
+    async fn write_auth_config_git_credentials_content(
+        &self,
+        mut writer: impl AsyncWrite + std::marker::Unpin,
+    ) -> Result<(), io::Error> {
         let index = self.web_public_uri.find('/').unwrap() + 2;
         writer
             .write_all(
@@ -795,9 +882,24 @@ impl Configuration {
     }
 
     /// Write the configuration for authenticating to registries
-    async fn write_auth_config_cargo_config(&self) -> Result<(), ApiError> {
-        let file = File::create(self.get_home_path_for(&[".cargo", "config.toml"])).await?;
-        let mut writer = BufWriter::new(file);
+    async fn write_auth_cargo_config(&self) -> Result<(), WriteAuthConfigError> {
+        const CARGO_CONFIG_FILENAME: &str = "config.toml";
+        let mk_err = |source: WriteConfigError| WriteAuthConfigError::WriteAuthConfig {
+            source,
+            filename: CARGO_CONFIG_FILENAME,
+        };
+
+        let writer = self
+            .create_config_file(&[".cargo", CARGO_CONFIG_FILENAME])
+            .await
+            .map_err(mk_err)?;
+        self.write_auth_config_cargo_config_content(writer)
+            .await
+            .map_err(WriteConfigError::WriteContent)
+            .map_err(mk_err)
+    }
+
+    async fn write_auth_config_cargo_config_content(&self, mut writer: BufWriter<File>) -> Result<(), io::Error> {
         writer.write_all(b"[registry]\n").await?;
         writer.write_all(b"global-credential-providers = [\"cargo:token\"]\n").await?;
         writer.write_all(b"\n").await?;
@@ -839,10 +941,28 @@ impl Configuration {
         Ok(())
     }
 
+    async fn write_auth_config_cargo_credentials(&self) -> Result<(), WriteAuthConfigError> {
+        const CARGO_CREDENTIALS_FILENAME: &str = "credentials.toml";
+        let mk_err = |source: WriteConfigError| WriteAuthConfigError::WriteAuthConfig {
+            source,
+            filename: CARGO_CREDENTIALS_FILENAME,
+        };
+
+        let writer = self
+            .create_config_file(&[".cargo", CARGO_CREDENTIALS_FILENAME])
+            .await
+            .map_err(mk_err)?;
+        self.write_auth_config_cargo_credentials_content(writer)
+            .await
+            .map_err(WriteConfigError::WriteContent)
+            .map_err(mk_err)
+    }
+
     /// Write the configuration for authenticating to registries
-    async fn write_auth_config_cargo_credentials(&self) -> Result<(), ApiError> {
-        let file = File::create(self.get_home_path_for(&[".cargo", "credentials.toml"])).await?;
-        let mut writer = BufWriter::new(file);
+    async fn write_auth_config_cargo_credentials_content(
+        &self,
+        mut writer: impl AsyncWrite + std::marker::Unpin,
+    ) -> Result<(), io::Error> {
         writer
             .write_all(format!("[registries.{}]\n", self.self_local_name).as_bytes())
             .await?;

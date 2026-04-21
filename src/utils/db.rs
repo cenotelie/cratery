@@ -15,12 +15,23 @@ use log::error;
 use serde_derive::{Deserialize, Serialize};
 use sqlx::sqlite::{SqliteConnectOptions, SqliteJournalMode, SqlitePoolOptions};
 use sqlx::{Pool, Sqlite, SqliteConnection, Transaction};
+use thiserror::Error;
 
-use super::apierror::ApiError;
+use crate::utils::apierror::AsStatusCode;
 use crate::utils::shared::{ResourceLock, SharedResource, StillSharedError};
 
 /// Maximum number of concurrent READ connections
 const DB_MAX_READ_CONNECTIONS: u32 = 16;
+
+/// Define error than can happen during pool creation.
+#[derive(Debug, Error)]
+#[error("failed to create Sqlite Connect Options with url `{url}`")]
+pub struct PoolCreateError {
+    #[source]
+    source: sqlx::Error,
+    url: String,
+}
+impl AsStatusCode for PoolCreateError {}
 
 /// A pool of sqlite connection that distinguish read-only and write connections
 #[derive(Debug, Clone)]
@@ -35,13 +46,13 @@ pub struct RwSqlitePool {
 
 impl RwSqlitePool {
     /// Creates a new pool
-    pub fn new(url: &str) -> Result<Self, ApiError> {
+    pub fn new(url: &str) -> Result<Self, PoolCreateError> {
         let current_write_op = Arc::new(Mutex::new(None));
         Ok(Self {
             read: SqlitePoolOptions::new()
                 .max_connections(DB_MAX_READ_CONNECTIONS)
                 .connect_lazy_with(
-                    SqliteConnectOptions::from_str(url)?
+                    sqlite_connect_from_str(url)?
                         .journal_mode(SqliteJournalMode::Wal)
                         .read_only(true),
                 ),
@@ -57,7 +68,7 @@ impl RwSqlitePool {
                         })
                     }
                 })
-                .connect_lazy_with(SqliteConnectOptions::from_str(url)?.journal_mode(SqliteJournalMode::Wal)),
+                .connect_lazy_with(sqlite_connect_from_str(url)?.journal_mode(SqliteJournalMode::Wal)),
             current_write_op,
         })
     }
@@ -87,6 +98,13 @@ impl RwSqlitePool {
             }
         }
     }
+}
+
+fn sqlite_connect_from_str(url: &str) -> Result<SqliteConnectOptions, PoolCreateError> {
+    SqliteConnectOptions::from_str(url).map_err(|source| PoolCreateError {
+        source,
+        url: url.to_string(),
+    })
 }
 
 /// The name of the metadata for the schema version
@@ -203,50 +221,16 @@ impl Ord for VersionNumber {
 }
 
 /// An error during a migration
-#[derive(Debug)]
+#[derive(Debug, Error)]
 pub enum MigrationError {
     /// Error when the version number is invalid
-    InvalidVersion(InvalidVersionNumber),
+    #[error(transparent)]
+    InvalidVersion(#[from] InvalidVersionNumber),
     /// An SQL error
-    Sql(sqlx::Error),
+    #[error(transparent)]
+    Sql(#[from] sqlx::Error),
     /// The transaction was still shared when a migration is terminated
+    #[error("the transaction was still shared when a it terminated")]
     SharedTransaction(StillSharedError),
 }
-
-impl Display for MigrationError {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Self::InvalidVersion(inner) => inner.fmt(f),
-            Self::Sql(inner) => inner.fmt(f),
-            Self::SharedTransaction(_) => write!(f, "the transaction was still shared when a it terminated"),
-        }
-    }
-}
-
-impl std::error::Error for MigrationError {
-    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
-        match self {
-            Self::InvalidVersion(inner) => Some(inner),
-            Self::Sql(inner) => Some(inner),
-            Self::SharedTransaction(inner) => Some(inner),
-        }
-    }
-}
-
-impl From<InvalidVersionNumber> for MigrationError {
-    fn from(err: InvalidVersionNumber) -> Self {
-        Self::InvalidVersion(err)
-    }
-}
-
-impl From<sqlx::Error> for MigrationError {
-    fn from(err: sqlx::Error) -> Self {
-        Self::Sql(err)
-    }
-}
-
-impl From<StillSharedError> for MigrationError {
-    fn from(err: StillSharedError) -> Self {
-        Self::SharedTransaction(err)
-    }
-}
+impl AsStatusCode for MigrationError {}

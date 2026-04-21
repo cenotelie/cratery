@@ -12,6 +12,7 @@ use std::time::Duration;
 
 use chrono::Local;
 use flate2::bufread::GzDecoder;
+use futures::future::BoxFuture;
 use log::{error, info};
 use tar::Archive;
 use tokio::process::Command;
@@ -23,7 +24,7 @@ use crate::model::CHANNEL_NIGHTLY;
 use crate::model::config::Configuration;
 use crate::model::docs::{DocGenEvent, DocGenJob, DocGenJobSpec, DocGenJobState, DocGenJobUpdate, DocGenTrigger};
 use crate::model::worker::{JobIdentifier, JobSpecification, JobUpdate, WorkersManager};
-use crate::services::database::{db_transaction_read, db_transaction_write};
+use crate::services::database::{DbReadError, DbWriteError, db_transaction_read, db_transaction_write};
 use crate::services::storage::Storage;
 use crate::utils::FaillibleFuture;
 use crate::utils::apierror::{ApiError, error_backend_failure, error_invalid_request, specialize};
@@ -33,13 +34,17 @@ use crate::utils::db::RwSqlitePool;
 /// Service to generate documentation for a crate
 pub trait DocsGenerator {
     /// Gets all the jobs
-    fn get_jobs(&self) -> FaillibleFuture<'_, Vec<DocGenJob>>;
+    fn get_jobs(&self) -> BoxFuture<'_, Result<Vec<DocGenJob>, DbReadError>>;
 
     /// Gets the log for a job
     fn get_job_log(&self, job_id: i64) -> FaillibleFuture<'_, String>;
 
     /// Queues a job for documentation generation
-    fn queue<'a>(&'a self, spec: &'a DocGenJobSpec, trigger: &'a DocGenTrigger) -> FaillibleFuture<'a, DocGenJob>;
+    fn queue<'a>(
+        &'a self,
+        spec: &'a DocGenJobSpec,
+        trigger: &'a DocGenTrigger,
+    ) -> BoxFuture<'a, Result<DocGenJob, DbWriteError>>;
 
     /// Adds a listener to job updates
     fn add_listener(&self, listener: Sender<DocGenEvent>) -> FaillibleFuture<'_, ()>;
@@ -86,7 +91,7 @@ struct DocsGeneratorImpl {
 
 impl DocsGenerator for DocsGeneratorImpl {
     /// Gets all the jobs
-    fn get_jobs(&self) -> FaillibleFuture<'_, Vec<DocGenJob>> {
+    fn get_jobs(&self) -> BoxFuture<'_, Result<Vec<DocGenJob>, DbReadError>> {
         Box::pin(async move {
             db_transaction_read(
                 &self.service_db_pool,
@@ -109,13 +114,17 @@ impl DocsGenerator for DocsGeneratorImpl {
     }
 
     /// Queues a job for documentation generation
-    fn queue<'a>(&'a self, spec: &'a DocGenJobSpec, trigger: &'a DocGenTrigger) -> FaillibleFuture<'a, DocGenJob> {
+    fn queue<'a>(
+        &'a self,
+        spec: &'a DocGenJobSpec,
+        trigger: &'a DocGenTrigger,
+    ) -> BoxFuture<'a, Result<DocGenJob, DbWriteError>> {
         Box::pin(async move {
             let job = db_transaction_write(&self.service_db_pool, "create_docgen_job", |database| async move {
                 database.create_docgen_job(spec, trigger).await
             })
             .await?;
-            self.send_event(DocGenEvent::Queued(Box::new(job.clone()))).await?;
+            self.send_event(DocGenEvent::Queued(Box::new(job.clone()))).await;
             Ok(job)
         })
     }
@@ -132,7 +141,7 @@ impl DocsGenerator for DocsGeneratorImpl {
 impl DocsGeneratorImpl {
     /// Send an event to listeners
     #[expect(clippy::significant_drop_tightening)]
-    async fn send_event(&self, event: DocGenEvent) -> Result<(), ApiError> {
+    async fn send_event(&self, event: DocGenEvent) {
         let mut listeners = self.listeners.lock().await;
         let mut index = if listeners.is_empty() {
             None
@@ -146,11 +155,10 @@ impl DocsGeneratorImpl {
             }
             index = if i == 0 { None } else { Some(i - 1) };
         }
-        Ok(())
     }
 
     /// Update a job
-    async fn update_job(&self, job: &DocGenJob, state: DocGenJobState, log: Option<&str>) -> Result<(), ApiError> {
+    async fn update_job(&self, job: &DocGenJob, state: DocGenJobState, log: Option<&str>) -> Result<(), DbWriteError> {
         db_transaction_write(&self.service_db_pool, "update_job", |database| async move {
             database.update_docgen_job(job.id, state).await?;
             database
@@ -161,8 +169,7 @@ impl DocsGeneratorImpl {
                     state != DocGenJobState::Queued,
                     state == DocGenJobState::Success,
                 )
-                .await?;
-            Ok::<_, ApiError>(())
+                .await
         })
         .await?;
 
@@ -174,7 +181,7 @@ impl DocsGeneratorImpl {
             last_update: now,
             log: log.map(str::to_string),
         }))
-        .await?;
+        .await;
         Ok(())
     }
 
@@ -184,6 +191,7 @@ impl DocsGeneratorImpl {
             database.get_next_docgen_job().await
         })
         .await
+        .map_err(ApiError::from)
     }
 
     /// Implementation of the worker

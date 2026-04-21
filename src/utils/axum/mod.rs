@@ -19,19 +19,15 @@ use crate::utils::apierror::ApiError;
 pub type ApiResult<T> = Result<(StatusCode, Json<T>), (StatusCode, Json<ApiError>)>;
 
 /// Produces an error response
-///
-/// # Panics
-///
-/// Panic when the HTTP code is not a correct status code
-pub fn response_error_http(http: u16, error: ApiError) -> (StatusCode, Json<ApiError>) {
-    if http == 500 {
+pub fn response_error_http(http: StatusCode, error: ApiError) -> (StatusCode, Json<ApiError>) {
+    if http == StatusCode::INTERNAL_SERVER_ERROR {
         // log internal errors
         error!("{error}");
         if let Some(backtrace) = &error.backtrace {
             error!("{backtrace}");
         }
     }
-    (StatusCode::from_u16(http).unwrap(), Json(error))
+    (http, Json(error))
 }
 
 /// Produces an error response
@@ -40,17 +36,8 @@ pub fn response_error(error: ApiError) -> (StatusCode, Json<ApiError>) {
 }
 
 /// Produces an OK response
-///
-/// # Panics
-///
-/// Panic when the HTTP code is not a correct status code
-pub fn response_ok_http<T>(http: u16, data: T) -> (StatusCode, Json<T>) {
-    (StatusCode::from_u16(http).unwrap(), Json(data))
-}
-
-/// Produces an OK response
-pub fn response_ok<T>(data: T) -> (StatusCode, Json<T>) {
-    response_ok_http(200, data)
+pub const fn response_ok<T>(data: T) -> (StatusCode, Json<T>) {
+    (StatusCode::OK, Json(data))
 }
 
 /// Maps a service result to a web api result
