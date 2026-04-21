@@ -4,7 +4,7 @@
 
 //! Module to generate unique logins
 
-use rand::Rng;
+use rand::RngExt as _;
 
 /// Generate a new name
 #[must_use]
