@@ -40,7 +40,7 @@ impl ApiError {
 impl Display for ApiError {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         let details = self.details.as_ref().map_or("", std::convert::AsRef::as_ref);
-        write!(f, "{} ({})", &self.message, &details)
+        write!(f, "{} ({})", self.message, details)
     }
 }
 

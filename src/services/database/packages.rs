@@ -186,7 +186,7 @@ impl Database {
                 error_invalid_request(),
                 format!(
                     "Package {} already exists in version {}, uploaded on {}",
-                    &package.metadata.name, &package.metadata.vers, row.upload
+                    package.metadata.name, package.metadata.vers, row.upload
                 ),
             ));
         }
@@ -251,7 +251,7 @@ impl Database {
         if !can_remove {
             return Err(specialize(
                 error_invalid_request(),
-                format!("Package {package} does not allow removing versions",),
+                format!("Package {package} does not allow removing versions"),
             ));
         }
         // check version exists
@@ -265,7 +265,7 @@ impl Database {
         if row.is_none() {
             return Err(specialize(
                 error_not_found(),
-                format!("Package {package}, version {version} not found",),
+                format!("Package {package}, version {version} not found"),
             ));
         }
         sqlx::query!(

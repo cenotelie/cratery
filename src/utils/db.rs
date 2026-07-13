@@ -156,7 +156,7 @@ pub struct InvalidVersionNumber(pub String);
 
 impl Display for InvalidVersionNumber {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        write!(f, "invalid schema version number {}", &self.0)
+        write!(f, "invalid schema version number {}", self.0)
     }
 }
 

@@ -122,30 +122,24 @@ impl StorageConfig {
     fn from_env() -> Result<Self, MissingEnvVar> {
         let storage_kind = get_var("REGISTRY_STORAGE")?;
         let retry_params = get_var("REGISTRY_STORAGE_RETRY_ENABLED")
-            .map(|v| {
+            .map_or(None, |v| {
                 if v.eq_ignore_ascii_case("true") || v == "1" {
                     Some(RetryParams {
                         max_times: get_var("REGISTRY_STORAGE_RETRY_MAX_TIMES")
-                            .map(|s| s.parse().expect("invalid REGISTRY_STORAGE_RETRY_MAX_TIMES"))
-                            .unwrap_or(RetryParams::DEFAULT_MAX_TIMES),
+                            .map_or(RetryParams::DEFAULT_MAX_TIMES, |s| s.parse().expect("invalid REGISTRY_STORAGE_RETRY_MAX_TIMES")),
                         min_delay_ms: get_var("REGISTRY_STORAGE_RETRY_MIN_DELAY_MS")
-                            .map(|s| s.parse().expect("invalid REGISTRY_STORAGE_RETRY_MIN_DELAY_MS"))
-                            .unwrap_or(RetryParams::DEFAULT_MIN_DELAY_MS),
+                            .map_or(RetryParams::DEFAULT_MIN_DELAY_MS, |s| s.parse().expect("invalid REGISTRY_STORAGE_RETRY_MIN_DELAY_MS")),
                         max_delay_ms: get_var("REGISTRY_STORAGE_RETRY_MAX_DELAY_MS")
-                            .map(|s| s.parse().expect("invalid REGISTRY_STORAGE_RETRY_MAX_DELAY_MS"))
-                            .unwrap_or(RetryParams::DEFAULT_MAX_DELAY_MS),
+                            .map_or(RetryParams::DEFAULT_MAX_DELAY_MS, |s| s.parse().expect("invalid REGISTRY_STORAGE_RETRY_MAX_DELAY_MS")),
                         factor: get_var("REGISTRY_STORAGE_RETRY_FACTOR")
-                            .map(|s| s.parse().expect("invalid REGISTRY_STORAGE_RETRY_FACTOR"))
-                            .unwrap_or(RetryParams::DEFAULT_FACTOR),
+                            .map_or(RetryParams::DEFAULT_FACTOR, |s| s.parse().expect("invalid REGISTRY_STORAGE_RETRY_FACTOR")),
                         jitter: get_var("REGISTRY_STORAGE_RETRY_JITTER")
-                            .map(|v| v.eq_ignore_ascii_case("true") || v == "1")
-                            .unwrap_or(RetryParams::DEFAULT_JITTER),
+                            .map_or(RetryParams::DEFAULT_JITTER, |v| v.eq_ignore_ascii_case("true") || v == "1"),
                     })
                 } else {
                     None
                 }
-            })
-            .unwrap_or(None);
+            });
         Ok(match storage_kind.as_str() {
             "s3" | "S3" => Self::S3 {
                 params: S3Params {
@@ -256,8 +250,8 @@ impl IndexConfig {
         Ok(Self {
             home_dir: home_dir.to_string(),
             location: format!("{data_dir}/index"),
-            allow_protocol_git: get_var("REGISTRY_INDEX_PROTOCOL_GIT").map(|v| v == "true").unwrap_or(false),
-            allow_protocol_sparse: get_var("REGISTRY_INDEX_PROTOCOL_SPARSE").map(|v| v == "true").unwrap_or(true),
+            allow_protocol_git: get_var("REGISTRY_INDEX_PROTOCOL_GIT").is_ok_and(|v| v == "true"),
+            allow_protocol_sparse: get_var("REGISTRY_INDEX_PROTOCOL_SPARSE").map_or(true, |v| v == "true"),
             remote_origin: get_var("REGISTRY_GIT_REMOTE").ok(),
             remote_ssh_key_file_name: get_var("REGISTRY_GIT_REMOTE_SSH_KEY_FILENAME").ok(),
             remote_push_changes: get_var("REGISTRY_GIT_REMOTE_PUSH_CHANGES")
@@ -304,8 +298,7 @@ impl SmtpConfig {
         Ok(Self {
             host: get_var("REGISTRY_EMAIL_SMTP_HOST")?,
             port: get_var("REGISTRY_EMAIL_SMTP_PORT")
-                .map(|s| s.parse().expect("invalid REGISTRY_EMAIL_SMTP_PORT"))
-                .unwrap_or(465),
+                .map_or(465, |s| s.parse().expect("invalid REGISTRY_EMAIL_SMTP_PORT")),
             login: get_var("REGISTRY_EMAIL_SMTP_LOGIN")?,
             password: get_var("REGISTRY_EMAIL_SMTP_PASSWORD")?,
         })
@@ -625,8 +618,8 @@ impl Configuration {
         });
         let index = IndexConfig::from_env(&home_dir, &data_dir, &web_public_uri)?;
         let storage = StorageConfig::from_env()?;
-        let deps_notify_outdated = get_var("REGISTRY_DEPS_NOTIFY_OUTDATED").map(|v| v == "true").unwrap_or(false);
-        let deps_notify_cves = get_var("REGISTRY_DEPS_NOTIFY_CVES").map(|v| v == "true").unwrap_or(false);
+        let deps_notify_outdated = get_var("REGISTRY_DEPS_NOTIFY_OUTDATED").is_ok_and(|v| v == "true");
+        let deps_notify_cves = get_var("REGISTRY_DEPS_NOTIFY_CVES").is_ok_and(|v| v == "true");
         let email = if deps_notify_outdated || deps_notify_cves {
             EmailConfig::from_env()?
         } else {
@@ -648,21 +641,18 @@ impl Configuration {
                 |s| IpAddr::from_str(&s).expect("invalid REGISTRY_WEB_LISTENON_IP"),
             ),
             web_listenon_port: get_var("REGISTRY_WEB_LISTENON_PORT")
-                .map(|s| s.parse().expect("invalid REGISTRY_WEB_LISTENON_PORT"))
-                .unwrap_or(80),
+                .map_or(80, |s| s.parse().expect("invalid REGISTRY_WEB_LISTENON_PORT")),
             web_domain,
             web_public_uri,
             web_body_limit: get_var("REGISTRY_WEB_BODY_LIMIT")
-                .map(|s| s.parse().expect("invalid REGISTRY_WEB_BODY_LIMIT"))
-                .unwrap_or(10 * 1024 * 1024),
+                .map_or(10 * 1024 * 1024, |s| s.parse().expect("invalid REGISTRY_WEB_BODY_LIMIT")),
             web_hot_reload_path: get_var("REGISTRY_WEB_HOT_RELOAD_PATH").ok(),
             home_dir,
             data_dir,
             index,
             storage,
             storage_timeout: get_var("REGISTRY_STORAGE_TIMEOUT")
-                .map(|s| s.parse().expect("invalid REGISTRY_STORAGE_TIMEOUT"))
-                .unwrap_or(3000),
+                .map_or(3000, |s| s.parse().expect("invalid REGISTRY_STORAGE_TIMEOUT")),
             oauth_login_uri: get_var("REGISTRY_OAUTH_LOGIN_URI")?,
             oauth_token_uri: get_var("REGISTRY_OAUTH_TOKEN_URI")?,
             oauth_callback_uri: get_var("REGISTRY_OAUTH_CALLBACK_URI")?,
@@ -673,19 +663,15 @@ impl Configuration {
             oauth_client_id: get_var("REGISTRY_OAUTH_CLIENT_ID")?,
             oauth_client_secret: get_var("REGISTRY_OAUTH_CLIENT_SECRET")?,
             oauth_client_scope: get_var("REGISTRY_OAUTH_CLIENT_SCOPE")?,
-            docs_gen_mock: get_var("REGISTRY_DOCS_GEN_MOCK").map(|v| v == "true").unwrap_or(false),
+            docs_gen_mock: get_var("REGISTRY_DOCS_GEN_MOCK").is_ok_and(|v| v == "true"),
             docs_autoinstall_targets: get_var("REGISTRY_DOCS_AUTOINSTALL_TARGETS")
-                .map(|v| v == "true")
-                .unwrap_or(false),
+                .is_ok_and(|v| v == "true"),
             deps_check_period: get_var("REGISTRY_DEPS_CHECK_PERIOD")
-                .map(|s| s.parse().expect("invalid REGISTRY_DEPS_CHECK_PERIOD"))
-                .unwrap_or(60), // 1 minute
+                .map_or(60, |s| s.parse().expect("invalid REGISTRY_DEPS_CHECK_PERIOD")), // 1 minute
             deps_stale_registry: get_var("REGISTRY_DEPS_STALE_REGISTRY")
-                .map(|s| s.parse().expect("invalid REGISTRY_DEPS_STALE_REGISTRY"))
-                .unwrap_or(60 * 1000), // 1 minute
+                .map_or(60 * 1000, |s| s.parse().expect("invalid REGISTRY_DEPS_STALE_REGISTRY")), // 1 minute
             deps_stale_analysis: get_var("REGISTRY_DEPS_STALE_ANALYSIS")
-                .map(|s| s.parse().expect("invalid REGISTRY_DEPS_STALE_ANALYSIS"))
-                .unwrap_or(24 * 60), // 24 hours
+                .map_or(24 * 60, |s| s.parse().expect("invalid REGISTRY_DEPS_STALE_ANALYSIS")), // 24 hours
             deps_notify_outdated,
             deps_notify_cves,
             email,

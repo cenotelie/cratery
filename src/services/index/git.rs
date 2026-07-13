@@ -216,7 +216,7 @@ impl GitIndexImpl {
         file.flush().await?;
         file.sync_all().await?;
         // commit and update
-        let message = format!("Publish {}:{}", &metadata.name, &metadata.vers);
+        let message = format!("Publish {}:{}", metadata.name, metadata.vers);
         self.commit_changes(&message).await?;
         Ok(())
     }

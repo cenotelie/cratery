@@ -41,7 +41,7 @@ where
 #[must_use]
 pub fn stale_instant() -> Instant {
     let now = Instant::now();
-    now.checked_sub(Duration::from_secs(60 * 60 * 24 * 7)).unwrap()
+    now.checked_sub(Duration::from_hours(168)).unwrap()
 }
 
 /// Execute a git command

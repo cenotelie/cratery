@@ -301,7 +301,7 @@ pub async fn generate_doc_for_job(
                 upload_package(
                     service_storage.clone(),
                     &doc_folder,
-                    &format!("{}/{}/{}", &job.package, &job.version, &job.target),
+                    &format!("{}/{}/{}", job.package, job.version, job.target),
                 )
                 .await?;
                 (DocGenJobState::Success, log)
