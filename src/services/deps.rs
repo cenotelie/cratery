@@ -429,6 +429,7 @@ impl DepsCheckerImpl {
             }
             data.last_touch.insert(reg_name.to_string(), now);
         }
+        drop(data);
 
         // load from file
         let file_path = self.get_dependency_info_file_path(dep_name, reg_name).await?;
@@ -468,6 +469,7 @@ impl DepsCheckerImpl {
     }
 
     /// Gets the crate index data for a dependency in a sparse registry
+    #[expect(clippy::significant_drop_tightening)]
     async fn get_dependency_info_sparse(
         &self,
         dep_name: &str,
