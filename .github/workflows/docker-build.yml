@@ -28,6 +28,11 @@ jobs:
         with:
           username: ${{ vars.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
+      - uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
       - uses: docker/build-push-action@v7
         with:
           context: .
@@ -36,5 +41,7 @@ jobs:
           tags: |
             ${{ vars.DOCKERHUB_USERNAME }}/cratery:latest
             ${{ vars.DOCKERHUB_USERNAME }}/cratery:${{ steps.sanitize.outputs.tag_name }}
+            ghcr.io/${{ github.repository_owner }}/${{ github.event.repository.name }}:latest
+            ghcr.io/${{ github.repository_owner }}/${{ github.event.repository.name }}:${{ steps.sanitize.outputs.tag_name }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
