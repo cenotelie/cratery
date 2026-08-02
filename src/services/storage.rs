@@ -75,9 +75,9 @@ impl TryFrom<&Configuration> for StorageImpl {
 
                 let op = opendal::Operator::new(builder)?.layer(LoggingLayer::default());
                 if let Some(retry_params) = retry_params {
-                    op.layer(retry_layer_from_params(retry_params)).finish()
+                    op.layer(retry_layer_from_params(retry_params))
                 } else {
-                    op.finish()
+                    op
                 }
             }
             StorageConfig::S3 {
@@ -95,9 +95,9 @@ impl TryFrom<&Configuration> for StorageImpl {
 
                 let op = opendal::Operator::new(builder)?.layer(LoggingLayer::default());
                 if let Some(retry_params) = retry_params {
-                    op.layer(retry_layer_from_params(retry_params)).finish()
+                    op.layer(retry_layer_from_params(retry_params))
                 } else {
-                    op.finish()
+                    op
                 }
             }
         };
