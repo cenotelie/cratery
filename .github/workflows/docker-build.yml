@@ -13,6 +13,15 @@ on:
     branches:
       - "main"
   workflow_dispatch:
+    inputs:
+      build_target:
+        description: "Build target"
+        required: true
+        default: "Release"
+        type: choice
+        options:
+          - Release
+          - Debug
 
 jobs:
   build-and-push:
@@ -23,6 +32,12 @@ jobs:
       - name: Sanitize tag name
         id: sanitize
         run: echo "tag_name=$(echo ${{ github.ref_name }} | sed 's/\//-/g')" >> $GITHUB_OUTPUT
+      - name: Generate Build Args
+        id: gen_docker_build_args
+        env:
+          INPUT_BUILD_TARGET: "${{ github.event.inputs.build_target || 'Release' }}"
+        run: ./.github/scripts/docker-build.sh
+
       - uses: docker/setup-buildx-action@v4
       - uses: docker/login-action@v4
         with:
@@ -38,6 +53,9 @@ jobs:
           context: .
           file: ./Dockerfile
           push: true
+          build-args: |
+            BUILD_FLAGS=${{ steps.gen_docker_build_args.outputs.build_flags }}
+            BUILD_TARGET=${{ steps.gen_docker_build_args.outputs.build_target }}
           tags: |
             ${{ vars.DOCKERHUB_USERNAME }}/cratery:latest
             ${{ vars.DOCKERHUB_USERNAME }}/cratery:${{ steps.sanitize.outputs.tag_name }}
