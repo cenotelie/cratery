@@ -12,7 +12,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 		libsqlite3-dev \
 		musl-tools \
 		git \
-		ssh
+		ssh \
+		&& apt-get clean
 
 # add custom user
 RUN groupmod -n cratery ubuntu && usermod -l cratery -d /home/cratery ubuntu && mv /home/ubuntu /home/cratery
