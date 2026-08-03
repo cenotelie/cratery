@@ -39,16 +39,22 @@ fi
 echo "build_flags=${BUILD_FLAGS}" >> $GITHUB_OUTPUT
 echo "build_target=${BUILD_TARGET}" >> $GITHUB_OUTPUT
 
+# Setup optional -debug suffix
+TAG_SUFFIX=""
+if [ "$BUILD_TARGET" = "debug" ]; then
+    TAG_SUFFIX="-debug"
+fi
+
 # Sanitize `ref_name` (from tag or branch name) for tag name
 SAN_REF_NAME="${GITHUB_REF_NAME//\//-}"
 
 # List base tags
 if [ "$SAN_REF_NAME" = "main" ]; then
-    BASE_TAGS="dev"
+    BASE_TAGS="dev${TAG_SUFFIX}"
 elif [ "$GITHUB_REF_TYPE" = "tag" ]; then
-    BASE_TAGS="${SAN_REF_NAME} latest"
+    BASE_TAGS="${SAN_REF_NAME}${TAG_SUFFIX} latest${TAG_SUFFIX}"
 elif [ "$GITHUB_REF_TYPE" = "branch" ]; then
-    BASE_TAGS="${SAN_REF_NAME}"
+    BASE_TAGS="${SAN_REF_NAME}${TAG_SUFFIX}"
 else
     log_error "Error: failed to compute docker image base tag from `ref_name` or `ref_type`"
     exit 1
