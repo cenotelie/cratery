@@ -29,13 +29,11 @@ jobs:
     if: vars.ENABLE_DOCKER_BUILD == 'true'
     steps:
       - uses: actions/checkout@v7
-      - name: Sanitize tag name
-        id: sanitize
-        run: echo "tag_name=$(echo ${{ github.ref_name }} | sed 's/\//-/g')" >> $GITHUB_OUTPUT
-      - name: Generate Build Args
-        id: gen_docker_build_args
+      - name: Generate Docker Tags and Build Args
+        id: gen_docker_tags_list_and_build_args
         env:
           INPUT_BUILD_TARGET: "${{ github.event.inputs.build_target || 'Release' }}"
+          DOCKERHUB_USERNAME: "${{ vars.DOCKERHUB_USERNAME }}"
         run: ./.github/scripts/docker-build.sh
 
       - uses: docker/setup-buildx-action@v4
@@ -54,12 +52,8 @@ jobs:
           file: ./Dockerfile
           push: true
           build-args: |
-            BUILD_FLAGS=${{ steps.gen_docker_build_args.outputs.build_flags }}
-            BUILD_TARGET=${{ steps.gen_docker_build_args.outputs.build_target }}
-          tags: |
-            ${{ vars.DOCKERHUB_USERNAME }}/cratery:latest
-            ${{ vars.DOCKERHUB_USERNAME }}/cratery:${{ steps.sanitize.outputs.tag_name }}
-            ghcr.io/${{ github.repository_owner }}/${{ github.event.repository.name }}:latest
-            ghcr.io/${{ github.repository_owner }}/${{ github.event.repository.name }}:${{ steps.sanitize.outputs.tag_name }}
+            BUILD_FLAGS=${{ steps.gen_docker_tags_list_and_build_args.outputs.build_flags }}
+            BUILD_TARGET=${{ steps.gen_docker_tags_list_and_build_args.outputs.build_target }}
+          tags: "${{ steps.gen_docker_tags_list_and_build_args.outputs.tags_list }}"
           cache-from: type=gha
           cache-to: type=gha,mode=max
