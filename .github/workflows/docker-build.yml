@@ -22,6 +22,15 @@ on:
         options:
           - Release
           - Debug
+      platforms:
+        description: "Target platforms"
+        required: true
+        default: "linux/amd64,linux/arm64"
+        type: choice
+        options:
+          - linux/amd64
+          - linux/arm64
+          - linux/amd64,linux/arm64
 
 jobs:
   build-and-push:
@@ -41,7 +50,7 @@ jobs:
 
       - uses: docker/setup-buildx-action@v4
         with:
-          platforms: linux/amd64,linux/arm64
+          platforms: ${{ github.event.inputs.platforms || 'linux/amd64,linux/arm64' }}
       - uses: docker/login-action@v4
         with:
           username: ${{ vars.DOCKERHUB_USERNAME }}
@@ -58,7 +67,7 @@ jobs:
           context: .
           file: ./Dockerfile
           push: true
-          platforms: linux/amd64,linux/arm64
+          platforms: ${{ github.event.inputs.platforms || 'linux/amd64,linux/arm64' }}
           build-args: |
             BUILD_FLAGS=${{ steps.gen_docker_tags_list_and_build_args.outputs.build_flags }}
             BUILD_TARGET=${{ steps.gen_docker_tags_list_and_build_args.outputs.build_target }}
