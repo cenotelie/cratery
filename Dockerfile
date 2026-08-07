@@ -1,7 +1,6 @@
 ARG BUILD_FLAGS=
 ARG BUILD_TARGET=debug
 
-
 ## Base image with Rust toolchain and dependencies
 FROM buildpack-deps:24.04-curl AS base
 LABEL maintainer="Laurent Wouters <lwouters@cenotelie.fr>" vendor="Cénotélie Opérations SAS"  description="Cratery -- a private cargo registry"
@@ -35,7 +34,10 @@ RUN chmod -R go-rwx /home/cratery/.ssh
 ## Builder to build the application
 FROM base AS builder
 ARG BUILD_FLAGS
+ARG BUILD_GIT_TAG
+ARG BUILD_GIT_HASH
 COPY --chown=cratery . /home/cratery/src
+ENV GIT_TAG=${BUILD_GIT_TAG} GIT_HASH=${BUILD_GIT_HASH}
 RUN cd /home/cratery/src && cargo +stable build ${BUILD_FLAGS}
 
 

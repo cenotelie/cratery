@@ -4,6 +4,7 @@ SCRIPT="$(readlink -f "$0")"
 ROOT="$(dirname "$SCRIPT")"
 
 GIT_TAG=$(git tag -l --points-at HEAD)
+GIT_HASH=$(git log -1 --format=%H)
 DOCKER_TAG=latest
 BUILD_FLAGS=""
 BUILD_TARGET="debug"
@@ -31,6 +32,8 @@ done
 docker build --tag "cenotelie/cratery:latest" --rm \
     --build-arg="BUILD_FLAGS=$BUILD_FLAGS" \
     --build-arg="BUILD_TARGET=$BUILD_TARGET" \
+    --build-arg="BUILD_GIT_TAG=$GIT_TAG" \
+    --build-arg="BUILD_GIT_HASH=$GIT_HASH" \
     "$ROOT"
 
 if [[ "$DOCKER_TAG" != "latest" ]]; then
