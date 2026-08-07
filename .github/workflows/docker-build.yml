@@ -71,6 +71,8 @@ jobs:
           build-args: |
             BUILD_FLAGS=${{ steps.gen_docker_tags_list_and_build_args.outputs.build_flags }}
             BUILD_TARGET=${{ steps.gen_docker_tags_list_and_build_args.outputs.build_target }}
+            BUILD_GIT_TAG=${{ github.ref_name }}
+            BUILD_GIT_HASH=${{ github.sha }}
           tags: "${{ steps.gen_docker_tags_list_and_build_args.outputs.tags_list }}"
           cache-from: type=gha
           cache-to: type=gha,mode=max
