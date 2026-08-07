@@ -19,7 +19,7 @@ use tokio::io::{self, AsyncWrite, AsyncWriteExt, BufWriter};
 use tokio::process::Command;
 
 use super::{CHANNEL_NIGHTLY, CHANNEL_STABLE};
-use crate::model::errors::MissingEnvVar;
+use crate::model::errors::ConfEnvError;
 use crate::utils::apierror::{ApiError, AsStatusCode, error_backend_failure, specialize};
 use crate::utils::comma_sep_to_vec;
 use crate::utils::token::generate_token;
@@ -59,9 +59,9 @@ pub enum WriteAuthConfigError {
 impl AsStatusCode for WriteAuthConfigError {}
 
 /// Gets the value for an environment variable
-pub fn get_var<T: AsRef<str>>(name: T) -> Result<String, MissingEnvVar> {
+pub fn get_var<T: AsRef<str>>(name: T) -> Result<String, ConfEnvError> {
     let key = name.as_ref();
-    std::env::var(key).map_err(|original| MissingEnvVar {
+    std::env::var(key).map_err(|original| ConfEnvError::MissingEnvVar {
         original,
         var_name: key.to_string(),
     })
@@ -104,7 +104,7 @@ pub struct ExternalRegistry {
 
 impl ExternalRegistry {
     /// Loads the configuration for a registry from the environment
-    fn from_env(reg_index: usize) -> Result<Option<Self>, MissingEnvVar> {
+    fn from_env(reg_index: usize) -> Result<Option<Self>, ConfEnvError> {
         if let Ok(name) = get_var(format!("REGISTRY_EXTERNAL_{reg_index}_NAME")) {
             let mut index = get_var(format!("REGISTRY_EXTERNAL_{reg_index}_INDEX"))?;
             #[expect(clippy::option_if_let_else)]
@@ -154,7 +154,7 @@ pub enum StorageConfig {
 
 impl StorageConfig {
     /// Loads the configuration for a registry from the environment
-    fn from_env() -> Result<Self, MissingEnvVar> {
+    fn from_env() -> Result<Self, ConfEnvError> {
         let storage_kind = get_var("REGISTRY_STORAGE")?;
         let retry_params = get_var("REGISTRY_STORAGE_RETRY_ENABLED").map_or(None, |v| {
             if v.eq_ignore_ascii_case("true") || v == "1" {
@@ -286,7 +286,7 @@ pub struct IndexConfig {
 
 impl IndexConfig {
     /// Loads the configuration for a registry from the environment
-    fn from_env(home_dir: &str, data_dir: &str, web_public_uri: &str) -> Result<Self, MissingEnvVar> {
+    fn from_env(home_dir: &str, data_dir: &str, web_public_uri: &str) -> Result<Self, ConfEnvError> {
         Ok(Self {
             home_dir: home_dir.to_string(),
             location: format!("{data_dir}/index"),
@@ -334,7 +334,7 @@ pub struct SmtpConfig {
 
 impl SmtpConfig {
     /// Loads the configuration for a registry from the environment
-    fn from_env() -> Result<Self, MissingEnvVar> {
+    fn from_env() -> Result<Self, ConfEnvError> {
         Ok(Self {
             host: get_var("REGISTRY_EMAIL_SMTP_HOST")?,
             port: get_var("REGISTRY_EMAIL_SMTP_PORT").map_or(465, |s| s.parse().expect("invalid REGISTRY_EMAIL_SMTP_PORT")),
@@ -356,7 +356,7 @@ pub struct EmailConfig {
 
 impl EmailConfig {
     /// Loads the configuration for a registry from the environment
-    fn from_env() -> Result<Self, MissingEnvVar> {
+    fn from_env() -> Result<Self, ConfEnvError> {
         Ok(Self {
             smtp: SmtpConfig::from_env()?,
             sender: get_var("REGISTRY_EMAIL_SENDER")?,
@@ -401,7 +401,7 @@ pub enum NodeRole {
 
 impl NodeRole {
     /// Loads the configuration for a registry from the environment
-    fn from_env() -> Result<Self, MissingEnvVar> {
+    fn from_env() -> Result<Self, ConfEnvError> {
         let role_name = get_var("REGISTRY_NODE_ROLE").ok();
         match role_name.as_deref() {
             Some("master") => Ok(Self::Master(NodeRoleMaster {
@@ -639,7 +639,7 @@ impl Configuration {
     /// # Errors
     ///
     /// Return a `VarError` when an expected environment variable is not present
-    pub async fn from_env() -> Result<Self, MissingEnvVar> {
+    pub async fn from_env() -> Result<Self, ConfEnvError> {
         let home_dir = get_var("REGISTRY_HOME_DIR")
             .or_else(|_| get_var("HOME"))
             .unwrap_or_else(|_| String::from("/home/cratery"));
@@ -648,7 +648,7 @@ impl Configuration {
         let web_domain = Uri::from_str(&web_public_uri)
             .expect("invalid REGISTRY_WEB_PUBLIC_URI")
             .host()
-            .unwrap_or_default()
+            .ok_or(ConfEnvError::WebPublicUri)?
             .to_string();
         let self_local_name = get_var("REGISTRY_SELF_LOCAL_NAME").unwrap_or_else(|_| {
             web_domain
