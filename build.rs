@@ -2,7 +2,7 @@
  * Copyright (c) 2021 Cénotélie Opérations SAS (cenotelie.fr)
  ******************************************************************************/
 
-use std::process::Command;
+use std::{env, process::Command};
 
 fn main() {
     let db_url = "sqlite://src/empty.db";
@@ -13,9 +13,14 @@ fn main() {
 }
 
 fn extract_and_set_env(env_var: &str, cmd: &str, args: &[&str]) {
-    if let Some(value) = extract_value_from_cmd(cmd, args) {
+    if let Some(value) = extract_from_env_or_git(env_var, cmd, args) {
         println!("cargo:rustc-env={env_var}={value}");
     }
+}
+
+/// Get value from environment variable or fallback to command output.
+fn extract_from_env_or_git(env_var: &str, cmd: &str, args: &[&str]) -> Option<String> {
+    env::var(env_var).ok().or_else(|| extract_value_from_cmd(cmd, args))
 }
 
 /// Run a command with args and extract output in a String
