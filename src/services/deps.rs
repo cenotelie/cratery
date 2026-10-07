@@ -420,7 +420,8 @@ impl DepsCheckerImpl {
         reg_location.push(DATA_SUB_DIR);
         reg_location.push(reg_name);
         if is_stale {
-            if tokio::fs::try_exists(&reg_location).await? {
+            // check if the repository is cloned.
+            if crate::utils::execute_git(&reg_location, &["status"]).await.is_ok() {
                 crate::utils::execute_git(&reg_location, &["fetch", "origin", "master"]).await?;
                 crate::utils::execute_git(&reg_location, &["reset", "--hard", "origin/master"]).await?;
             } else {

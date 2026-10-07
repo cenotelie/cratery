@@ -50,8 +50,13 @@ pub enum CommandError {
         cmd: SmolStr,
     },
 
-    #[error("failed during execution of `{cmd}`:\n-- stdout\n{stdout}\n\n-- stderr\n{stderr}")]
-    Execute { cmd: SmolStr, stdout: String, stderr: String },
+    #[error("failed during execution of `{cmd}`:\n> at `{location}`\n-- stdout\n{stdout}\n\n-- stderr\n{stderr}")]
+    Execute {
+        cmd: String,
+        location: PathBuf,
+        stdout: String,
+        stderr: String,
+    },
 }
 impl AsStatusCode for CommandError {}
 
@@ -116,7 +121,8 @@ pub async fn execute_at_location(location: &Path, command: &str, args: &[&str], 
         let stdout = String::from_utf8_lossy(&output.stdout);
         let stderr = String::from_utf8_lossy(&output.stderr);
         Err(CommandError::Execute {
-            cmd: command.into(),
+            cmd: format!("{command} {args:?}"),
+            location: location.to_path_buf(),
             stdout: stdout.into_owned(),
             stderr: stderr.into_owned(),
         })

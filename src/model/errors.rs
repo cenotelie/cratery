@@ -12,12 +12,17 @@ use crate::utils::apierror::AsStatusCode;
 
 /// Error when an environment error is missing
 #[derive(Debug, Clone, PartialEq, Eq, Error)]
-#[error("missing expected env var {var_name}")]
-pub struct MissingEnvVar {
-    /// The original error
-    #[source]
-    pub original: VarError,
-    /// The name of the variable
-    pub var_name: String,
+pub enum ConfEnvError {
+    #[error("missing expected env var {var_name}")]
+    MissingEnvVar {
+        /// The original error
+        #[source]
+        original: VarError,
+        /// The name of the variable
+        var_name: String,
+    },
+
+    #[error("failed to extract `web domain` from REGISTRY_WEB_PUBLIC_URI env")]
+    WebPublicUri,
 }
-impl AsStatusCode for MissingEnvVar {}
+impl AsStatusCode for ConfEnvError {}

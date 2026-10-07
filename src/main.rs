@@ -15,7 +15,7 @@ use axum::extract::DefaultBodyLimit;
 use axum::routing::{delete, get, patch, post, put};
 use cookie::Key;
 use futures::io;
-use log::{SetLoggerError, info};
+use log::{SetLoggerError, debug, info};
 use thiserror::Error;
 
 use crate::application::Application;
@@ -209,6 +209,7 @@ async fn main() -> anyhow::Result<()> {
     let configuration = services::StandardServiceProvider::get_configuration()
         .await
         .context("Failed to get configuration for Standard Service Provider.")?;
+    debug!("App configuration :\n{configuration:#?}");
     if configuration.self_role.is_worker() {
         let worker = pin!(worker::main_worker(configuration));
         waiting_sigterm(worker).await.context("an error terminate worker execution")?;
