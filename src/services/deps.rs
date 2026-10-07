@@ -109,15 +109,22 @@ async fn deps_worker_job(
         database.get_unanalyzed_crates(configuration.deps_stale_analysis).await
     })
     .await?;
+
     for job in jobs {
-        deps_worker_job_on_crate_version(
+        if let Err(api_error) = deps_worker_job_on_crate_version(
             configuration,
             service_deps_checker.as_ref(),
             service_email_sender.as_ref(),
             pool,
             &job,
         )
-        .await?;
+        .await
+        {
+            error!("{api_error}");
+            if let Some(backtrace) = &api_error.backtrace {
+                error!("{backtrace}");
+            }
+        }
     }
     Ok(())
 }
