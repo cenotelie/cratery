@@ -26,7 +26,7 @@ pub enum IndexError {
     PackageNotInRegistry { package: String },
 
     #[error(transparent)]
-    GitIndexError(#[from] GitIndexError),
+    GitIndexError(Box<GitIndexError>),
 }
 impl AsStatusCode for IndexError {
     fn status_code(&self) -> StatusCode {
@@ -34,6 +34,11 @@ impl AsStatusCode for IndexError {
             Self::PackageNotInRegistry { .. } => StatusCode::NOT_FOUND,
             Self::GitIndexError(err) => err.status_code(),
         }
+    }
+}
+impl From<GitIndexError> for IndexError {
+    fn from(error: GitIndexError) -> Self {
+        Self::GitIndexError(Box::new(error))
     }
 }
 

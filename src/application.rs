@@ -63,7 +63,7 @@ pub enum LaunchError {
     DbRead(#[source] DbReadError),
 
     #[error("failed to get `index service`")]
-    GetIndex(#[source] GitIndexError),
+    GetIndex(#[source] Box<GitIndexError>),
 
     #[error("failed to get JobSpecs for undocumented packages")]
     JobSpecs(#[source] DbWriteError),
@@ -132,7 +132,7 @@ impl Application {
         let service_storage = P::get_storage(&configuration.deref().clone());
         let service_index = P::get_index(&configuration, db_is_empty)
             .await
-            .map_err(LaunchError::GetIndex)?;
+            .map_err(|err| LaunchError::GetIndex(Box::new(err)))?;
         let service_rustsec = P::get_rustsec(&configuration);
         let service_deps_checker = P::get_deps_checker(configuration.clone(), service_index.clone(), service_rustsec.clone());
         let service_email_sender = P::get_email_sender(configuration.clone());
