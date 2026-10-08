@@ -16,16 +16,20 @@ use crate::utils::apierror::AsStatusCode;
 use crate::utils::comma_sep_to_vec;
 
 #[derive(Debug, Error)]
+#[error("request docgen job for {spec_package}-{spec_version}-{spec_target} with state {state}")]
+pub struct SqlxSelectJobError {
+    #[source]
+    source: sqlx::Error,
+    state: i64,
+    spec_package: String,
+    spec_version: String,
+    spec_target: String,
+}
+
+#[derive(Debug, Error)]
 pub enum DocGenError {
-    #[error("request docgen job for {spec_package}-{spec_version}-{spec_target} with state {state}")]
-    SqlxSelectJob {
-        #[source]
-        source: sqlx::Error,
-        state: i64,
-        spec_package: String,
-        spec_version: String,
-        spec_target: String,
-    },
+    #[error(transparent)]
+    SqlxSelectJob(#[from] Box<SqlxSelectJobError>),
 
     #[error("failed to get user profile associated to a DocGenJob")]
     UserProfile(#[source] UserError),
@@ -185,12 +189,14 @@ impl Database {
         )
         .fetch_optional(&mut *self.transaction.borrow().await)
         .await
-        .map_err(|source| DocGenError::SqlxSelectJob {
-            source,
-            state: state_value,
-            spec_package: spec.package.clone(),
-            spec_version: spec.version.clone(),
-            spec_target: spec.target.clone(),
+        .map_err(|source| {
+            Box::new(SqlxSelectJobError {
+                source,
+                state: state_value,
+                spec_package: spec.package.clone(),
+                spec_version: spec.version.clone(),
+                spec_target: spec.target.clone(),
+            })
         })?;
         if let Some(row) = row {
             // there is already a queued job, return this one
