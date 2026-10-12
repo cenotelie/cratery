@@ -1,2 +1,12 @@
-target/
+.git/
+.github/
 data/
+docs/
+target/
+.rustfmt.toml
+azure-pipeline.yml
+build.sh
+deny.toml
+docker-compose.yml
+Dockerfile
+taplo.toml
