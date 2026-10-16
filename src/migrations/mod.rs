@@ -15,51 +15,51 @@ use crate::utils::db::{AppTransaction, Migration, MigrationContent, MigrationErr
 const MIGRATIONS: &[Migration<'static>] = &[
     Migration {
         target: "1.1.0",
-        content: MigrationContent::Sql(include_bytes!("v1.1.0.sql")),
+        content: MigrationContent::Sql(include_str!("v1.1.0.sql")),
     },
     Migration {
         target: "1.2.0",
-        content: MigrationContent::Sql(include_bytes!("v1.2.0.sql")),
+        content: MigrationContent::Sql(include_str!("v1.2.0.sql")),
     },
     Migration {
         target: "1.3.0",
-        content: MigrationContent::Sql(include_bytes!("v1.3.0.sql")),
+        content: MigrationContent::Sql(include_str!("v1.3.0.sql")),
     },
     Migration {
         target: "1.4.0",
-        content: MigrationContent::Sql(include_bytes!("v1.4.0.sql")),
+        content: MigrationContent::Sql(include_str!("v1.4.0.sql")),
     },
     Migration {
         target: "1.5.0",
-        content: MigrationContent::Sql(include_bytes!("v1.5.0.sql")),
+        content: MigrationContent::Sql(include_str!("v1.5.0.sql")),
     },
     Migration {
         target: "1.6.0",
-        content: MigrationContent::Sql(include_bytes!("v1.6.0.sql")),
+        content: MigrationContent::Sql(include_str!("v1.6.0.sql")),
     },
     Migration {
         target: "1.7.0",
-        content: MigrationContent::Sql(include_bytes!("v1.7.0.sql")),
+        content: MigrationContent::Sql(include_str!("v1.7.0.sql")),
     },
     Migration {
         target: "1.7.1",
-        content: MigrationContent::Sql(include_bytes!("v1.7.1.sql")),
+        content: MigrationContent::Sql(include_str!("v1.7.1.sql")),
     },
     Migration {
         target: "1.8.0",
-        content: MigrationContent::Sql(include_bytes!("v1.8.0.sql")),
+        content: MigrationContent::Sql(include_str!("v1.8.0.sql")),
     },
     Migration {
         target: "1.9.0",
-        content: MigrationContent::Sql(include_bytes!("v1.9.0.sql")),
+        content: MigrationContent::Sql(include_str!("v1.9.0.sql")),
     },
     Migration {
         target: "1.10.0",
-        content: MigrationContent::Sql(include_bytes!("v1.10.0.sql")),
+        content: MigrationContent::Sql(include_str!("v1.10.0.sql")),
     },
     Migration {
         target: "1.11.0",
-        content: MigrationContent::Sql(include_bytes!("v1.11.0.sql")),
+        content: MigrationContent::Sql(include_str!("v1.11.0.sql")),
     },
 ];
 
@@ -152,10 +152,9 @@ async fn migrate_db(transaction: AppTransaction, migrations: &[Migration<'_>]) -
     }
     for migration in &migrations[start_from..] {
         info!("Database migrating to {} ...", migration.target);
-        match &migration.content {
+        match migration.content {
             MigrationContent::Sql(script) => {
-                let script = String::from_utf8_lossy(script);
-                transaction.borrow().await.execute(script.as_ref()).await?;
+                transaction.borrow().await.execute(script).await?;
             }
         }
         set_schema_metadata(&mut *transaction.borrow().await, SCHEMA_METADATA_VERSION, migration.target).await?;
