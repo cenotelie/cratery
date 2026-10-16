@@ -16,16 +16,20 @@ use crate::utils::apierror::AsStatusCode;
 use crate::utils::comma_sep_to_vec;
 
 #[derive(Debug, Error)]
+#[error("request docgen job for {spec_package}-{spec_version}-{spec_target} with state {state}")]
+pub struct SqlxSelectJobError {
+    #[source]
+    source: sqlx::Error,
+    state: i64,
+    spec_package: String,
+    spec_version: String,
+    spec_target: String,
+}
+
+#[derive(Debug, Error)]
 pub enum DocGenError {
-    #[error("request docgen job for {spec_package}-{spec_version}-{spec_target} with state {state}")]
-    SqlxSelectJob {
-        #[source]
-        source: sqlx::Error,
-        state: i64,
-        spec_package: String,
-        spec_version: String,
-        spec_target: String,
-    },
+    #[error(transparent)]
+    SqlxSelectJob(#[from] Box<SqlxSelectJobError>),
 
     #[error("failed to get user profile associated to a DocGenJob")]
     UserProfile(#[source] UserError),
@@ -37,6 +41,9 @@ pub enum DocGenError {
         spec_version: String,
         spec_target: String,
     },
+
+    #[error("failed to get id from the return of DocGenJob insert")]
+    SqlxInsertJobRes,
 
     #[error("failed to execute DB request to get next job")]
     SqlGetNextJob(#[source] sqlx::Error),
@@ -67,6 +74,7 @@ impl AsStatusCode for DocGenError {
         match self {
             Self::SqlxSelectJob { .. }
             | Self::SqlxInsertJob { .. }
+            | Self::SqlxInsertJobRes
             | Self::SqlGetNextJob(_)
             | Self::SqlGetDocgenJobs(_)
             | Self::SqlGetDocgenJob { .. } => StatusCode::INTERNAL_SERVER_ERROR,
@@ -181,12 +189,14 @@ impl Database {
         )
         .fetch_optional(&mut *self.transaction.borrow().await)
         .await
-        .map_err(|source| DocGenError::SqlxSelectJob {
-            source,
-            state: state_value,
-            spec_package: spec.package.clone(),
-            spec_version: spec.version.clone(),
-            spec_target: spec.target.clone(),
+        .map_err(|source| {
+            Box::new(SqlxSelectJobError {
+                source,
+                state: state_value,
+                spec_package: spec.package.clone(),
+                spec_version: spec.version.clone(),
+                spec_target: spec.target.clone(),
+            })
         })?;
         if let Some(row) = row {
             // there is already a queued job, return this one
@@ -246,7 +256,8 @@ impl Database {
             spec_version: spec.version.clone(),
             spec_target: spec.target.clone(),
         })?
-        .id;
+        .id
+        .ok_or(DocGenError::SqlxInsertJobRes)?;
         Ok(DocGenJob {
             id: job_id,
             package: spec.package.clone(),

@@ -25,10 +25,10 @@ serde_json = "1.0"
 anyhow = "1.0"
 base64 = "0.22"
 byteorder = "1.5"
-bytes = "1.11"
+bytes = "1.12"
 chrono = { version = "0.4", features = ["serde"] }
 cookie = { version = "0.18", features = ["percent-encode", "secure"] }
-data-encoding = "2.10"
+data-encoding = "2.11"
 flate2 = "1.1"
 http-body = "1"
 http-serde = "2.1"
@@ -40,11 +40,11 @@ smol_str = "0.3"
 tar = "0.4"
 thiserror = "2.0"
 urlencoding = "2.1"
-uuid = { version = "1.19", features = ["fast-rng", "v4"] }
+uuid = { version = "1.28", features = ["fast-rng", "v4"] }
 
 # async support
 futures = "0.3"
-tokio = { version = "1.49", features = ["full"] }
+tokio = { version = "1.53", features = ["full"] }
 tokio-stream = "0.1"
 tokio-util = { version = "0.7", features = ["io"] }
 
@@ -62,11 +62,12 @@ reqwest = { version = "0.13", default-features = false, features = [
     "rustls",
     "stream",
 ] }
-sqlx = { version = "0.8", default-features = false, features = [
+sqlx = { version = "0.9", default-features = false, features = [
     "chrono",
     "macros",
-    "runtime-tokio-rustls",
+    "runtime-tokio",
     "sqlite",
+    "tls-rustls",
 ] }
 tokio-tungstenite = "0.28"
 

@@ -165,7 +165,7 @@ pub struct Migration<'a> {
 /// The implementation of a migration
 pub enum MigrationContent<'a> {
     /// The script to reach the target version
-    Sql(&'a [u8]),
+    Sql(&'a str),
 }
 
 /// Error when a version number is invalid
