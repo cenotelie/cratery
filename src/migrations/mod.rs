@@ -121,7 +121,7 @@ CREATE INDEX IF NOT EXISTS SchemaMetadataIndex ON SchemaMetadata(name);";
 /// # Errors
 ///
 /// Return a `MigrationError` when migration fails
-async fn migrate_db(transaction: AppTransaction, migrations: &[Migration<'_>]) -> Result<(), MigrationError> {
+async fn migrate_db(transaction: AppTransaction, migrations: &[Migration<'static>]) -> Result<(), MigrationError> {
     let current_version = match get_schema_metadata(&mut *transaction.borrow().await, SCHEMA_METADATA_VERSION).await {
         Ok(Some(version)) => Some(version),
         Ok(None) => None,
