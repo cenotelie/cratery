@@ -483,7 +483,8 @@ impl Database {
         )
         .fetch_one(&mut *self.transaction.borrow().await)
         .await?
-        .id;
+        .id.expect("no id returned from the insert of user token");
+
         Ok(RegistryUserTokenWithSecret {
             id,
             name: name.to_string(),

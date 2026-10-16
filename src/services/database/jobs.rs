@@ -38,6 +38,9 @@ pub enum DocGenError {
         spec_target: String,
     },
 
+    #[error("failed to get id from the return of DocGenJob insert")]
+    SqlxInsertJobRes,
+
     #[error("failed to execute DB request to get next job")]
     SqlGetNextJob(#[source] sqlx::Error),
 
@@ -67,6 +70,7 @@ impl AsStatusCode for DocGenError {
         match self {
             Self::SqlxSelectJob { .. }
             | Self::SqlxInsertJob { .. }
+            | Self::SqlxInsertJobRes
             | Self::SqlGetNextJob(_)
             | Self::SqlGetDocgenJobs(_)
             | Self::SqlGetDocgenJob { .. } => StatusCode::INTERNAL_SERVER_ERROR,
@@ -246,7 +250,8 @@ impl Database {
             spec_version: spec.version.clone(),
             spec_target: spec.target.clone(),
         })?
-        .id;
+        .id
+        .ok_or(DocGenError::SqlxInsertJobRes)?;
         Ok(DocGenJob {
             id: job_id,
             package: spec.package.clone(),
