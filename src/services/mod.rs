@@ -10,7 +10,7 @@ use index::GitIndexError;
 use thiserror::Error;
 
 use crate::model::config::{Configuration, WriteAuthConfigError};
-use crate::model::errors::MissingEnvVar;
+use crate::model::errors::ConfEnvError;
 use crate::model::worker::WorkersManager;
 use crate::utils::apierror::AsStatusCode;
 use crate::utils::db::RwSqlitePool;
@@ -26,7 +26,7 @@ pub mod storage;
 #[derive(Debug, Error)]
 pub enum ConfigurationError {
     #[error("failed to get configuration")]
-    GetConfiguration(#[source] MissingEnvVar),
+    GetConfiguration(#[source] ConfEnvError),
 
     #[error("failed to write configuration")]
     WriteConfiguration(#[source] WriteAuthConfigError),

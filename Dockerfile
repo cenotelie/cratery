@@ -3,7 +3,7 @@ ARG BUILD_TARGET=debug
 
 
 ## Base image with Rust toolchain and dependencies
-FROM buildpack-deps:24.04-curl AS base
+FROM buildpack-deps:26.10-curl AS base
 LABEL maintainer="Laurent Wouters <lwouters@cenotelie.fr>" vendor="Cénotélie Opérations SAS"  description="Cratery -- a private cargo registry"
 # add packages
 RUN apt-get update && apt-get install -y --no-install-recommends \
@@ -13,7 +13,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 		libsqlite3-dev \
 		musl-tools \
 		git \
-		ssh
+		ssh \
+		&& apt-get clean
 
 # add custom user
 RUN groupmod -n cratery ubuntu && usermod -l cratery -d /home/cratery ubuntu && mv /home/ubuntu /home/cratery
@@ -31,11 +32,23 @@ RUN mkdir /home/cratery/.ssh && ssh-keyscan -t rsa github.com >> /home/cratery/.
 RUN chmod -R go-rwx /home/cratery/.ssh
 
 
+## Chef stage for dependency caching
+FROM base AS chef
+RUN cargo install cargo-chef --locked
+
+FROM chef AS planner
+COPY --chown=cratery . /home/cratery/src
+RUN cd /home/cratery/src && cargo +stable chef prepare --recipe-path recipe.json
 
 ## Builder to build the application
-FROM base AS builder
+FROM chef AS builder
 ARG BUILD_FLAGS
+ARG BUILD_GIT_TAG
+ARG BUILD_GIT_HASH
+COPY --chown=cratery --from=planner /home/cratery/src/recipe.json /home/cratery/src/recipe.json
+RUN cd /home/cratery/src && cargo +stable chef cook ${BUILD_FLAGS} --recipe-path recipe.json
 COPY --chown=cratery . /home/cratery/src
+ENV GIT_TAG=${BUILD_GIT_TAG} GIT_HASH=${BUILD_GIT_HASH}
 RUN cd /home/cratery/src && cargo +stable build ${BUILD_FLAGS}
 
 
