@@ -650,11 +650,8 @@ impl Configuration {
             .host()
             .ok_or(ConfEnvError::WebPublicUri)?
             .to_string();
-        let self_local_name = get_var("REGISTRY_SELF_LOCAL_NAME").unwrap_or_else(|_| {
-            web_domain
-                .rfind('.')
-                .map_or_else(|| web_domain.clone(), |index| web_domain[index..].to_string())
-        });
+        let self_local_name =
+            get_var("REGISTRY_SELF_LOCAL_NAME").unwrap_or_else(|_| gen_local_name_from_web_domain(&web_domain));
         let index = IndexConfig::from_env(&home_dir, &data_dir, &web_public_uri)?;
         let storage = StorageConfig::from_env()?;
         let deps_notify_outdated = get_var("REGISTRY_DEPS_NOTIFY_OUTDATED").is_ok_and(|v| v == "true");
@@ -1027,6 +1024,14 @@ impl Configuration {
     }
 }
 
+fn gen_local_name_from_web_domain(web_domain: &str) -> String {
+    //web_domain.to_string().replace('.', "_")
+    web_domain.find('.').map_or_else(
+        || web_domain.to_string(),
+        |index| web_domain[index + 1..].to_string().replace('.', "_"),
+    )
+}
+
 /// Gets the rustc version
 async fn get_rustc_version(channel: &'static str) -> semver::Version {
     let child = Command::new("rustc")
@@ -1107,5 +1112,18 @@ pub async fn install_target(channel: &'static str, target: &str) -> Result<(), A
             error_backend_failure(),
             format!("Failed to install target {target} for channel {channel}"),
         ))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::gen_local_name_from_web_domain;
+
+    #[test]
+    fn test_gen_local_name_from_web_domain() {
+        let full = gen_local_name_from_web_domain("my_domain");
+        assert_eq!(full, "my_domain");
+        let full = gen_local_name_from_web_domain("crates.example.com");
+        assert_eq!(full, "example_com");
     }
 }
