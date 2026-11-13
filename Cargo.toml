@@ -5,7 +5,6 @@ authors = ["Laurent Wouters <lwouters@cenotelie.fr>"]
 edition = "2024"
 description = "Cratery -- a private cargo registry"
 documentation = "https://github.com/cenotelie/cratery"
-homepage = "https://github.com/cenotelie/cratery"
 repository = "https://github.com/cenotelie/cratery"
 license = "MIT"
 keywords = ["cargo", "crates", "private", "registry", "service"]
@@ -23,7 +22,7 @@ serde_json = "1.0"
 
 # basic dependencies
 anyhow = "1.0"
-base64 = "0.22"
+base64 = "0.23"
 byteorder = "1.5"
 bytes = "1.12"
 chrono = { version = "0.4", features = ["serde"] }
@@ -32,19 +31,19 @@ data-encoding = "2.11"
 flate2 = "1.1"
 http-body = "1"
 http-serde = "2.1"
-opendal = { version = "0.58", features = ["services-fs", "services-s3"] }
-rand = "0.9"
+opendal = { version = "0.59", features = ["services-fs", "services-s3"] }
+rand = "0.10"
 ring = "0.17"
 semver = { version = "1.0", features = ["serde"] }
 smol_str = "0.3"
 tar = "0.4"
 thiserror = "2.0"
 urlencoding = "2.1"
-uuid = { version = "1.28", features = ["fast-rng", "v4"] }
+uuid = { version = "1.29", features = ["fast-rng", "v4"] }
 
 # async support
 futures = "0.3"
-tokio = { version = "1.53", features = ["full"] }
+tokio = { version = "1.54", features = ["full"] }
 tokio-stream = "0.1"
 tokio-util = { version = "0.7", features = ["io"] }
 
@@ -69,7 +68,7 @@ sqlx = { version = "0.9", default-features = false, features = [
     "sqlite",
     "tls-rustls",
 ] }
-tokio-tungstenite = "0.28"
+tokio-tungstenite = "0.30"
 
 [lints.rust]
 unsafe_code = "forbid"
