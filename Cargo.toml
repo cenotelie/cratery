@@ -5,7 +5,6 @@ authors = ["Laurent Wouters <lwouters@cenotelie.fr>"]
 edition = "2024"
 description = "Cratery -- a private cargo registry"
 documentation = "https://github.com/cenotelie/cratery"
-homepage = "https://github.com/cenotelie/cratery"
 repository = "https://github.com/cenotelie/cratery"
 license = "MIT"
 keywords = ["cargo", "crates", "private", "registry", "service"]
