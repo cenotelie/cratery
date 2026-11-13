@@ -7,7 +7,7 @@
 use base64::Engine;
 use base64::engine::general_purpose::STANDARD;
 use data_encoding::HEXLOWER;
-use rand::Rng;
+use rand::RngExt as _;
 use rand::distr::StandardUniform;
 use ring::digest::{Context, SHA256};
 

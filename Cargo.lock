@@ -456,7 +456,7 @@ dependencies = [
  "lettre",
  "log",
  "opendal",
- "rand 0.9.5",
+ "rand 0.10.3",
  "reqwest",
  "ring",
  "semver",
