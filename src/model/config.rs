@@ -414,8 +414,7 @@ impl NodeRole {
                 capabilities: get_var("REGISTRY_NODE_WORKER_CAPABILITIES")
                     .ok()
                     .as_deref()
-                    .map(comma_sep_to_vec)
-                    .unwrap_or_default(),
+                    .map_or_default(comma_sep_to_vec),
             })),
             _ => Ok(Self::Standalone),
         }

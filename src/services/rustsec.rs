@@ -48,16 +48,13 @@ impl RustSecChecker for RustSecCheckerImpl {
             let mut data = self.data.lock().await;
             data.update_data().await?;
             let db = data.db.lock().unwrap();
-            Ok(db
-                .get(package)
-                .map(|advisories| {
-                    advisories
-                        .iter()
-                        .filter(|advisory| advisory.affects(version))
-                        .cloned()
-                        .collect::<Vec<_>>()
-                })
-                .unwrap_or_default())
+            Ok(db.get(package).map_or_default(|advisories| {
+                advisories
+                    .iter()
+                    .filter(|advisory| advisory.affects(version))
+                    .cloned()
+                    .collect::<Vec<_>>()
+            }))
         })
     }
 }
